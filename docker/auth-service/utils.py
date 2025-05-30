@@ -42,20 +42,36 @@ class AuditLogger:
     ):
         """Log authentication events with legal compliance structure"""
         
+        # Create human-readable message based on event type
+        if event_type == "login_success":
+            message = f"User {user_email} logged in successfully"
+        elif event_type == "login_failure":
+            message = f"Failed login attempt for {user_email}" + (f" - {reason}" if reason else "")
+        elif event_type == "logout":
+            message = f"User {user_email} logged out"
+        elif event_type == "password_change":
+            message = f"User {user_email} changed their password"
+        elif event_type == "account_locked":
+            message = f"Account {user_email} was locked" + (f" - {reason}" if reason else "")
+        elif event_type == "user_created":
+            message = f"New user account created: {user_email}" + (f" by {created_by}" if created_by else "")
+        elif event_type == "user_updated":
+            message = f"User account updated: {user_email}" + (f" by {updated_by}" if updated_by else "")
+        elif event_type == "permission_granted":
+            message = f"Permission '{action}' granted to {user_email}"
+        elif event_type == "permission_denied":
+            message = f"Permission '{action}' denied for {user_email}" + (f" - {reason}" if reason else "")
+        else:
+            message = f"Auth event '{event_type}' for user {user_email}"
+        
         event_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_id": str(uuid.uuid4()),
             "event_type": event_type,
             "service": "auth-service",
+            "message": message,
             "request_id": request_id,
-            "user_email": user_email,
-            "compliance_metadata": {
-                "data_classification": "confidential",
-                "retention_policy": "7_years",
-                "audit_trail": True,
-                "attorney_client_privilege": True
-            },
-            "compliance_tags": ["authentication", "access_control", "audit_trail"]
+            "user_email": user_email
         }
         
         # Add optional fields
@@ -134,10 +150,10 @@ class SecurityMetrics:
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "alert_type": "security_incident",
             "severity": "high",
+            "message": f"SECURITY ALERT: Multiple failed login attempts for {user_email}",
             "user_email": user_email,
             "activity_type": activity_type,
-            "description": f"Suspicious activity detected for user {user_email}: {activity_type}",
-            "compliance_tags": ["security_alert", "potential_breach", "investigation_required"]
+            "description": f"Suspicious activity detected for user {user_email}: {activity_type}"
         }
         
         # Log security alert
@@ -167,17 +183,11 @@ class ComplianceMonitor:
         access_event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_type": "document_access",
+            "message": f"User {user_email} {access_type} document {document_id} (matter: {client_matter})",
             "user_email": user_email,
             "document_id": document_id,
             "client_matter": client_matter,
-            "access_type": access_type,
-            "compliance_metadata": {
-                "attorney_client_privilege": True,
-                "data_classification": "confidential",
-                "retention_policy": "7_years",
-                "billable_event": True
-            },
-            "compliance_tags": ["document_access", "client_data", "billable_time"]
+            "access_type": access_type
         }
         
         with open(self.compliance_log, 'a') as f:
@@ -193,25 +203,19 @@ class ComplianceMonitor:
     ):
         """Log AI interactions for compliance and billing"""
         
+        query_preview = query[:50] + "..." if len(query) > 50 else query
+        sources_count = len(sources_accessed) if sources_accessed else 0
+        
         ai_event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_type": "ai_interaction",
+            "message": f"User {user_email} asked: '{query_preview}' (generated {response_tokens} tokens, {sources_count} sources)",
             "user_email": user_email,
             "query_sanitized": query[:200] + "..." if len(query) > 200 else query,
             "response_tokens": response_tokens,
             "sources_accessed": sources_accessed,
-            "client_matter": client_matter,
-            "compliance_metadata": {
-                "ai_assisted": True,
-                "attorney_supervision": True,
-                "data_classification": "confidential",
-                "billable_event": True if client_matter else False
-            },
-            "compliance_tags": ["ai_interaction", "legal_research", "attorney_tools"]
+            "client_matter": client_matter
         }
-        
-        if client_matter:
-            ai_event["compliance_tags"].append("billable_time")
         
         with open(self.compliance_log, 'a') as f:
             f.write(json.dumps(ai_event) + '\n')

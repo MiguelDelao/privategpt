@@ -36,19 +36,13 @@ class ComplianceLogger:
             "event_id": str(uuid.uuid4()),
             "event_type": "document_upload",
             "service": "streamlit-ui",
+            "message": f"User {user_email} uploaded document '{filename}' ({file_size or 'unknown size'} bytes)",
             "user_email": user_email,
             "document_id": document_id,
             "filename": filename,
             "client_matter": client_matter,
             "file_size": file_size,
-            "document_type": doc_type,
-            "compliance_metadata": {
-                "data_classification": "confidential",
-                "retention_policy": "7_years",
-                "attorney_client_privilege": True,
-                "billable_event": True
-            },
-            "compliance_tags": ["document_upload", "client_data", "billable_time"]
+            "document_type": doc_type
         }
         
         self._write_log(self.document_log, event)
@@ -65,30 +59,21 @@ class ComplianceLogger:
         """Log AI interaction for compliance and billing"""
         # Sanitize query (remove PII, limit length)
         sanitized_query = self._sanitize_query(query)
+        query_preview = sanitized_query[:50] + "..." if len(sanitized_query) > 50 else sanitized_query
         
         event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_id": str(uuid.uuid4()),
             "event_type": "ai_interaction",
             "service": "streamlit-ui",
+            "message": f"User {user_email} asked: '{query_preview}' (generated {response_tokens} tokens)",
             "user_email": user_email,
             "query_sanitized": sanitized_query,
             "response_tokens": response_tokens,
             "sources_accessed": sources_accessed,
             "client_matter": client_matter,
-            "response_time_ms": response_time_ms,
-            "compliance_metadata": {
-                "ai_assisted": True,
-                "attorney_supervision": True,
-                "data_classification": "confidential",
-                "billable_event": True if client_matter else False,
-                "requires_review": True
-            },
-            "compliance_tags": ["ai_interaction", "legal_research", "attorney_tools"]
+            "response_time_ms": response_time_ms
         }
-        
-        if client_matter:
-            event["compliance_tags"].append("billable_time")
         
         self._write_log(self.interaction_log, event)
     
@@ -100,25 +85,19 @@ class ComplianceLogger:
         client_matter: Optional[str] = None
     ):
         """Log document search events"""
+        query_preview = search_query[:30] + "..." if len(search_query) > 30 else search_query
+        
         event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_id": str(uuid.uuid4()),
             "event_type": "document_search",
             "service": "streamlit-ui",
+            "message": f"User {user_email} searched for '{query_preview}' (found {results_count} results)",
             "user_email": user_email,
             "search_query": self._sanitize_query(search_query),
             "results_count": results_count,
-            "client_matter": client_matter,
-            "compliance_metadata": {
-                "data_classification": "confidential",
-                "attorney_client_privilege": True,
-                "billable_event": True if client_matter else False
-            },
-            "compliance_tags": ["document_search", "research_activity"]
+            "client_matter": client_matter
         }
-        
-        if client_matter:
-            event["compliance_tags"].append("billable_time")
         
         self._write_log(self.document_log, event)
     
@@ -130,21 +109,26 @@ class ComplianceLogger:
         client_ip: Optional[str] = None
     ):
         """Log user session events"""
+        if session_action == "login":
+            message = f"User {user_email} logged in successfully"
+        elif session_action == "logout":
+            duration = f" (session lasted {session_duration_seconds//60}m {session_duration_seconds%60}s)" if session_duration_seconds else ""
+            message = f"User {user_email} logged out{duration}"
+        elif session_action == "timeout":
+            message = f"User {user_email} session timed out after {session_duration_seconds//60} minutes"
+        else:
+            message = f"User {user_email} session {session_action}"
+            
         event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_id": str(uuid.uuid4()),
             "event_type": "user_session",
             "service": "streamlit-ui",
+            "message": message,
             "user_email": user_email,
             "session_action": session_action,
             "session_duration_seconds": session_duration_seconds,
-            "client_ip": client_ip,
-            "compliance_metadata": {
-                "access_control": True,
-                "security_relevant": True,
-                "audit_trail": True
-            },
-            "compliance_tags": ["user_session", "access_control", "security"]
+            "client_ip": client_ip
         }
         
         self._write_log(self.audit_log, event)
@@ -157,22 +141,21 @@ class ComplianceLogger:
         action_details: Optional[Dict] = None
     ):
         """Log administrative actions"""
+        if target_user:
+            message = f"Admin {admin_email} performed '{action_type}' on user {target_user}"
+        else:
+            message = f"Admin {admin_email} performed administrative action: {action_type}"
+            
         event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "event_id": str(uuid.uuid4()),
             "event_type": "admin_action",
             "service": "streamlit-ui",
+            "message": message,
             "admin_email": admin_email,
             "action_type": action_type,
             "target_user": target_user,
-            "action_details": action_details or {},
-            "compliance_metadata": {
-                "privileged_operation": True,
-                "security_relevant": True,
-                "audit_trail": True,
-                "requires_approval": False
-            },
-            "compliance_tags": ["admin_action", "privileged_access", "system_management"]
+            "action_details": action_details or {}
         }
         
         self._write_log(self.audit_log, event)
@@ -190,16 +173,11 @@ class ComplianceLogger:
             "event_id": str(uuid.uuid4()),
             "event_type": "compliance_violation",
             "service": "streamlit-ui",
+            "message": f"COMPLIANCE VIOLATION ({severity.upper()}): User {user_email} - {violation_type}",
             "user_email": user_email,
             "violation_type": violation_type,
             "violation_details": violation_details,
-            "severity": severity,
-            "compliance_metadata": {
-                "security_incident": True,
-                "requires_investigation": True,
-                "escalation_required": severity in ["high", "critical"]
-            },
-            "compliance_tags": ["compliance_violation", "security_incident", "investigation_required"]
+            "severity": severity
         }
         
         self._write_log(self.audit_log, event)
