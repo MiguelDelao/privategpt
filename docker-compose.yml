@@ -79,8 +79,8 @@ services:
       wait"
     environment:
       - MODEL_MODE=${MODEL_MODE:-dev}
-      - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3.2:8b}
-      - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3.1:70b}
+      - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3:8b}
+      - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3:70b}
     volumes:
       - ollama-data:/root/.ollama
       - ./logs/ollama:/var/log/ollama

@@ -9,8 +9,8 @@ echo "🤖 Initializing Ollama with configured models..."
 
 # Get configuration from environment
 MODE=${MODEL_MODE:-"dev"}
-DEV_MODEL=${OLLAMA_MODEL_DEV:-"llama3.2:8b"}
-PROD_MODEL=${OLLAMA_MODEL_PROD:-"llama3.1:70b"}
+DEV_MODEL=${OLLAMA_MODEL_DEV:-"llama3:8b"}
+PROD_MODEL=${OLLAMA_MODEL_PROD:-"llama3:70b"}
 
 # Select model based on MODE
 if [ "$MODE" = "prod" ]; then
@@ -44,7 +44,7 @@ if ! ollama list > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if model already exists
+# Check if model aLready exists
 if ollama list | grep -q "$MODEL"; then
     echo "✅ Model $MODEL already exists"
 else
