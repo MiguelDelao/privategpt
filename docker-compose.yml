@@ -70,6 +70,12 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-service
+    command: >
+      sh -c "ollama serve &
+      sleep 10 &&
+      chmod +x /scripts/init-ollama.sh &&
+      /scripts/init-ollama.sh &&
+      wait"
     environment:
       - MODEL_MODE=${MODEL_MODE:-dev}
       - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3.2:8b}

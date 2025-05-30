@@ -35,6 +35,7 @@ help:
 	@echo "🤖 Model Management:"
 	@echo "  make show-model    - Show current model configuration"
 	@echo "  make switch-mode   - Switch between dev/prod models"
+	@echo "  make download-models - Download models for current mode"
 
 # Installation commands
 install:
@@ -270,5 +271,14 @@ switch-mode:
 		fi; \
 	else \
 		echo "⚠️  No .env file found. Run 'make init' first"; \
+		exit 1; \
+	fi
+
+download-models:
+	@echo "📥 Downloading models for current mode..."
+	@if docker ps | grep -q ollama-service; then \
+		docker exec ollama-service /scripts/init-ollama.sh; \
+	else \
+		echo "❌ Ollama service not running. Start with 'make start' first"; \
 		exit 1; \
 	fi 
