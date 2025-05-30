@@ -42,13 +42,24 @@ def get_document_processor():
 def get_compliance_logger():
     return ComplianceLogger()
 
-# Page configuration
+# Configure Streamlit page and hide deploy button
 st.set_page_config(
     page_title="PrivateGPT Legal AI",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Hide Streamlit style elements
+hide_streamlit_style = """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+.stDeployButton {display: none;}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Custom CSS for professional appearance
 st.markdown("""
