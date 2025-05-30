@@ -1,0 +1,106 @@
+{
+  "name": "Simple Llama Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama-service:11434/api/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "llama3:8b",
+          "prompt": "You are a legal AI assistant. Please introduce yourself in 2-3 sentences and explain how you can help with legal research.",
+          "stream": false,
+          "options": {
+            "temperature": 0.7,
+            "num_predict": 200
+          }
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "b2c3d4e5-f6g7-8h9i-0j1k-l2m3n4o5p6q7",
+      "name": "Test Llama LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Process Ollama response\nconst response = items[0].json;\n\n// Extract key information\nconst llmResponse = response.response || 'No response received';\nconst model = response.model || 'unknown';\nconst totalTime = response.total_duration ? Math.round(response.total_duration / 1000000) : 0;\nconst evalCount = response.eval_count || 0;\nconst promptEvalCount = response.prompt_eval_count || 0;\n\n// Calculate tokens per second\nconst tokensPerSecond = response.total_duration ? \n  Math.round((evalCount / (response.total_duration / 1000000000)) * 100) / 100 : 0;\n\nreturn {\n  json: {\n    success: true,\n    test_name: 'Simple Llama LLM Test',\n    model: model,\n    llm_response: llmResponse,\n    performance: {\n      total_time_ms: totalTime,\n      prompt_tokens: promptEvalCount,\n      completion_tokens: evalCount,\n      tokens_per_second: tokensPerSecond\n    },\n    timestamp: new Date().toISOString(),\n    status: 'Test completed successfully'\n  }\n};"
+      },
+      "id": "c3d4e5f6-g7h8-9i0j-1k2l-m3n4o5p6q7r8",
+      "name": "Process Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Test Llama LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Llama LLM": {
+      "main": [
+        [
+          {
+            "node": "Process Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "UTC"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "simple-llama-test",
+  "tags": [
+    {
+      "id": "testing",
+      "name": "Testing"
+    }
+  ]
+} 

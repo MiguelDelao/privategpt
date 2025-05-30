@@ -194,4 +194,32 @@ logs-all:
 
 logs-errors:
 	@echo "🚨 Showing error logs..."
-	@docker-compose logs --tail=50 | grep -i "error\|exception\|fail" 
+	@docker-compose logs --tail=50 | grep -i "error\|exception\|fail"
+
+# n8n and LLM testing
+setup-n8n:
+	@echo "🚀 Setting up n8n workflows..."
+	@chmod +x scripts/setup-n8n-workflows.sh
+	@./scripts/setup-n8n-workflows.sh
+
+test-llm:
+	@echo "🧪 Testing Llama LLM directly..."
+	@curl -X POST http://localhost:8081/ollama/api/generate \
+		-H 'Content-Type: application/json' \
+		-d '{"model": "llama3:8b", "prompt": "Hello! Please respond in one sentence.", "stream": false}' \
+		2>/dev/null | jq '.response' || echo "❌ LLM test failed"
+
+test-n8n-webhook:
+	@echo "🧪 Testing n8n webhook workflow..."
+	@curl -X POST http://localhost:8081/n8n/webhook/test-llama \
+		-H 'Content-Type: application/json' \
+		-d '{"query": "What is the purpose of contract law?"}' \
+		2>/dev/null | jq '.' || echo "❌ n8n webhook test failed"
+
+n8n-access:
+	@echo "🔧 n8n Access Information:"
+	@echo "URL: http://localhost:8081/n8n"
+	@echo "Login: admin / admin"
+	@echo "Workflows to import:"
+	@echo "  - config/n8n/simple-llama-test.json"
+	@echo "  - config/n8n/llama-test-workflow.json" 

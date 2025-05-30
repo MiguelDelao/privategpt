@@ -1,0 +1,206 @@
+{
+  "name": "Llama LLM Test Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "test-llama",
+        "options": {}
+      },
+      "id": "c2e1e2b3-4d5e-6f7g-8h9i-0j1k2l3m4n5o",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "test-llama"
+    },
+    {
+      "parameters": {
+        "url": "http://ollama-service:11434/api/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama3:8b"
+            },
+            {
+              "name": "prompt",
+              "value": "={{ $json.query || 'Hello! Please introduce yourself and tell me about your capabilities as a legal AI assistant.' }}"
+            },
+            {
+              "name": "stream",
+              "value": false
+            },
+            {
+              "name": "options",
+              "value": {
+                "temperature": 0.7,
+                "max_tokens": 500
+              }
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "d3f2g1h4-5i6j-7k8l-9m0n-1o2p3q4r5s6t",
+      "name": "Call Llama LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the response from Ollama and format it nicely\nconst ollamaResponse = items[0].json;\nconst response = ollamaResponse.response || 'No response received';\nconst model = ollamaResponse.model || 'unknown';\nconst totalDuration = ollamaResponse.total_duration || 0;\nconst loadDuration = ollamaResponse.load_duration || 0;\nconst promptEvalCount = ollamaResponse.prompt_eval_count || 0;\nconst evalCount = ollamaResponse.eval_count || 0;\n\n// Calculate timing metrics\nconst totalTimeMs = Math.round(totalDuration / 1000000); // Convert nanoseconds to milliseconds\nconst loadTimeMs = Math.round(loadDuration / 1000000);\nconst tokensPerSecond = evalCount > 0 ? Math.round((evalCount / (totalDuration / 1000000000)) * 100) / 100 : 0;\n\nreturn [{\n  json: {\n    success: true,\n    model: model,\n    response: response,\n    metrics: {\n      total_time_ms: totalTimeMs,\n      load_time_ms: loadTimeMs,\n      prompt_tokens: promptEvalCount,\n      completion_tokens: evalCount,\n      tokens_per_second: tokensPerSecond\n    },\n    timestamp: new Date().toISOString(),\n    test_status: 'Llama LLM test completed successfully'\n  }\n}];"
+      },
+      "id": "e4g3h2i5-6j7k-8l9m-0n1o-2p3q4r5s6t7u",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://weaviate-db:8080/v1/objects",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer admin"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "class",
+              "value": "LlamaTestLog"
+            },
+            {
+              "name": "properties",
+              "value": {
+                "query": "={{ $('Webhook Trigger').item.json.query || 'Default test query' }}",
+                "response": "={{ $json.response }}",
+                "model": "={{ $json.model }}",
+                "timestamp": "={{ $json.timestamp }}",
+                "total_time_ms": "={{ $json.metrics.total_time_ms }}",
+                "tokens_per_second": "={{ $json.metrics.tokens_per_second }}"
+              }
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "f5h4i3j6-7k8l-9m0n-1o2p-3q4r5s6t7u8v",
+      "name": "Log to Weaviate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "g6i5j4k7-8l9m-0n1o-2p3q-4r5s6t7u8v9w",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Call Llama LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Llama LLM": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Log to Weaviate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Weaviate": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "UTC"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "llama-test-workflow",
+  "tags": [
+    {
+      "id": "llama-test",
+      "name": "LLM Testing"
+    }
+  ]
+} 
