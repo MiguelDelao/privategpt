@@ -300,8 +300,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "gridPos": {
         "h": 12,
@@ -313,16 +313,16 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
         "showLabels": false,
         "showTime": false,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=\"auth-service\"} |= \"ERROR\" or \"WARN\" or \"error\" or \"warn\"",
+          "expr": "error OR warn OR ERROR OR WARN",
           "legendFormat": "Auth Service Errors",
           "refId": "A"
         }
@@ -332,8 +332,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "gridPos": {
         "h": 12,
@@ -345,16 +345,16 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
         "showLabels": false,
         "showTime": false,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=\"streamlit-app\"} |= \"ERROR\" or \"Exception\" or \"error\"",
+          "expr": "streamlit OR error OR ERROR OR Exception",
           "legendFormat": "Streamlit App Errors",
           "refId": "A"
         }
@@ -364,8 +364,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "gridPos": {
         "h": 8,
@@ -377,16 +377,16 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
         "showLabels": true,
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=~\"auth-service|streamlit-app|ollama-service|weaviate-db\"} |= \"login\" or \"authentication\" or \"user\"",
+          "expr": "* AND \"login\" or \"authentication\" or \"user\"",
           "legendFormat": "Authentication Activity",
           "refId": "A"
         }
@@ -396,8 +396,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "gridPos": {
         "h": 8,
@@ -409,16 +409,16 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
         "showLabels": true,
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=\"ollama-service\"} |= \"model\" or \"generate\" or \"inference\"",
+          "expr": "ollama OR model OR generate OR inference",
           "legendFormat": "AI Model Activity",
           "refId": "A"
         }
@@ -428,8 +428,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "gridPos": {
         "h": 8,
@@ -441,16 +441,16 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
         "showLabels": true,
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=\"weaviate-db\"} |= \"document\" or \"vector\" or \"search\" or \"index\"",
+          "expr": "weaviate OR document OR vector OR search OR index",
           "legendFormat": "Document Processing",
           "refId": "A"
         }
@@ -633,8 +633,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "gridPos": {
         "h": 10,
@@ -646,16 +646,16 @@
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
-        "prettifyLogMessage": false,
+        "prettifyLogMessage": true,
         "showCommonLabels": false,
         "showLabels": true,
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
-          "expr": "{container_name=~\".*\"} |= \"\"",
+          "expr": "* AND \"\"",
           "legendFormat": "All System Logs",
           "refId": "A"
         }

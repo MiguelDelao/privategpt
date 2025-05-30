@@ -195,7 +195,7 @@ services:
       - GF_SERVER_ROOT_URL=http://localhost/grafana
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_AUTH_ANONYMOUS_ENABLED=false
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,victoriametrics-logs-datasource
     volumes:
       - ./config/grafana:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
@@ -205,22 +205,31 @@ services:
     restart: unless-stopped
     depends_on:
       - prometheus
-      - loki
+      - victorialogs
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.grafana.rule=PathPrefix(`/grafana`)"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 
-  loki:
-    image: grafana/loki:2.9.0
-    container_name: loki
-    command: -config.file=/etc/loki/loki.yml
+  victorialogs:
+    image: victoriametrics/victoria-logs:v0.15.0-victorialogs
+    container_name: victorialogs
+    command:
+      - "-storageDataPath=/victoria-logs-data"
+      - "-httpListenAddr=:9428"
+      - "-loggerOutput=stderr"
+      - "-loggerLevel=INFO"
     volumes:
-      - ./config/loki:/etc/loki
-      - loki-data:/tmp/loki
+      - victorialogs-data:/victoria-logs-data
     networks:
       - legal-ai-network
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.victorialogs.rule=PathPrefix(`/victorialogs`)"
+      - "traefik.http.routers.victorialogs.middlewares=victorialogs-stripprefix"
+      - "traefik.http.middlewares.victorialogs-stripprefix.stripprefix.prefixes=/victorialogs"
+      - "traefik.http.services.victorialogs.loadbalancer.server.port=9428"
 
   fluent-bit:
     image: fluent/fluent-bit:2.2.0
@@ -233,7 +242,7 @@ services:
       - legal-ai-network
     restart: unless-stopped
     depends_on:
-      - loki
+      - victorialogs
 
   alertmanager:
     image: prom/alertmanager:v0.26.0
@@ -278,6 +287,23 @@ services:
       - legal-ai-network
     restart: unless-stopped
 
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./config/loki:/etc/loki
+      - loki-data:/tmp/loki
+    networks:
+      - legal-ai-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.loki.rule=PathPrefix(`/loki`)"
+      - "traefik.http.routers.loki.middlewares=loki-stripprefix"
+      - "traefik.http.middlewares.loki-stripprefix.stripprefix.prefixes=/loki"
+      - "traefik.http.services.loki.loadbalancer.server.port=3100"
+
 networks:
   legal-ai-network:
     driver: bridge
@@ -296,4 +322,5 @@ volumes:
   alertmanager-data:
   
   # SSL certificates
-  traefik-certs: 
+  traefik-certs:
+  victorialogs-data: 
