@@ -372,17 +372,20 @@ def initialize_default_admin():
     """Create default admin user if no users exist"""
     users = load_users()
     if not users:
+        default_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin")
+        default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
+        
         default_admin = {
-            "password_hash": hash_password("admin123"),
+            "password_hash": hash_password(default_password),
             "role": "admin",
-            "client_matters": [],
+            "client_matters": ["General", "Administrative"],
             "active": True,
             "created_at": datetime.utcnow().isoformat(),
             "created_by": "system"
         }
-        users["admin@legal-ai.local"] = default_admin
+        users[default_email] = default_admin
         save_users(users)
-        logger.info("Default admin user created", email="admin@legal-ai.local")
+        logger.info("Default admin user created", email=default_email)
 
 if __name__ == "__main__":
     # Initialize default admin
