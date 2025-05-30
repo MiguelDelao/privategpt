@@ -372,7 +372,7 @@ def initialize_default_admin():
     """Create default admin user if no users exist"""
     users = load_users()
     if not users:
-        default_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin")
+        default_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@admin.com")
         default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
         
         default_admin = {
