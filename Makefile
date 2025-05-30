@@ -28,6 +28,7 @@ help:
 	@echo "  make logs          - Show all service logs"
 	@echo "  make logs-auth     - Show auth service logs"
 	@echo "  make logs-app      - Show streamlit app logs"
+	@echo "  make logs-ollama   - Show ollama logs (model downloads)"
 	@echo "  make status        - Show service status"
 	@echo "  make shell         - Open shell in streamlit container"
 	@echo "  make test          - Test all endpoints"
