@@ -17,9 +17,7 @@ services:
       - legal-ai-network
     restart: unless-stopped
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`localhost`) && PathPrefix(`/traefik`)"
-      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.enable=false"
 
   # Authentication Service
   auth-service:
