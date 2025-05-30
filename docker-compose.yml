@@ -129,6 +129,9 @@ services:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
       - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_PATH=/n8n
+      - WEBHOOK_URL=http://localhost/n8n/
+      - N8N_EDITOR_BASE_URL=http://localhost/n8n/
       - WEAVIATE_URL=http://weaviate:8080
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
       - NODE_ENV=production
@@ -144,6 +147,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.n8n.rule=PathPrefix(`/n8n`)"
+      - "traefik.http.routers.n8n.middlewares=n8n-stripprefix"
+      - "traefik.http.middlewares.n8n-stripprefix.stripprefix.prefixes=/n8n"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
 
   # Monitoring Stack
