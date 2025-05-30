@@ -178,4 +178,20 @@ tunnel:
 	@echo "🌐 Setting up port forwarding..."
 	@echo "Run this on your LOCAL machine:"
 	@echo "ssh -p 51800 -i gpukey root@82.79.250.18 -L 8081:localhost:80"
-	@echo "Then visit: http://localhost:8081" 
+	@echo "Then visit: http://localhost:8081"
+
+# Monitoring and dashboards
+grafana:
+	@echo "📊 Grafana Dashboard Access:"
+	@echo "Main System: http://localhost:8081/grafana/d/privategpt-main"
+	@echo "Legal Compliance: http://localhost:8081/grafana/d/privategpt-compliance"
+	@echo "Prometheus: http://localhost:8081/prometheus"
+	@echo "Login: admin / admin"
+
+logs-all:
+	@echo "📋 Showing all service logs..."
+	@docker-compose logs --tail=100 -f
+
+logs-errors:
+	@echo "🚨 Showing error logs..."
+	@docker-compose logs --tail=50 | grep -i "error\|exception\|fail" 

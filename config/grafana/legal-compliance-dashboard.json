@@ -1,0 +1,239 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "expr": "{container_name=\"auth-service\"} |= \"login\" or \"authentication\" or \"access_token\"",
+          "legendFormat": "User Login Activity",
+          "refId": "A"
+        }
+      ],
+      "title": "User Authentication Audit Log",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "expr": "{container_name=\"streamlit-app\"} |= \"document\" or \"upload\" or \"process\"",
+          "legendFormat": "Document Processing Activity",
+          "refId": "A"
+        }
+      ],
+      "title": "Document Processing Audit Log",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "expr": "{container_name=\"streamlit-app\"} |= \"ai_interaction\" or \"query\" or \"response\"",
+          "legendFormat": "AI Query Logs",
+          "refId": "A"
+        }
+      ],
+      "title": "AI Interaction Compliance Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "id": 4,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "expr": "{container_name=\"auth-service\"} |= \"failed\" or \"error\" or \"unauthorized\"",
+          "legendFormat": "Security Violations",
+          "refId": "A"
+        }
+      ],
+      "title": "Security & Access Violations",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 5,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "expr": "{container_name=\"weaviate-db\"} |= \"client_matter\" or \"legal\" or \"confidential\"",
+          "legendFormat": "Client Matter Access",
+          "refId": "A"
+        }
+      ],
+      "title": "Client Matter Data Access Log",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 6,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "expr": "{container_name=~\".*\"} |= \"ERROR\" or \"CRITICAL\" or \"FATAL\" or \"Exception\"",
+          "legendFormat": "System Errors & Exceptions",
+          "refId": "A"
+        }
+      ],
+      "title": "System Errors & Critical Issues",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 37,
+  "style": "dark",
+  "tags": [
+    "legal-compliance",
+    "audit",
+    "security"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "PrivateGPT Legal Compliance & Audit Dashboard",
+  "uid": "privategpt-compliance",
+  "version": 1,
+  "weekStart": ""
+} 

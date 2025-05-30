@@ -1,0 +1,38 @@
+apiVersion: 1
+
+contactPoints:
+  - name: 'Legal AI Admin'
+    type: email
+    settings:
+      addresses: admin@admin.com
+      subject: 'PrivateGPT Legal AI Alert'
+
+policies:
+  - receiver: 'Legal AI Admin'
+    group_by: ['alertname']
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 12h
+
+rules:
+  - uid: privategpt-alerts
+    title: PrivateGPT System Alerts
+    condition: A
+    data:
+      - refId: A
+        queryType: ''
+        relativeTimeRange:
+          from: 300
+          to: 0
+        datasourceUid: prometheus
+        model:
+          expr: up{job="node-exporter"} == 0
+          intervalMs: 1000
+          maxDataPoints: 43200
+          refId: A
+    annotations:
+      description: 'System monitoring is down - check infrastructure'
+      summary: 'PrivateGPT monitoring failure'
+    labels:
+      severity: critical
+    for: 5m 
