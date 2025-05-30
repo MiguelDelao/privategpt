@@ -27,14 +27,22 @@ echo "  Development Model: $DEV_MODEL"
 echo "  Production Model: $PROD_MODEL"
 echo "  Selected Model: $MODEL"
 
-# Wait for Ollama service to be ready
+# Wait for Ollama service to be ready using ollama commands
 echo "⏳ Waiting for Ollama service..."
-until curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do
-    echo "Waiting for Ollama to start..."
-    sleep 2
+for i in {1..30}; do
+    if ollama list > /dev/null 2>&1; then
+        echo "✅ Ollama service is ready"
+        break
+    fi
+    echo "Waiting for Ollama to start... (attempt $i/30)"
+    sleep 5
 done
 
-echo "✅ Ollama service is ready"
+# Final check
+if ! ollama list > /dev/null 2>&1; then
+    echo "❌ Ollama failed to start after 30 attempts"
+    exit 1
+fi
 
 # Check if model already exists
 if ollama list | grep -q "$MODEL"; then
