@@ -113,7 +113,7 @@ services:
 
   # BGE Embeddings Service
   t2v-transformers:
-    image: semitechnologies/transformers-inference:sentence-transformers-BAAI-bge-small-en-v1.5
+    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2-1.8.5
     container_name: bge-embeddings
     environment:
       - ENABLE_CUDA=0  # CPU-based for cost efficiency
