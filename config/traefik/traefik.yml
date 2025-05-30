@@ -4,7 +4,9 @@ api:
 
 entryPoints:
   web:
-    address: ":80"
+    address: ":8080"
+  traefik:
+    address: ":8081"
 
 providers:
   docker:

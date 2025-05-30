@@ -14,7 +14,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY streamlit_app.py .
+COPY app.py .
+COPY pages_utils.py .
+COPY .streamlit/ ./.streamlit/
 COPY pages/ ./pages/
 COPY utils/ ./utils/
 
@@ -28,5 +30,5 @@ EXPOSE 8501
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
-# Run the application
-CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"] 
+# Run the enhanced multi-page application with demo UI structure
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"] 
