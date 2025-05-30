@@ -14,4 +14,7 @@ datasources:
     url: http://victorialogs:9428
     uid: victorialogs
     jsonData:
-      maxLines: 1000 
+      maxLines: 1000
+      httpTimeout: 30
+      keepCookies: []
+    secureJsonData: {} 

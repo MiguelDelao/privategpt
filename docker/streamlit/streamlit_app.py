@@ -113,6 +113,16 @@ def check_authentication():
         user_info = auth_client.verify_token(st.session_state.access_token)
         if user_info:
             st.session_state.user_info = user_info
+            
+            # Log page view on authentication check
+            if 'last_page_logged' not in st.session_state:
+                compliance_logger = get_compliance_logger()
+                compliance_logger.log_page_view(
+                    user_email=user_info["user"]["email"],
+                    page_name="Main Application"
+                )
+                st.session_state.last_page_logged = True
+                
             return True
     except Exception:
         pass
@@ -141,16 +151,33 @@ def login_page():
         if submit:
             if email and password:
                 auth_client = get_auth_client()
+                compliance_logger = get_compliance_logger()
+                
                 try:
                     with st.spinner("Authenticating..."):
                         token_response = auth_client.login(email, password)
                     
                     st.session_state.access_token = token_response["access_token"]
                     st.session_state.user_role = token_response["user_role"]
+                    st.session_state.login_time = datetime.now()
+                    
+                    # Log successful login
+                    compliance_logger.log_user_login(
+                        user_email=email,
+                        success=True,
+                        ip_address="streamlit_user"
+                    )
+                    
                     st.success("Login successful!")
                     st.rerun()
                     
                 except Exception as e:
+                    # Log failed login
+                    compliance_logger.log_user_login(
+                        user_email=email,
+                        success=False,
+                        ip_address="streamlit_user"
+                    )
                     st.error(f"Login failed: {str(e)}")
             else:
                 st.error("Please enter both email and password")
@@ -169,6 +196,18 @@ def main_application():
     
     with col3:
         if st.button("🚪 Logout", type="secondary"):
+            # Log logout with session duration
+            compliance_logger = get_compliance_logger()
+            if 'login_time' in st.session_state:
+                session_duration = int((datetime.now() - st.session_state.login_time).total_seconds())
+            else:
+                session_duration = None
+                
+            compliance_logger.log_user_logout(
+                user_email=user_info["user"]["email"],
+                session_duration_seconds=session_duration
+            )
+            
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
@@ -220,6 +259,14 @@ def main_application():
         with st.spinner("Analyzing documents and generating response..."):
             response = generate_rag_response(user_query)
         
+        # Log AI query
+        compliance_logger = get_compliance_logger()
+        compliance_logger.log_ai_query(
+            user_email=user_info["user"]["email"],
+            query=user_query,
+            response_tokens=response.get("token_count", None)
+        )
+        
         # Add assistant response to history
         st.session_state.chat_history.append({
             "role": "assistant",
@@ -248,6 +295,7 @@ def process_document(uploaded_file):
     try:
         processor = get_document_processor()
         compliance_logger = get_compliance_logger()
+        user_email = st.session_state.user_info["user"]["email"]
         
         with st.spinner(f"Processing {uploaded_file.name}..."):
             # Extract text from document
@@ -264,16 +312,22 @@ def process_document(uploaded_file):
             
             # Log document processing
             compliance_logger.log_document_upload(
-                user_email=st.session_state.user_info["user"]["email"],
-                document_id=document_id,
+                user_email=user_email,
                 filename=uploaded_file.name,
-                client_matter=st.session_state.get("current_matter", "General")
+                file_size=uploaded_file.size
             )
             
             st.success(f"✅ Document '{uploaded_file.name}' processed successfully!")
             st.info(f"Document ID: {document_id}")
     
     except Exception as e:
+        # Log error
+        compliance_logger = get_compliance_logger()
+        compliance_logger.log_error(
+            user_email=st.session_state.user_info["user"]["email"],
+            error_message=f"Document processing failed: {str(e)}",
+            error_type="document_processing"
+        )
         st.error(f"Failed to process document: {str(e)}")
 
 def search_documents(query):
@@ -281,6 +335,14 @@ def search_documents(query):
     try:
         rag_engine = get_rag_engine()
         results = rag_engine.search_documents(query, limit=5)
+        
+        # Log document search
+        compliance_logger = get_compliance_logger()
+        compliance_logger.log_document_search(
+            user_email=st.session_state.user_info["user"]["email"],
+            search_query=query,
+            results_count=len(results) if results else 0
+        )
         
         if results:
             st.subheader("📄 Search Results")
@@ -291,6 +353,13 @@ def search_documents(query):
             st.info("No documents found matching your query")
     
     except Exception as e:
+        # Log error
+        compliance_logger = get_compliance_logger()
+        compliance_logger.log_error(
+            user_email=st.session_state.user_info["user"]["email"],
+            error_message=f"Document search failed: {str(e)}",
+            error_type="document_search"
+        )
         st.error(f"Search failed: {str(e)}")
 
 def chat_display():
