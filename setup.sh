@@ -106,6 +106,46 @@ update_system() {
     echo -e "${GREEN}✓ System packages updated${NC}"
 }
 
+check_systemd() {
+    if command -v systemctl &> /dev/null && systemctl --version &> /dev/null 2>&1; then
+        return 0  # systemd available
+    else
+        return 1  # systemd not available
+    fi
+}
+
+start_docker_service() {
+    if check_systemd; then
+        print_substep "Using systemctl to manage Docker service"
+        $SUDO systemctl start docker
+        $SUDO systemctl enable docker
+    else
+        print_substep "systemd not available, using alternative Docker startup"
+        # Try to start Docker daemon directly
+        if command -v dockerd &> /dev/null; then
+            print_substep "Starting Docker daemon in background"
+            $SUDO dockerd > /tmp/docker.log 2>&1 &
+            sleep 5
+        elif [ -f /etc/init.d/docker ]; then
+            print_substep "Using init.d to start Docker"
+            $SUDO /etc/init.d/docker start
+        else
+            print_warning "Cannot start Docker automatically. Docker may already be running or managed externally."
+        fi
+    fi
+}
+
+check_docker_running() {
+    # Check if Docker daemon is responding
+    if docker version &> /dev/null; then
+        return 0  # Docker is running
+    elif $SUDO docker version &> /dev/null; then
+        return 0  # Docker is running with sudo
+    else
+        return 1  # Docker is not responding
+    fi
+}
+
 install_docker() {
     print_step "2" "Installing Docker..."
     
@@ -113,11 +153,19 @@ install_docker() {
         print_substep "Docker is already installed"
         docker --version
         
-        # Check if Docker service is running
-        if ! $SUDO systemctl is-active --quiet docker; then
+        # Check if Docker is running
+        if ! check_docker_running; then
             print_substep "Starting Docker service"
-            $SUDO systemctl start docker
-            $SUDO systemctl enable docker
+            start_docker_service
+            
+            # Wait and check again
+            sleep 3
+            if ! check_docker_running; then
+                print_warning "Docker may not be running. This might be normal in containerized environments."
+                print_warning "Docker commands may require external Docker daemon or special configuration."
+            fi
+        else
+            print_substep "Docker daemon is already running"
         fi
         
         echo -e "${GREEN}✓ Docker ready${NC}"
@@ -157,9 +205,8 @@ install_docker() {
             ;;
     esac
     
-    print_substep "Starting and enabling Docker service"
-    $SUDO systemctl start docker
-    $SUDO systemctl enable docker
+    print_substep "Starting Docker service"
+    start_docker_service
     
     # Wait a moment for Docker to fully start
     sleep 3
@@ -248,10 +295,10 @@ install_nvidia_docker() {
 verify_docker_access() {
     print_step "5" "Verifying Docker access..."
     
-    # Ensure Docker service is running
-    if ! $SUDO systemctl is-active --quiet docker; then
-        print_substep "Starting Docker service"
-        $SUDO systemctl start docker
+    # Check if Docker daemon is running
+    if ! check_docker_running; then
+        print_substep "Docker daemon not responding, attempting to start"
+        start_docker_service
         sleep 5
     fi
     
@@ -261,14 +308,16 @@ verify_docker_access() {
         return
     fi
     
-    # If that fails, try with newgrp docker
-    print_substep "Attempting to refresh Docker group membership"
-    if newgrp docker <<< "docker ps" &> /dev/null; then
-        echo -e "${GREEN}✓ Docker access verified with group refresh${NC}"
-        return
+    # If that fails, try with newgrp docker (only if systemd available)
+    if check_systemd; then
+        print_substep "Attempting to refresh Docker group membership"
+        if newgrp docker <<< "docker ps" &> /dev/null; then
+            echo -e "${GREEN}✓ Docker access verified with group refresh${NC}"
+            return
+        fi
     fi
     
-    # If still failing, try fixing socket permissions
+    # Try fixing socket permissions
     print_substep "Fixing Docker socket permissions"
     $SUDO chmod 666 /var/run/docker.sock
     
@@ -277,7 +326,7 @@ verify_docker_access() {
         return
     fi
     
-    # Last resort - check with sudo
+    # Check with sudo
     print_warning "Docker requires sudo access. Checking if Docker works with sudo..."
     if $SUDO docker ps &> /dev/null; then
         echo -e "${YELLOW}✓ Docker works with sudo${NC}"
@@ -288,10 +337,21 @@ verify_docker_access() {
         alias docker="$SUDO docker"
         alias docker-compose="$SUDO docker-compose"
         
-        echo -e "${YELLOW}Note: You may need to log out and back in for non-sudo Docker access${NC}"
-        echo -e "${YELLOW}Or run: newgrp docker${NC}"
+        if check_systemd; then
+            echo -e "${YELLOW}Note: You may need to log out and back in for non-sudo Docker access${NC}"
+            echo -e "${YELLOW}Or run: newgrp docker${NC}"
+        else
+            echo -e "${YELLOW}Note: In this environment, Docker commands may require sudo${NC}"
+        fi
     else
-        print_error "Docker is not working properly. Please check Docker installation."
+        # Special handling for containerized environments
+        if [ ! -f /.dockerenv ] && [ ! -f /proc/1/cgroup ] || ! grep -q docker /proc/1/cgroup 2>/dev/null; then
+            print_error "Docker is not working properly. Please check Docker installation."
+        else
+            print_warning "Running inside a container - Docker-in-Docker may require special configuration"
+            echo -e "${YELLOW}You may need to mount the Docker socket or use Docker-in-Docker setup${NC}"
+            echo -e "${YELLOW}Consider running this setup on the Docker host instead${NC}"
+        fi
     fi
 }
 
