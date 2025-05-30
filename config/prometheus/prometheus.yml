@@ -1,0 +1,63 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter - System metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # cAdvisor - Container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Auth Service
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Streamlit Application
+  - job_name: 'streamlit'
+    static_configs:
+      - targets: ['streamlit-app:8501']
+    metrics_path: '/_stcore/metrics'
+    scrape_interval: 30s
+
+  # Ollama LLM Service
+  - job_name: 'ollama'
+    static_configs:
+      - targets: ['ollama:11434']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Weaviate Vector Database
+  - job_name: 'weaviate'
+    static_configs:
+      - targets: ['weaviate:8080']
+    metrics_path: '/v1/metrics'
+    scrape_interval: 30s
+
+  # n8n Automation
+  - job_name: 'n8n'
+    static_configs:
+      - targets: ['n8n:5678']
+    metrics_path: '/metrics'
+    scrape_interval: 60s 

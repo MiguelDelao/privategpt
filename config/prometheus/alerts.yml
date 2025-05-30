@@ -1,0 +1,164 @@
+groups:
+  - name: legal-ai-alerts
+    rules:
+      # Critical system health alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          compliance: availability
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} service has been down for more than 1 minute"
+          runbook_url: "https://legal-ai.local/runbooks/service-down"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          compliance: performance
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90% for more than 5 minutes"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          compliance: performance
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% for more than 10 minutes"
+
+      # Legal compliance alerts
+      - alert: AuthenticationFailures
+        expr: increase(auth_login_attempts_total{status="failure"}[5m]) > 5
+        for: 0m
+        labels:
+          severity: high
+          compliance: security
+        annotations:
+          summary: "Multiple authentication failures detected"
+          description: "More than 5 failed login attempts in the last 5 minutes"
+          runbook_url: "https://legal-ai.local/runbooks/security-incident"
+
+      - alert: UnauthorizedAccess
+        expr: document_access_total{authorization="denied"} > 0
+        for: 0m
+        labels:
+          severity: critical
+          compliance: access_control
+        annotations:
+          summary: "Unauthorized document access attempt"
+          description: "Someone attempted to access documents without proper authorization"
+          runbook_url: "https://legal-ai.local/runbooks/unauthorized-access"
+
+      - alert: ClientDataSegregationViolation
+        expr: client_data_segregation_violations_total > 0
+        for: 0m
+        labels:
+          severity: critical
+          compliance: attorney_client_privilege
+        annotations:
+          summary: "CRITICAL: Client confidentiality may be compromised"
+          description: "Client data segregation violation detected - immediate investigation required"
+          runbook_url: "https://legal-ai.local/runbooks/confidentiality-breach"
+
+      # AI system specific alerts
+      - alert: AIResponseTimeHigh
+        expr: ai_response_time_seconds > 30
+        for: 2m
+        labels:
+          severity: warning
+          compliance: performance
+        annotations:
+          summary: "AI response time is high"
+          description: "AI queries are taking longer than 30 seconds to complete"
+
+      - alert: AIServiceUnavailable
+        expr: up{job="ollama"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          compliance: availability
+        annotations:
+          summary: "AI service is unavailable"
+          description: "Ollama LLM service is down - legal research capabilities impacted"
+
+      - alert: VectorDatabaseDown
+        expr: up{job="weaviate"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          compliance: availability
+        annotations:
+          summary: "Vector database is unavailable"
+          description: "Weaviate is down - document search and RAG capabilities impacted"
+
+      # Data integrity alerts
+      - alert: AuditLogIntegrityFailure
+        expr: audit_trail_completeness_percent < 99.9
+        for: 5m
+        labels:
+          severity: high
+          compliance: audit_integrity
+        annotations:
+          summary: "Audit log integrity compromised"
+          description: "Audit trail completeness is below 99.9% - compliance risk"
+          runbook_url: "https://legal-ai.local/runbooks/audit-integrity"
+
+      - alert: BackupFailure
+        expr: time() - backup_last_success_timestamp > 86400
+        for: 0m
+        labels:
+          severity: high
+          compliance: data_protection
+        annotations:
+          summary: "Backup has not completed successfully in 24 hours"
+          description: "Data backup procedure has failed or not run"
+          runbook_url: "https://legal-ai.local/runbooks/backup-failure"
+
+      # Business metrics alerts
+      - alert: NoUserActivity
+        expr: rate(ai_queries_total[1h]) == 0
+        for: 4h
+        labels:
+          severity: warning
+          compliance: business_continuity
+        annotations:
+          summary: "No user activity for 4 hours"
+          description: "No AI queries have been made in the last 4 hours during business hours"
+
+      - alert: ExcessiveBillableTime
+        expr: billable_time_minutes > 600
+        for: 0m
+        labels:
+          severity: warning
+          compliance: billing_integrity
+        annotations:
+          summary: "Excessive billable time detected"
+          description: "More than 10 hours of billable time logged for a single session"
+
+      # Storage and capacity alerts
+      - alert: DiskSpaceHigh
+        expr: (node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          compliance: capacity
+        annotations:
+          summary: "Disk space usage is high"
+          description: "Disk usage is above 80% on {{ $labels.mountpoint }}"
+
+      - alert: DocumentStorageFull
+        expr: weaviate_objects_total > 10000
+        for: 0m
+        labels:
+          severity: warning
+          compliance: capacity
+        annotations:
+          summary: "Document storage approaching capacity"
+          description: "More than 10,000 documents stored - consider archiving or capacity expansion" 
