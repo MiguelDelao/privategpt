@@ -29,7 +29,7 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS:-8}
       - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
-      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@admin.com}
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin}
     volumes:
       - auth-data:/app/data

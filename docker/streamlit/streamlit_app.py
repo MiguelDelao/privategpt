@@ -200,11 +200,39 @@ def main_application():
         if search_query:
             search_documents(search_query)
     
+    # Chat input (outside of tabs)
+    st.header("💬 Legal AI Assistant")
+    user_query = st.chat_input("Ask me about your legal documents...")
+    
+    if user_query:
+        # Initialize chat history
+        if 'chat_history' not in st.session_state:
+            st.session_state.chat_history = []
+            
+        # Add user message to history
+        st.session_state.chat_history.append({
+            "role": "user",
+            "content": user_query,
+            "timestamp": datetime.now()
+        })
+        
+        # Process query with RAG
+        with st.spinner("Analyzing documents and generating response..."):
+            response = generate_rag_response(user_query)
+        
+        # Add assistant response to history
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": response["answer"],
+            "sources": response["sources"],
+            "timestamp": datetime.now()
+        })
+
     # Main content area
-    tab1, tab2, tab3 = st.tabs(["💬 AI Chat", "📊 Analytics", "🛠️ Admin"])
+    tab1, tab2, tab3 = st.tabs(["💬 Chat History", "📊 Analytics", "🛠️ Admin"])
     
     with tab1:
-        chat_interface()
+        chat_display()
     
     with tab2:
         analytics_dashboard()
@@ -265,38 +293,16 @@ def search_documents(query):
     except Exception as e:
         st.error(f"Search failed: {str(e)}")
 
-def chat_interface():
-    """RAG-enabled chat interface"""
-    st.subheader("💬 Legal AI Assistant")
-    
-    # Initialize chat history
+def chat_display():
+    """Display chat history"""
+    # Initialize chat history if it doesn't exist
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
     
-    # Chat input
-    user_query = st.chat_input("Ask me about your legal documents...")
+    if not st.session_state.chat_history:
+        st.info("💡 Ask a question about your legal documents using the chat input above!")
+        return
     
-    if user_query:
-        # Add user message to history
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": user_query,
-            "timestamp": datetime.now()
-        })
-        
-        # Process query with RAG
-        with st.spinner("Analyzing documents and generating response..."):
-            response = generate_rag_response(user_query)
-        
-        # Add assistant response to history
-        st.session_state.chat_history.append({
-            "role": "assistant",
-            "content": response["answer"],
-            "sources": response["sources"],
-            "timestamp": datetime.now()
-        })
-    
-    # Display chat history
     for message in st.session_state.chat_history:
         if message["role"] == "user":
             with st.chat_message("user"):
