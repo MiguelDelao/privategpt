@@ -70,9 +70,14 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-service
+    environment:
+      - MODEL_MODE=${MODEL_MODE:-dev}
+      - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3.2:8b}
+      - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3.1:70b}
     volumes:
       - ollama-data:/root/.ollama
       - ./logs/ollama:/var/log/ollama
+      - ./scripts:/scripts
     networks:
       - legal-ai-network
     restart: unless-stopped

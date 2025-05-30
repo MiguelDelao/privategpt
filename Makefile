@@ -31,6 +31,10 @@ help:
 	@echo "  make status        - Show service status"
 	@echo "  make shell         - Open shell in streamlit container"
 	@echo "  make test          - Test all endpoints"
+	@echo ""
+	@echo "🤖 Model Management:"
+	@echo "  make show-model    - Show current model configuration"
+	@echo "  make switch-mode   - Switch between dev/prod models"
 
 # Installation commands
 install:
@@ -204,9 +208,16 @@ setup-n8n:
 
 test-llm:
 	@echo "🧪 Testing Llama LLM directly..."
-	@curl -X POST http://localhost:8081/ollama/api/generate \
+	@MODE=$$(grep "MODEL_MODE" .env 2>/dev/null | cut -d'=' -f2 || echo "dev"); \
+	if [ "$$MODE" = "prod" ]; then \
+		MODEL=$$(grep "OLLAMA_MODEL_PROD" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.1:70b"); \
+	else \
+		MODEL=$$(grep "OLLAMA_MODEL_DEV" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.2:8b"); \
+	fi; \
+	echo "Using $$MODE mode with model: $$MODEL"; \
+	curl -X POST http://localhost:8081/ollama/api/generate \
 		-H 'Content-Type: application/json' \
-		-d '{"model": "llama3:8b", "prompt": "Hello! Please respond in one sentence.", "stream": false}' \
+		-d "{\"model\": \"$$MODEL\", \"prompt\": \"Hello! Please respond in one sentence.\", \"stream\": false}" \
 		2>/dev/null | jq '.response' || echo "❌ LLM test failed"
 
 test-n8n-webhook:
@@ -222,4 +233,42 @@ n8n-access:
 	@echo "Login: admin / admin"
 	@echo "Workflows to import:"
 	@echo "  - config/n8n/simple-llama-test.json"
-	@echo "  - config/n8n/llama-test-workflow.json" 
+	@echo "  - config/n8n/llama-test-workflow.json"
+
+# Model Management Commands
+show-model:
+	@echo "🤖 Current Model Configuration:"
+	@echo "================================"
+	@if [ -f .env ]; then \
+		echo "From .env file:"; \
+		grep "MODEL_MODE\|OLLAMA_MODEL" .env | sed 's/^/  /'; \
+	else \
+		echo "From env.example (no .env file found):"; \
+		grep "MODEL_MODE\|OLLAMA_MODEL" env.example | sed 's/^/  /'; \
+	fi
+	@echo ""
+	@echo "Active model in Ollama:"
+	@docker exec ollama-service ollama list 2>/dev/null | head -5 || echo "  ❌ Ollama not running"
+
+switch-mode:
+	@echo "🤖 Model Mode Switch Tool"
+	@echo "=========================="
+	@if [ -f .env ]; then \
+		current_mode=$$(grep "MODEL_MODE" .env | cut -d'=' -f2); \
+		echo "Current mode: $$current_mode"; \
+		echo "Available modes:"; \
+		echo "  dev  - Development (llama3.2:8b)"; \
+		echo "  prod - Production (llama3.1:70b)"; \
+		echo ""; \
+		read -p "Enter new mode (dev/prod): " new_mode; \
+		if [ "$$new_mode" = "dev" ] || [ "$$new_mode" = "prod" ]; then \
+			sed -i.bak "s/MODEL_MODE=.*/MODEL_MODE=$$new_mode/" .env; \
+			echo "✅ Switched to $$new_mode mode"; \
+			echo "🔄 Restart services with 'make restart' to apply changes"; \
+		else \
+			echo "❌ Invalid mode. Use 'dev' or 'prod'"; \
+		fi; \
+	else \
+		echo "⚠️  No .env file found. Run 'make init' first"; \
+		exit 1; \
+	fi 

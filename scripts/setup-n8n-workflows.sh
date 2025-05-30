@@ -5,11 +5,32 @@
 
 echo "🚀 Setting up n8n workflows for PrivateGPT..."
 
+# Get configured model based on MODE
+MODE=$(grep "MODEL_MODE" .env 2>/dev/null | cut -d'=' -f2 || echo "dev")
+if [ "$MODE" = "prod" ]; then
+    MODEL=$(grep "OLLAMA_MODEL_PROD" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.1:70b")
+else
+    MODEL=$(grep "OLLAMA_MODEL_DEV" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.2:8b")
+fi
+
+echo "📋 Using $MODE mode with model: $MODEL"
+
 # Create directories
 mkdir -p config/n8n
 mkdir -p data/n8n-workflows
 
 echo "📁 Created n8n directories"
+
+# Update workflow files with configured model
+if [ -f "config/n8n/simple-llama-test.json" ]; then
+    echo "🔧 Updating simple-llama-test.json with model: $MODEL"
+    sed -i.bak "s/\"model\":\"[^\"]*\"/\"model\":\"$MODEL\"/g" config/n8n/simple-llama-test.json
+fi
+
+if [ -f "config/n8n/llama-test-workflow.json" ]; then
+    echo "🔧 Updating llama-test-workflow.json with model: $MODEL"
+    sed -i.bak "s/\"model\":\"[^\"]*\"/\"model\":\"$MODEL\"/g" config/n8n/llama-test-workflow.json
+fi
 
 # Check if n8n is running
 if ! docker-compose ps | grep -q "n8n-automation.*Up"; then
@@ -41,4 +62,4 @@ echo ""
 echo "# Test Ollama directly:"
 echo "curl -X POST http://localhost:8081/ollama/api/generate \\"
 echo "  -H 'Content-Type: application/json' \\"
-echo "  -d '{\"model\": \"llama3:8b\", \"prompt\": \"Hello!\", \"stream\": false}'" 
+echo "  -d '{\"model\": \"$MODEL\", \"prompt\": \"Hello!\", \"stream\": false}'" 
