@@ -12,6 +12,7 @@ help:
 	@echo "  make install       - Install Docker & Docker Compose (Ubuntu/Debian)"
 	@echo "  make setup         - Initialize environment and start services"
 	@echo "  make init          - Create .env file from template"
+	@echo "  make go            - Full reset and rebuild for fresh deployment"
 	@echo ""
 	@echo "🔄 Development Commands:"
 	@echo "  make start         - Start all services"
@@ -88,6 +89,9 @@ build:
 	@echo "🔨 Building and starting services..."
 	@docker-compose up -d --build
 	@echo "✅ Services built and started"
+
+go: reset build
+	@echo "🎉 System fully reset and rebuilt!"
 
 # Cleanup commands
 clean:
