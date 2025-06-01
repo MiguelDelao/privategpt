@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pages_utils import (
     APP_TITLE, VECTOR_DB_NAME, WORKFLOW_ENGINE,
     initialize_session_state, require_auth, display_navigation_sidebar, apply_page_styling,
-    get_compliance_logger, get_rag_engine, get_document_processor, add_demo_documents
+    get_logger, get_rag_engine, get_document_processor, add_demo_documents
 )
 
 # Page configuration
@@ -38,7 +38,7 @@ def process_document(uploaded_file):
     try:
         processor = get_document_processor()
         rag_engine = get_rag_engine()
-        compliance_logger = get_compliance_logger()
+        logger = get_logger()
         
         user_info = st.session_state.user_info
         user_email = user_info.get("user", {}).get("email", "Unknown")
@@ -66,7 +66,7 @@ def process_document(uploaded_file):
             )
             
             # Log document processing
-            compliance_logger.log_document_upload(
+            logger.log_document_upload(
                 user_email=user_email,
                 filename=uploaded_file.name,
                 file_size=uploaded_file.size
@@ -94,15 +94,16 @@ def process_document(uploaded_file):
     
     except Exception as e:
         # Log error using existing compliance logger
-        compliance_logger = get_compliance_logger()
+        logger = get_logger()
         user_email = st.session_state.user_info.get("user", {}).get("email", "Unknown")
         
-        compliance_logger.log_error(
+        error_msg = f"Failed to process document: {str(e)}"
+        logger.log_error(
             user_email=user_email,
-            error_message=f"Document processing failed: {str(e)}",
+            error_message=error_msg,
             error_type="document_processing"
         )
-        st.error(f"Failed to process document: {str(e)}")
+        st.error(error_msg)
         return False
 
 def display_document_management():

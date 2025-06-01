@@ -28,7 +28,7 @@ privategpt/
 │   │       ├── auth_client.py           # Auth service client
 │   │       ├── rag_engine.py            # RAG integration
 │   │       ├── document_processor.py    # Document handling
-│   │       └── compliance_logger.py     # UI compliance logging
+│   │       └── logger.py                # UI logging
 │   │
 │   └── n8n/                            # Document processing
 │       ├── Dockerfile

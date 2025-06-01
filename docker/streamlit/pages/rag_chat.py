@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from pages_utils import (
     APP_TITLE, initialize_session_state, require_auth, apply_page_styling,
-    get_rag_engine, get_compliance_logger, add_demo_documents, display_navigation_sidebar
+    get_rag_engine, get_logger, add_demo_documents, display_navigation_sidebar
 )
 
 # Page configuration
@@ -100,8 +100,8 @@ def display_rag_chat():
                     })
                     
                     # Log the interaction
-                    compliance_logger = get_compliance_logger()
-                    compliance_logger.log_ai_query(
+                    logger = get_logger()
+                    logger.log_ai_query(
                         user_email=st.session_state.user_email,
                         query=prompt,
                         response_tokens=len(response["answer"].split()) if response.get("answer") else 0

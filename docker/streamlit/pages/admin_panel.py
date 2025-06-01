@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, VECTOR_DB_NAME, WORKFLOW_ENGINE, VERSION_INFO,
     initialize_session_state, require_auth, display_navigation_sidebar, apply_page_styling,
-    get_compliance_logger, get_rag_engine, get_auth_client, add_demo_documents
+    get_logger, get_rag_engine, get_auth_client, add_demo_documents
 )
 
 # Page configuration
@@ -143,8 +143,8 @@ def display_create_user_form():
                     st.success(f"✅ User '{new_email}' created successfully!")
                     
                     # Log the admin action using appropriate method
-                    compliance_logger = get_compliance_logger()
-                    compliance_logger.log_page_view(
+                    logger = get_logger()
+                    logger.log_page_view(
                         user_email=st.session_state.user_email,
                         page_name=f"admin_action_create_user_{new_email}"
                     )

@@ -11,7 +11,7 @@ from datetime import datetime
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, OLLAMA_URL,
     initialize_session_state, require_auth, apply_page_styling,
-    get_compliance_logger, display_navigation_sidebar
+    get_logger, display_navigation_sidebar
 )
 
 # Page configuration
@@ -178,17 +178,14 @@ def display_llm_chat():
             status_emoji = "✅" if response["success"] else "❌"
             st.caption(f"🕒 {datetime.now().strftime('%H:%M:%S')} | Model: {response['model']} | Tokens: {response['tokens']} {status_emoji}")
         
-        # Log the interaction using existing compliance logger
-        try:
-            compliance_logger = get_compliance_logger()
-            
-            compliance_logger.log_ai_query(
-                user_email=st.session_state.user_email,
-                query=prompt,
-                response_tokens=response["tokens"]
-            )
-        except Exception:
-            pass  # Continue even if logging fails
+        # Log AI interaction
+        logger = get_logger()
+        
+        logger.log_ai_query(
+            user_email=st.session_state.user_email,
+            query=prompt,
+            response_tokens=response["tokens"]
+        )
         
         # Add assistant response to history
         st.session_state.llm_chat_history.append({

@@ -1,6 +1,5 @@
 """
-Simplified logging utilities for PrivateGPT Legal AI
-Handles basic audit trails and user activity logging
+ Logging utilities for PrivateGPT Legal AI
 """
 
 import json
@@ -9,8 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-class ComplianceLogger:
-    """Simplified logging for Streamlit application"""
+class Logger:
+    """Logging for PrivateGPT Legal AI"""
     
     def __init__(self):
         self.log_dir = Path("/app/logs")

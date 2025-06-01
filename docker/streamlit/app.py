@@ -8,12 +8,12 @@ import time
 import streamlit as st
 from datetime import datetime
 from utils.auth_client import AuthClient
-from utils.compliance_logger import ComplianceLogger
+from utils.logger import Logger
 from pages_utils import (
     APP_TITLE, APP_SUBTITLE, VERSION_INFO,
     initialize_session_state,
     get_auth_client,
-    get_compliance_logger
+    get_logger
 )
 
 # Page configuration for the login page
@@ -92,7 +92,7 @@ def display_login_form():
                 st.error("Email and password are required.")
             else:
                 auth_client = get_auth_client()
-                compliance_logger = get_compliance_logger()
+                logger = get_logger()
                 
                 try:
                     with st.spinner("Authenticating..."):
@@ -106,7 +106,7 @@ def display_login_form():
                     st.session_state.login_time = datetime.now()
                     
                     # Log successful login
-                    compliance_logger.log_user_login(
+                    logger.log_user_login(
                         user_email=email,
                         success=True,
                         ip_address="localhost"  # In production, get real IP
@@ -118,13 +118,13 @@ def display_login_form():
                     
                 except Exception as e:
                     # Log failed login attempt
-                    compliance_logger.log_user_login(
+                    logger.log_user_login(
                         user_email=email,
                         success=False,
                         ip_address="localhost"
                     )
                     # Also log the specific error
-                    compliance_logger.log_error(
+                    logger.log_error(
                         user_email=email,
                         error_message=str(e),
                         error_type="authentication"

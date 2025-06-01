@@ -9,7 +9,7 @@ from datetime import datetime
 from utils.auth_client import AuthClient
 from utils.rag_engine import RAGEngine
 from utils.document_processor import DocumentProcessor
-from utils.compliance_logger import ComplianceLogger
+from utils.logger import Logger
 
 # --- Application Constants ---
 APP_TITLE = "PrivateGPT Legal AI Professional"
@@ -38,9 +38,9 @@ def get_rag_engine():
 def get_document_processor():
     return DocumentProcessor()
 
-@st.cache_resource
-def get_compliance_logger():
-    return ComplianceLogger()
+def get_logger():
+    """Get logger instance"""
+    return Logger()
 
 def initialize_session_state():
     """Initialize essential session state variables"""
@@ -225,13 +225,13 @@ def display_navigation_sidebar(current_page="Dashboard"):
         # Logout
         if st.button("🚪 Logout", key="sidebar_logout", use_container_width=True, type="secondary"):
             # Log logout with session duration
-            compliance_logger = get_compliance_logger()
+            logger = get_logger()
             if 'login_time' in st.session_state:
                 session_duration = int((datetime.now() - st.session_state.login_time).total_seconds())
             else:
                 session_duration = None
                 
-            compliance_logger.log_user_logout(
+            logger.log_user_logout(
                 user_email=st.session_state.user_email,
                 session_duration_seconds=session_duration
             )
