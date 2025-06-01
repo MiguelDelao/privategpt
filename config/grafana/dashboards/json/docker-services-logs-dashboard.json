@@ -28,160 +28,7 @@
         "type": "victoriametrics-logs-datasource",
         "uid": "victorialogs"
       },
-      "description": "Overview of log levels across all services",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "vis": false
-            }
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "pieType": "pie",
-        "reduceOptions": {
-          "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "victorialogs"
-          },
-          "expr": "level:* | stats count() by level",
-          "refId": "A"
-        }
-      ],
-      "title": "Log Levels Distribution",
-      "type": "piechart"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "victorialogs"
-      },
-      "description": "Number of logs per service over time",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "vis": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 2,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "victorialogs"
-          },
-          "expr": "container_name:* | stats count() by container_name, _time:5m",
-          "refId": "A"
-        }
-      ],
-      "title": "Log Count by Service (5min intervals)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "victorialogs"
-      },
-      "description": "Real-time error logs from all services",
+      "description": "Recent logs from all services (simplified view)",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -209,50 +56,15 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "level"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 1
-                    },
-                    {
-                      "color": "red",
-                      "value": 2
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
-        "h": 10,
+        "h": 8,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 0
       },
-      "id": 3,
+      "id": 1,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -272,7 +84,79 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "level:(error OR fatal OR panic OR exception) | fields _time, container_name, level, _msg",
+          "expr": "*",
+          "refId": "A"
+        }
+      ],
+      "title": "All Services - Recent Logs",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "description": "Error and warning logs from all services",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "10.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "expr": "level:error",
           "refId": "A"
         }
       ],
@@ -287,7 +171,7 @@
         "x": 0,
         "y": 18
       },
-      "id": 4,
+      "id": 3,
       "panels": [],
       "title": "Core Services Logs",
       "type": "row"
@@ -333,7 +217,7 @@
         "x": 0,
         "y": 19
       },
-      "id": 5,
+      "id": 4,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -353,7 +237,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:auth-service | fields _time, level, _msg",
+          "expr": "container_name:auth-service",
           "refId": "A"
         }
       ],
@@ -401,7 +285,7 @@
         "x": 12,
         "y": 19
       },
-      "id": 6,
+      "id": 5,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -421,7 +305,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:streamlit-app | fields _time, level, _msg",
+          "expr": "container_name:streamlit-app",
           "refId": "A"
         }
       ],
@@ -469,7 +353,7 @@
         "x": 0,
         "y": 27
       },
-      "id": 7,
+      "id": 6,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -489,7 +373,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:ollama-service | fields _time, level, _msg",
+          "expr": "container_name:ollama-service",
           "refId": "A"
         }
       ],
@@ -537,7 +421,7 @@
         "x": 12,
         "y": 27
       },
-      "id": 8,
+      "id": 7,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -557,7 +441,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:weaviate-db | fields _time, level, _msg",
+          "expr": "container_name:weaviate-db",
           "refId": "A"
         }
       ],
@@ -572,7 +456,7 @@
         "x": 0,
         "y": 35
       },
-      "id": 9,
+      "id": 8,
       "panels": [],
       "title": "Monitoring & Infrastructure Logs",
       "type": "row"
@@ -618,7 +502,7 @@
         "x": 0,
         "y": 36
       },
-      "id": 10,
+      "id": 9,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -638,7 +522,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:traefik-gateway | fields _time, level, _msg",
+          "expr": "container_name:traefik-gateway",
           "refId": "A"
         }
       ],
@@ -686,7 +570,7 @@
         "x": 12,
         "y": 36
       },
-      "id": 11,
+      "id": 10,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -706,7 +590,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:prometheus | fields _time, level, _msg",
+          "expr": "container_name:prometheus",
           "refId": "A"
         }
       ],
@@ -754,7 +638,7 @@
         "x": 0,
         "y": 44
       },
-      "id": 12,
+      "id": 11,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -774,7 +658,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:n8n-automation | fields _time, level, _msg",
+          "expr": "container_name:n8n-automation",
           "refId": "A"
         }
       ],
@@ -822,7 +706,7 @@
         "x": 12,
         "y": 44
       },
-      "id": 13,
+      "id": 12,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -842,7 +726,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:victorialogs | fields _time, level, _msg",
+          "expr": "container_name:victorialogs",
           "refId": "A"
         }
       ],
@@ -857,9 +741,9 @@
         "x": 0,
         "y": 52
       },
-      "id": 14,
+      "id": 13,
       "panels": [],
-      "title": "Search All Services",
+      "title": "Search and Filter",
       "type": "row"
     },
     {
@@ -867,7 +751,7 @@
         "type": "victoriametrics-logs-datasource",
         "uid": "victorialogs"
       },
-      "description": "Search logs across all services with custom filters",
+      "description": "Search logs with custom terms",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -895,34 +779,7 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "container_name"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "blue",
-                      "value": null
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
         "h": 12,
@@ -930,7 +787,7 @@
         "x": 0,
         "y": 53
       },
-      "id": 15,
+      "id": 14,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -950,11 +807,11 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "container_name:(${service:pipe}) level:(${log_level:pipe}) ${search_query} | fields _time, container_name, level, _msg",
+          "expr": "${search_query}",
           "refId": "A"
         }
       ],
-      "title": "All Services Log Search",
+      "title": "Custom Search",
       "type": "table"
     }
   ],
@@ -972,144 +829,22 @@
       {
         "current": {
           "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "service",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "auth-service",
-            "value": "auth-service"
-          },
-          {
-            "selected": false,
-            "text": "streamlit-app",
-            "value": "streamlit-app"
-          },
-          {
-            "selected": false,
-            "text": "ollama-service",
-            "value": "ollama-service"
-          },
-          {
-            "selected": false,
-            "text": "weaviate-db",
-            "value": "weaviate-db"
-          },
-          {
-            "selected": false,
-            "text": "traefik-gateway",
-            "value": "traefik-gateway"
-          },
-          {
-            "selected": false,
-            "text": "prometheus",
-            "value": "prometheus"
-          },
-          {
-            "selected": false,
-            "text": "n8n-automation",
-            "value": "n8n-automation"
-          },
-          {
-            "selected": false,
-            "text": "victorialogs",
-            "value": "victorialogs"
-          },
-          {
-            "selected": false,
-            "text": "fluent-bit",
-            "value": "fluent-bit"
-          },
-          {
-            "selected": false,
-            "text": "grafana",
-            "value": "grafana"
-          }
-        ],
-        "query": "auth-service,streamlit-app,ollama-service,weaviate-db,traefik-gateway,prometheus,n8n-automation,victorialogs,fluent-bit,grafana",
-        "skipUrlSync": false,
-        "type": "custom"
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "log_level",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "debug",
-            "value": "debug"
-          },
-          {
-            "selected": false,
-            "text": "info",
-            "value": "info"
-          },
-          {
-            "selected": false,
-            "text": "warn",
-            "value": "warn"
-          },
-          {
-            "selected": false,
-            "text": "warning",
-            "value": "warning"
-          },
-          {
-            "selected": false,
-            "text": "error",
-            "value": "error"
-          },
-          {
-            "selected": false,
-            "text": "fatal",
-            "value": "fatal"
-          }
-        ],
-        "query": "debug,info,warn,warning,error,fatal",
-        "skipUrlSync": false,
-        "type": "custom"
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
+          "text": "*",
+          "value": "*"
         },
         "hide": 0,
         "name": "search_query",
         "options": [
           {
             "selected": true,
-            "text": "",
-            "value": ""
+            "text": "*",
+            "value": "*"
           }
         ],
-        "query": "",
+        "query": "*",
         "skipUrlSync": false,
         "type": "textbox",
-        "description": "Add search terms (e.g., authentication, error, login, etc.)"
+        "description": "Enter search terms (e.g., error, auth, login) or use * for all logs"
       }
     ]
   },
@@ -1119,8 +854,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "PrivateGPT Legal AI - Docker Services Logs",
-  "uid": "privategpt-logs",
-  "version": 2,
+  "title": "PrivateGPT Legal AI - Docker Services Logs (Simplified)",
+  "uid": "privategpt-logs-simple",
+  "version": 3,
   "weekStart": ""
 } 
