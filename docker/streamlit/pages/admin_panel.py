@@ -4,7 +4,9 @@ Clean admin interface for user management and system oversight
 """
 
 import streamlit as st
-import json
+import pandas as pd # For displaying tables
+import sys
+import os
 from datetime import datetime, timedelta
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, VECTOR_DB_NAME, WORKFLOW_ENGINE, VERSION_INFO,
@@ -29,6 +31,52 @@ apply_page_styling()
 
 # Add demo data
 add_demo_documents()
+
+# Add parent directory to path to import pages_utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# --- Helper Functions (Placeholders - to be implemented with backend logic) ---
+def get_system_health_status():
+    """Placeholder: Fetch actual system health from RAG engine or other services."""
+    try:
+        rag_engine = get_rag_engine()
+        health = rag_engine.health_check() # Assuming health_check returns a dict like {"weaviate": True, "ollama": True}
+        return health
+    except Exception as e:
+        # get_logger().log_error("admin", f"System health check failed: {e}", "admin_health_check")
+        return {"weaviate": False, "ollama": False, "error": str(e)}
+
+def get_user_accounts():
+    """Placeholder: Fetch user accounts from AuthClient."""
+    try:
+        auth_client = get_auth_client()
+        # This method needs to be implemented in AuthClient
+        # For example: users = auth_client.list_users()
+        # users would be a list of dicts: [{"email": "user@example.com", "role": "user", "last_login": "..."}]
+        # Placeholder data:
+        return pd.DataFrame([
+            {"email": st.session_state.user_email, "role": st.session_state.user_role, "status": "Active", "last_login": "2024-07-21 10:00"},
+            {"email": "lawyer.1@example.com", "role": "user", "status": "Active", "last_login": "2024-07-20 15:30"},
+            {"email": "paralegal.2@example.com", "role": "user", "status": "Inactive", "last_login": "2024-06-15 09:00"},
+        ])
+    except Exception as e:
+        # get_logger().log_error("admin", f"Failed to get user accounts: {e}", "admin_user_list")
+        return pd.DataFrame()
+
+def get_system_logs_summary(lines=50):
+    """Placeholder: Fetch recent system log summaries (e.g., from Docker or log files)."""
+    # This is a very basic example. Real log fetching would be more complex.
+    # For instance, reading from mounted log files or using Docker SDK.
+    # log_content = "Example log line 1\nExample error log line 2\nExample info log line 3"
+    # return log_content
+    demo_logs = [
+        "[INFO] 2024-07-21 10:05:30 - Streamlit App: User admin@example.com accessed dashboard.",
+        "[INFO] 2024-07-21 10:02:15 - Auth Service: Login successful for admin@example.com.",
+        "[ERROR] 2024-07-21 09:55:00 - Weaviate DB: Connection timeout during schema check. Retrying...",
+        "[INFO] 2024-07-21 09:50:10 - Ollama Service: Model llama3:8b loaded successfully.",
+        "[WARN] 2024-07-21 09:45:20 - Streamlit App: Document 'old_contract.pdf' failed validation (size limit).",
+    ]* (lines // 5)
+    return "\n".join(demo_logs[:lines])
 
 def display_admin_panel():
     """Display the clean admin panel content"""

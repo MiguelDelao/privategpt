@@ -8,10 +8,15 @@ import requests
 import json
 import time
 from datetime import datetime
+import sys
+import os
+
+# Add parent directory to path to import pages_utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, OLLAMA_URL,
     initialize_session_state, require_auth, apply_page_styling,
-    get_logger, display_navigation_sidebar
+    get_logger, display_navigation_sidebar, get_rag_engine
 )
 
 # Page configuration
@@ -28,6 +33,12 @@ require_auth(main_app_file="../app.py")
 
 # Apply consistent styling
 apply_page_styling()
+
+# Initialize LLM chat specific session state
+if "llm_chat_history" not in st.session_state:
+    st.session_state.llm_chat_history = [] # Stores tuples of (query, response_dict)
+if "current_llm_query" not in st.session_state:
+    st.session_state.current_llm_query = ""
 
 def call_ollama_direct(prompt: str, model: str = "llama3:8b") -> dict:
     """Direct call to Ollama API"""
@@ -87,124 +98,84 @@ def get_available_models() -> list:
 
 def display_llm_chat():
     """Display the direct LLM chat interface"""
-    st.header("🤖 LLM Chat - Direct Model Access")
-    st.markdown("Chat directly with the language model without document context. Perfect for testing and general queries.")
-    
-    # Simple model selection
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        available_models = get_available_models()
-        selected_model = st.selectbox("Select Model", available_models, key="llm_model_select")
-    with col2:
-        if st.button("🗑️ Clear Chat"):
+    st.markdown(f'<div class="main-header">🤖 Direct LLM Chat</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sub-header">Interact directly with the Large Language Model. No document context is used here.</div>', unsafe_allow_html=True)
+
+    rag_engine = get_rag_engine() # RAG engine usually wraps LLM calls
+    logger = get_logger()
+    user_email = st.session_state.user_email
+
+    # Sidebar for LLM settings and controls (can be expanded later)
+    with st.sidebar:
+        st.markdown("### ⚙️ LLM Settings")
+        # Example: temperature slider, model selection if multiple LLMs are available
+        # temperature = st.slider("Temperature:", 0.0, 1.0, 0.7, 0.05, help="Controls randomness. Lower is more deterministic.")
+        st.info("Settings like temperature or model choice can be added here if your LLM service supports them.")
+
+        if st.button("🗑️ Clear Chat History", use_container_width=True, key="clear_llm_chat"):
             st.session_state.llm_chat_history = []
+            st.session_state.current_llm_query = ""
             st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### 💡 Note")
+        st.caption("This chat bypasses document retrieval. For questions about specific documents, please use the 'Document Q&A (RAG)' page.")
 
-    # Display existing chat messages
-    if not st.session_state.llm_chat_history:
-        st.info("💡 Start a conversation by asking any question. This is direct LLM chat without document context.")
-
-    # Display chat history
-    for message in st.session_state.llm_chat_history:
-        if message["role"] == "user":
+    # Main chat area
+    chat_container = st.container(height=600, border=False)
+    with chat_container:
+        for query, response_data in st.session_state.llm_chat_history:
             with st.chat_message("user"):
-                st.markdown(message["content"])
-                st.caption(f"🕒 {message['timestamp'].strftime('%H:%M:%S')}")
-        else:
+                st.markdown(query)
             with st.chat_message("assistant"):
-                st.markdown(message["content"])
-                
-                # Show model info
-                model_used = message.get("model", "Unknown")
-                tokens = message.get("tokens", 0)
-                success = message.get("success", True)
-                
-                status_emoji = "✅" if success else "❌"
-                st.caption(f"🕒 {message['timestamp'].strftime('%H:%M:%S')} | Model: {model_used} | Tokens: {tokens} {status_emoji}")
+                st.markdown(response_data["answer"])
+                if response_data.get("error"):
+                    st.error(f"Error: {response_data['error']}")
 
     # Chat input
-    if prompt := st.chat_input("Ask the LLM anything...", key="llm_chat_input"):
-        # Add user message to history
-        st.session_state.llm_chat_history.append({
-            "role": "user",
-            "content": prompt,
-            "timestamp": datetime.now()
-        })
-        
-        # Display user message immediately
+    prompt = st.chat_input("Ask the LLM anything...", key="llm_prompt")
+
+    if prompt:
+        st.session_state.current_llm_query = prompt
         with st.chat_message("user"):
             st.markdown(prompt)
-            st.caption(f"🕒 {datetime.now().strftime('%H:%M:%S')}")
-
-        # Generate LLM response
-        with st.chat_message("assistant"):
-            # Prepare full prompt with system context
-            system_prompt = "You are a helpful AI assistant."
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}\nAssistant:"
-            
-            # Show processing status
-            with st.status(f"🤖 Generating response with {selected_model}...", expanded=True) as status:
-                start_time = time.time()
+        
+        with st.spinner("🤖 LLM is thinking..."):
+            try:
+                # Use the RAG engine's direct LLM call method if it exists,
+                # or implement a direct Ollama call here.
+                # Assuming RAGEngine has a method like generate_direct_llm_response
+                # For this example, we'll simulate it or call a simplified version of RAG's generate_response without context.
                 
-                # Call Ollama
-                response = call_ollama_direct(full_prompt, selected_model)
+                # This would be a more direct call to the LLM, perhaps via rag_engine.generate_direct_llm_response
+                # or a new method in RAGEngine that doesn't require context_documents.
+                # For now, let's use the existing generate_response with empty context as a stand-in.
+                ai_response = rag_engine.generate_response(query=prompt, context_documents=[]) 
                 
-                end_time = time.time()
-                generation_time = end_time - start_time
+                response_data = {
+                    "answer": ai_response.get("answer", "No answer received."),
+                    "model_used": ai_response.get("model_used"), # Ensure this is populated by generate_response
+                    "error": ai_response.get("error")
+                }
                 
-                status.update(
-                    label=f"✅ Response generated in {generation_time:.1f}s", 
-                    state="complete", 
-                    expanded=False
+                logger.log_ai_query(
+                    user_email=user_email, 
+                    query=prompt, 
+                    query_type="llm_direct",
+                    response_preview=response_data["answer"][:100],
+                    # response_tokens=ai_response.get("response_tokens") # If available
                 )
-            
-            # Display response with streaming effect
-            message_placeholder = st.empty()
-            full_response = response["answer"]
-            
-            if response["success"] and st.session_state.get("enable_streaming", True):
-                # Simulate streaming
-                displayed_text = ""
-                words = full_response.split()
-                for i, word in enumerate(words):
-                    displayed_text += word + " "
-                    message_placeholder.markdown(displayed_text + "▌")
-                    time.sleep(0.03)  # Streaming speed
-                message_placeholder.markdown(full_response)
-            else:
-                message_placeholder.markdown(full_response)
-            
-            # Show model info
-            status_emoji = "✅" if response["success"] else "❌"
-            st.caption(f"🕒 {datetime.now().strftime('%H:%M:%S')} | Model: {response['model']} | Tokens: {response['tokens']} {status_emoji}")
-        
-        # Log AI interaction
-        logger = get_logger()
-        
-        logger.log_ai_query(
-            user_email=st.session_state.user_email,
-            query=prompt,
-            response_tokens=response["tokens"]
-        )
-        
-        # Add assistant response to history
-        st.session_state.llm_chat_history.append({
-            "role": "assistant",
-            "content": response["answer"],
-            "model": response["model"],
-            "tokens": response["tokens"],
-            "success": response["success"],
-            "timestamp": datetime.now()
-        })
 
-    # Warning notice
-    st.markdown("---")
-    st.markdown("""
-    <div class="legal-disclaimer">
-        <strong>Note:</strong> This is direct LLM chat without access to your uploaded documents. 
-        For document-based queries, use the RAG Chat feature.
-    </div>
-    """, unsafe_allow_html=True)
+            except Exception as e:
+                logger.log_error(user_email, f"LLM Chat Error: {str(e)}", "llm_chat_error")
+                response_data = {"answer": f"An error occurred: {str(e)}", "error": str(e)}
+
+        st.session_state.llm_chat_history.append((prompt, response_data))
+        with st.chat_message("assistant"):
+            st.markdown(response_data["answer"])
+            if response_data.get("error"):
+                st.error(f"Error: {response_data['error']}")
+        st.session_state.current_llm_query = "" # Clear after processing
 
 # Display navigation sidebar
 display_navigation_sidebar(current_page="LLM Chat")

@@ -12,12 +12,12 @@ from utils.document_processor import DocumentProcessor
 from utils.logger import Logger
 
 # --- Application Constants ---
-APP_TITLE = "PrivateGPT Legal AI Professional"
+APP_TITLE = "PrivateGPT Legal AI Suite"
 APP_SUBTITLE = "Your Secure, Self-Hosted Legal AI Assistant"
 LLM_MODEL_NAME = "LLaMA-3 70B (Quantized GGUF Q4_K_M)"
 VECTOR_DB_NAME = "Weaviate with bge-base-en-v1.5 embeddings"
 WORKFLOW_ENGINE = "n8n"
-VERSION_INFO = "Enhanced UI v2.1 - Demo Structure Edition"
+VERSION_INFO = "Version 2.5 - Polished Interface"
 
 # Configuration
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
@@ -248,59 +248,175 @@ def display_navigation_sidebar(current_page="Dashboard"):
 
 def apply_page_styling():
     """Apply consistent styling across all pages"""
-    hide_streamlit_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stDeployButton {display: none;}
-    </style>
-    """
-    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+    
+    # More comprehensive professional styling
+    st.markdown(f"""
+        <style>
+            /* --- Base & Typography --- */
+            body {{
+                font-family: 'Inter', sans-serif; /* Modern sans-serif font */
+                color: #E0E0E0; /* Light grey text for dark themes */
+                background-color: #1A1A2E; /* Dark blue-purple background */
+            }}
 
-    # Custom CSS for clean, simple appearance
-    st.markdown("""
-    <style>
-        .main-header {
-            font-size: 2.2rem;
-            font-weight: 600;
-            color: #1f2937;
-            margin-bottom: 0.5rem;
-        }
-        .sub-header {
-            font-size: 1.1rem;
-            color: #6b7280;
-            margin-bottom: 2rem;
-        }
-        .metric-card {
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin: 0.5rem 0;
-        }
-        .chat-message {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin: 1rem 0;
-            border-left: 4px solid #3b82f6;
-        }
-        .user-message {
-            background-color: #f3f4f6;
-            border-left-color: #10b981;
-        }
-        .assistant-message {
-            background-color: #fef3c7;
-            border-left-color: #f59e0b;
-        }
-        .legal-disclaimer {
-            background-color: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin: 1rem 0;
-            color: #991b1b;
-            font-size: 0.9rem;
-        }
-    </style>
-    """, unsafe_allow_html=True) 
+            .stApp {{
+                background-color: #1A1A2E;
+            }}
+
+            h1, h2, h3, h4, h5, h6 {{
+                color: #FFFFFF; /* White headers */
+                font-weight: 600;
+            }}
+
+            h1 {{
+                font-size: 2.2em;
+                border-bottom: 2px solid #4A4A7F; /* Accent color border */
+                padding-bottom: 0.3em;
+                margin-bottom: 0.7em;
+            }}
+
+            h2 {{
+                font-size: 1.8em;
+                margin-top: 1.5em;
+                margin-bottom: 0.6em;
+            }}
+
+            h3 {{
+                font-size: 1.4em;
+                margin-top: 1.2em;
+                margin-bottom: 0.5em;
+            }}
+
+            p, .stMarkdown, .stText {{
+                color: #C0C0C0; /* Lighter grey for paragraph text */
+                line-height: 1.6;
+            }}
+
+            a {{
+                color: #82AAFF; /* Bright blue for links */
+            }}
+
+            /* --- Streamlit Specific Components --- */
+            .stButton>button {{
+                border: 2px solid #4A4A7F;
+                background-color: #2E2E5C; /* Darker accent for buttons */
+                color: #FFFFFF;
+                padding: 0.5em 1em;
+                border-radius: 8px;
+                font-weight: 500;
+                transition: background-color 0.3s ease, border-color 0.3s ease;
+            }}
+            .stButton>button:hover {{
+                background-color: #4A4A7F; /* Lighter accent on hover */
+                border-color: #6A6AFF;
+            }}
+            .stButton>button:focus {{
+                outline: none;
+                box-shadow: 0 0 0 2px #82AAFF;
+            }}
+            
+            /* Primary button style */
+            .stButton>button[kind="primary"] {{
+                background-color: #6A6AFF; /* Brighter primary color */
+                border-color: #82AAFF;
+            }}
+            .stButton>button[kind="primary"]:hover {{
+                background-color: #82AAFF;
+                border-color: #A2CAFF;
+            }}
+            
+            .stTextInput>div>div>input, .stTextArea textarea, .stSelectbox>div>div {{
+                background-color: #2E2E5C;
+                color: #E0E0E0;
+                border-radius: 8px;
+                border: 1px solid #4A4A7F;
+            }}
+            
+            .stTextInput>div>div>input:focus, .stTextArea textarea:focus {{
+                 border: 1px solid #82AAFF;
+                 box-shadow: 0 0 0 2px rgba(130, 170, 255, 0.5);
+            }}
+
+            .stSidebar {{
+                background-color: #24244A; /* Slightly different dark shade for sidebar */
+                border-right: 1px solid #4A4A7F;
+            }}
+            
+            .stSidebar [data-testid="stMarkdownContainer"] h3 {{
+                 color: #FFFFFF;
+                 font-size: 1.2em;
+                 margin-top: 0.8em;
+                 margin-bottom: 0.4em;
+            }}
+            
+            .stSidebar [data-testid="stMarkdownContainer"] p, .stSidebar .stCaption {{
+                 color: #B0B0D0;
+            }}
+            
+            .stMetric {{
+                background-color: #2E2E5C;
+                border-radius: 8px;
+                padding: 1em;
+                border: 1px solid #4A4A7F;
+            }}
+            .stMetric label {{
+                color: #A0A0C0;
+            }}
+            .stMetric .stMetricValue {{
+                color: #FFFFFF;
+            }}
+
+            /* Custom class for main headers in pages */
+            .main-header {{
+                font-size: 2.5em;
+                color: #FFFFFF;
+                font-weight: 700;
+                padding-bottom: 0.2em;
+                margin-bottom: 0.3em;
+                text-align: left;
+            }}
+            .sub-header {{
+                font-size: 1.1em;
+                color: #B0B0D0;
+                margin-bottom: 2em;
+                text-align: left;
+            }}
+            
+            /* --- General Layout --- */
+            [data-testid="stHorizontalBlock"] {{
+                gap: 1rem; /* Add gap between columns */
+            }}
+
+            /* --- Dataframes --- */
+            .stDataFrame {{
+                border: 1px solid #4A4A7F;
+                border-radius: 8px;
+            }}
+            
+            /* Remove default Streamlit footer */
+            footer {{
+                visibility: hidden;
+            }}
+            
+            /* For containers to have a slight card look */
+            [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stBlock"] > div:has(>[data-testid="stVerticalBlock"]), 
+            [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stExpander"] {{
+                background-color: #262650; /* Slightly lighter card background */
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                border: 1px solid #3a3a6f;
+            }}
+            
+        </style>
+        <!-- Link to Google Fonts for 'Inter' -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    """, unsafe_allow_html=True)
+
+    # You can add more specific page styling or adjustments here if needed
+    # For example, hide the hamburger menu if desired:
+    # st.markdown("<style>#MainMenu {visibility: hidden;}</style>", unsafe_allow_html=True)
+    pass 
