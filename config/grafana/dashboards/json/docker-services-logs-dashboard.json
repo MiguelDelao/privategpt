@@ -77,7 +77,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=~\".*\"} | json | level != \"\" | stats count() by level",
+          "expr": "level:* | stats count() by level",
           "refId": "A"
         }
       ],
@@ -169,11 +169,11 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "rate({container_name=~\".*\"}[5m]) | stats sum(rate) by container_name",
+          "expr": "container_name:* | stats count() by container_name, _time:5m",
           "refId": "A"
         }
       ],
-      "title": "Log Rate by Service",
+      "title": "Log Count by Service (5min intervals)",
       "type": "timeseries"
     },
     {
@@ -272,7 +272,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=~\".*\"} | json | level =~ \"(?i)(error|fatal|panic|exception)\" | fields _time, container_name, level, message",
+          "expr": "level:(error OR fatal OR panic OR exception) | fields _time, container_name, level, _msg",
           "refId": "A"
         }
       ],
@@ -353,7 +353,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"auth-service\"} | json | fields _time, level, message",
+          "expr": "container_name:auth-service | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -421,7 +421,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"streamlit-app\"} | json | fields _time, level, message",
+          "expr": "container_name:streamlit-app | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -489,7 +489,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"ollama-service\"} | json | fields _time, level, message",
+          "expr": "container_name:ollama-service | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -557,7 +557,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"weaviate-db\"} | json | fields _time, level, message",
+          "expr": "container_name:weaviate-db | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -638,7 +638,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"traefik-gateway\"} | json | fields _time, level, message",
+          "expr": "container_name:traefik-gateway | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -706,7 +706,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"prometheus\"} | json | fields _time, level, message",
+          "expr": "container_name:prometheus | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -774,7 +774,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"n8n-automation\"} | json | fields _time, level, message",
+          "expr": "container_name:n8n-automation | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -842,7 +842,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=\"victorialogs\"} | json | fields _time, level, message",
+          "expr": "container_name:victorialogs | fields _time, level, _msg",
           "refId": "A"
         }
       ],
@@ -950,7 +950,7 @@
             "type": "victoriametrics-logs-datasource",
             "uid": "victorialogs"
           },
-          "expr": "{container_name=~\"${service:regex}\",level=~\"${log_level:regex}\"} ${search_query} | json | fields _time, container_name, level, message",
+          "expr": "container_name:(${service:pipe}) level:(${log_level:pipe}) ${search_query} | fields _time, container_name, level, _msg",
           "refId": "A"
         }
       ],
@@ -975,22 +975,70 @@
           "text": "All",
           "value": "$__all"
         },
-        "datasource": {
-          "type": "victoriametrics-logs-datasource",
-          "uid": "victorialogs"
-        },
-        "definition": "label_values(container_name)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "service",
-        "options": [],
-        "query": "label_values(container_name)",
-        "refresh": 1,
-        "regex": "",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "auth-service",
+            "value": "auth-service"
+          },
+          {
+            "selected": false,
+            "text": "streamlit-app",
+            "value": "streamlit-app"
+          },
+          {
+            "selected": false,
+            "text": "ollama-service",
+            "value": "ollama-service"
+          },
+          {
+            "selected": false,
+            "text": "weaviate-db",
+            "value": "weaviate-db"
+          },
+          {
+            "selected": false,
+            "text": "traefik-gateway",
+            "value": "traefik-gateway"
+          },
+          {
+            "selected": false,
+            "text": "prometheus",
+            "value": "prometheus"
+          },
+          {
+            "selected": false,
+            "text": "n8n-automation",
+            "value": "n8n-automation"
+          },
+          {
+            "selected": false,
+            "text": "victorialogs",
+            "value": "victorialogs"
+          },
+          {
+            "selected": false,
+            "text": "fluent-bit",
+            "value": "fluent-bit"
+          },
+          {
+            "selected": false,
+            "text": "grafana",
+            "value": "grafana"
+          }
+        ],
+        "query": "auth-service,streamlit-app,ollama-service,weaviate-db,traefik-gateway,prometheus,n8n-automation,victorialogs,fluent-bit,grafana",
         "skipUrlSync": false,
-        "sort": 0,
-        "type": "query"
+        "type": "custom"
       },
       {
         "current": {
@@ -1025,6 +1073,11 @@
           },
           {
             "selected": false,
+            "text": "warning",
+            "value": "warning"
+          },
+          {
+            "selected": false,
             "text": "error",
             "value": "error"
           },
@@ -1034,7 +1087,7 @@
             "value": "fatal"
           }
         ],
-        "query": "debug,info,warn,error,fatal",
+        "query": "debug,info,warn,warning,error,fatal",
         "skipUrlSync": false,
         "type": "custom"
       },
@@ -1056,7 +1109,7 @@
         "query": "",
         "skipUrlSync": false,
         "type": "textbox",
-        "description": "Add LogQL filter expressions (e.g., | json | message =~ \".*error.*\")"
+        "description": "Add search terms (e.g., authentication, error, login, etc.)"
       }
     ]
   },
@@ -1068,6 +1121,6 @@
   "timezone": "",
   "title": "PrivateGPT Legal AI - Docker Services Logs",
   "uid": "privategpt-logs",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 } 
