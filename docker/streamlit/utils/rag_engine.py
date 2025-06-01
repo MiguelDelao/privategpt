@@ -3,6 +3,7 @@ RAG Engine for PrivateGPT Legal AI
 Handles Weaviate integration and LLM response generation
 """
 
+import os
 import uuid
 import requests
 import weaviate
@@ -15,7 +16,7 @@ class RAGEngine:
         self.ollama_url = ollama_url.rstrip('/')
         self.weaviate_url = weaviate_url.rstrip('/')
         
-        # Initialize Weaviate client
+        # Initialize Weaviate client (anonymous access enabled)
         self.weaviate_client = weaviate.Client(
             url=self.weaviate_url,
             additional_headers={

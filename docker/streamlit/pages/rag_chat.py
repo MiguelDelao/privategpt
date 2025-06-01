@@ -142,10 +142,7 @@ def display_rag_chat():
                 logger.log_ai_query(
                     user_email=user_email, 
                     query=prompt, 
-                    query_type="rag",
-                    response_preview=response_data["answer"][:100],
-                    context_sources_count=len(relevant_docs),
-                    # response_tokens=ai_response.get("response_tokens") # If available
+                    response_tokens=ai_response.get("response_tokens") # If available
                 )
 
             except Exception as e:

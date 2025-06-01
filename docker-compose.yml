@@ -21,6 +21,7 @@ services:
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=dashboard-stripprefix"
       - "traefik.http.middlewares.dashboard-stripprefix.stripprefix.prefixes=/dashboard"
+      - "logging.service=traefik"
 
   # Authentication Service
   auth-service:
@@ -28,7 +29,8 @@ services:
     container_name: auth-service
     environment:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS:-8}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
       - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
       - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@admin.com}
       - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin}
@@ -38,10 +40,13 @@ services:
     networks:
       - legal-ai-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.auth.rule=PathPrefix(`/api/auth`)"
-      - "traefik.http.services.auth.loadbalancer.server.port=8000"
+      - "logging.service=auth-service"
 
   # Main Streamlit Application
   streamlit-app:
@@ -66,41 +71,42 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.app.rule=PathPrefix(`/`)"
       - "traefik.http.services.app.loadbalancer.server.port=8501"
+      - "logging.service=streamlit"
 
   # LLM Serving with Ollama
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-service
-    entrypoint: >
-      /bin/bash -c "
-      /bin/ollama serve &
-      sleep 15 &&
-      chmod +x /scripts/init-ollama.sh &&
-      /scripts/init-ollama.sh &
-      wait"
     environment:
-      - MODEL_MODE=${MODEL_MODE:-dev}
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS:-*}
+      - OLLAMA_DEBUG=${OLLAMA_DEBUG:-false}
       - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3:8b}
       - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3:70b}
     volumes:
       - ollama-data:/root/.ollama
       - ./logs/ollama:/var/log/ollama
-      - ./scripts:/scripts
     networks:
       - legal-ai-network
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    command: >
+      /bin/bash -c "
+      /bin/ollama serve &
+      OLLAMA_PID=$$!;
+      echo 'Waiting for Ollama to start...';
+      sleep 5;
+      ollama pull ${OLLAMA_MODEL_DEV:-llama3:8b};
+      wait $$OLLAMA_PID
+      "
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
+    labels:
+      - "logging.service=ollama"
 
   # Vector Database with Auto-chunking
   weaviate:
@@ -108,10 +114,8 @@ services:
     container_name: weaviate-db
     environment:
       - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=false
-      - AUTHENTICATION_APIKEY_ENABLED=true
-      - AUTHENTICATION_APIKEY_ALLOWED_KEYS=${WEAVIATE_API_KEY}
-      - AUTHENTICATION_APIKEY_USERS=${WEAVIATE_API_USERS:-admin}
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - AUTHENTICATION_APIKEY_ENABLED=false
       - PERSISTENCE_DATA_PATH=/var/lib/weaviate
       - DEFAULT_VECTORIZER_MODULE=text2vec-transformers
       - ENABLE_MODULES=text2vec-transformers
@@ -125,6 +129,8 @@ services:
     restart: unless-stopped
     depends_on:
       - t2v-transformers
+    labels:
+      - "logging.service=weaviate"
 
   # BGE Embeddings Service
   t2v-transformers:
@@ -135,6 +141,8 @@ services:
     networks:
       - legal-ai-network
     restart: unless-stopped
+    labels:
+      - "logging.service=embeddings"
 
   # Document Processing Workflows
   n8n:
@@ -165,6 +173,7 @@ services:
       - "traefik.http.routers.n8n.middlewares=n8n-stripprefix"
       - "traefik.http.middlewares.n8n-stripprefix.stripprefix.prefixes=/n8n"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      - "logging.service=n8n"
 
   # Monitoring Stack
   prometheus:
@@ -189,6 +198,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.prometheus.rule=PathPrefix(`/prometheus`)"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+      - "logging.service=prometheus"
 
   grafana:
     image: grafana/grafana:10.1.0
@@ -213,6 +223,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.grafana.rule=PathPrefix(`/grafana`)"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "logging.service=grafana"
 
   victorialogs:
     image: victoriametrics/victoria-logs:v0.15.0-victorialogs
@@ -233,6 +244,7 @@ services:
       - "traefik.http.routers.victorialogs.middlewares=victorialogs-stripprefix"
       - "traefik.http.middlewares.victorialogs-stripprefix.stripprefix.prefixes=/victorialogs"
       - "traefik.http.services.victorialogs.loadbalancer.server.port=9428"
+      - "logging.service=victorialogs"
 
   fluent-bit:
     image: fluent/fluent-bit:2.2.0
@@ -241,11 +253,15 @@ services:
       - ./config/fluent-bit:/fluent-bit/etc
       - ./logs:/var/log/legal-ai:ro
       - /var/log:/var/log/system:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - legal-ai-network
     restart: unless-stopped
     depends_on:
       - victorialogs
+    labels:
+      - "logging.service=fluent-bit"
 
   alertmanager:
     image: prom/alertmanager:v0.26.0
@@ -265,6 +281,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.alertmanager.rule=PathPrefix(`/alertmanager`)"
       - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
+      - "logging.service=alertmanager"
 
   # System Monitoring
   node-exporter:
@@ -277,6 +294,8 @@ services:
     networks:
       - legal-ai-network
     restart: unless-stopped
+    labels:
+      - "logging.service=node-exporter"
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.0
@@ -289,23 +308,8 @@ services:
     networks:
       - legal-ai-network
     restart: unless-stopped
-
-  loki:
-    image: grafana/loki:2.9.0
-    container_name: loki
-    command: -config.file=/etc/loki/local-config.yaml
-    volumes:
-      - ./config/loki:/etc/loki
-      - loki-data:/tmp/loki
-    networks:
-      - legal-ai-network
-    restart: unless-stopped
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.loki.rule=PathPrefix(`/loki`)"
-      - "traefik.http.routers.loki.middlewares=loki-stripprefix"
-      - "traefik.http.middlewares.loki-stripprefix.stripprefix.prefixes=/loki"
-      - "traefik.http.services.loki.loadbalancer.server.port=3100"
+      - "logging.service=cadvisor"
 
 networks:
   legal-ai-network:
@@ -321,7 +325,6 @@ volumes:
   # Monitoring data
   prometheus-data:
   grafana-data:
-  loki-data:
   alertmanager-data:
   
   # SSL certificates

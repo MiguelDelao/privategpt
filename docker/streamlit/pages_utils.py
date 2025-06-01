@@ -115,7 +115,7 @@ def add_demo_documents():
         ]
         st.session_state.uploaded_documents = demo_docs
 
-def require_auth(admin_only=False, main_app_file="../app.py"):
+def require_auth(admin_only=False, main_app_file="app.py"):
     """
     Checks if a user is authenticated and authorized for the current page.
     If not, redirects to the login page.

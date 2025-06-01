@@ -92,7 +92,7 @@ def display_login_page():
             "Email Address", 
             placeholder="Enter your email", 
             key="login_email", 
-            value=st.session_state.get("login_form_email", "admin@example.com") # Pre-fill for convenience
+            value=st.session_state.get("login_form_email", "admin@admin.com") # Pre-fill for convenience
         )
         password = st.text_input(
             "Password", 

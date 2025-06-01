@@ -25,7 +25,7 @@ st.set_page_config(
 
 # Initialize session state and check authentication
 initialize_session_state()
-require_auth(main_app_file="../app.py")
+require_auth(main_app_file="app.py")
 
 # Apply consistent styling
 apply_page_styling()

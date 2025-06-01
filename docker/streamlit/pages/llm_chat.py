@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, OLLAMA_URL,
     initialize_session_state, require_auth, apply_page_styling,
-    get_logger, display_navigation_sidebar, get_rag_engine
+    get_logger, display_navigation_sidebar
 )
 
 # Page configuration
@@ -29,7 +29,7 @@ st.set_page_config(
 
 # Initialize session state and check authentication
 initialize_session_state()
-require_auth(main_app_file="../app.py")
+require_auth(main_app_file="app.py")
 
 # Apply consistent styling
 apply_page_styling()
@@ -40,20 +40,64 @@ if "llm_chat_history" not in st.session_state:
 if "current_llm_query" not in st.session_state:
     st.session_state.current_llm_query = ""
 
-def call_ollama_direct(prompt: str, model: str = "llama3:8b") -> dict:
-    """Direct call to Ollama API"""
+def call_ollama_direct_stream(prompt: str, model: str = "llama3:8b"):
+    """Direct call to Ollama API with streaming support - generator function"""
     try:
         url = f"{OLLAMA_URL}/api/generate"
         
         payload = {
             "model": model,
             "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "max_tokens": 2048
-            }
+            "stream": True  # Enable streaming
+        }
+        
+        response = requests.post(url, json=payload, timeout=60, stream=True)
+        response.raise_for_status()
+        
+        # Handle streaming response
+        full_response = ""
+        for line in response.iter_lines():
+            if line:
+                try:
+                    chunk = json.loads(line.decode('utf-8'))
+                    if 'response' in chunk:
+                        full_response += chunk['response']
+                        # Yield each chunk for real-time display
+                        yield {
+                            "partial_response": full_response,
+                            "done": chunk.get('done', False),
+                            "model": model,
+                            "success": True
+                        }
+                    if chunk.get('done', False):
+                        break
+                except json.JSONDecodeError:
+                    continue
+        
+    except requests.exceptions.RequestException as e:
+        yield {
+            "partial_response": f"Error connecting to Ollama: {str(e)}",
+            "done": True,
+            "model": model,
+            "success": False
+        }
+    except Exception as e:
+        yield {
+            "partial_response": f"Unexpected error: {str(e)}",
+            "done": True,
+            "model": model,
+            "success": False
+        }
+
+def call_ollama_direct(prompt: str, model: str = "llama3:8b") -> dict:
+    """Direct call to Ollama API - non-streaming for compatibility"""
+    try:
+        url = f"{OLLAMA_URL}/api/generate"
+        
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False
         }
         
         response = requests.post(url, json=payload, timeout=60)
@@ -101,7 +145,6 @@ def display_llm_chat():
     st.markdown(f'<div class="main-header">🤖 Direct LLM Chat</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sub-header">Interact directly with the Large Language Model. No document context is used here.</div>', unsafe_allow_html=True)
 
-    rag_engine = get_rag_engine() # RAG engine usually wraps LLM calls
     logger = get_logger()
     user_email = st.session_state.user_email
 
@@ -122,60 +165,95 @@ def display_llm_chat():
         st.caption("This chat bypasses document retrieval. For questions about specific documents, please use the 'Document Q&A (RAG)' page.")
 
     # Main chat area
-    chat_container = st.container(height=600, border=False)
-    with chat_container:
-        for query, response_data in st.session_state.llm_chat_history:
+    chat_container = st.container(border=False)
+    
+    # Check if there's a pending response to generate
+    has_pending_response = (len(st.session_state.llm_chat_history) > 0 and 
+                           st.session_state.llm_chat_history[-1][1]["answer"] == "")
+    
+    if has_pending_response:
+        # Handle streaming response for the last message
+        last_query = st.session_state.llm_chat_history[-1][0]
+        
+        with chat_container:
+            # Display all previous completed messages
+            for query, response_data in st.session_state.llm_chat_history[:-1]:
+                with st.chat_message("user"):
+                    st.markdown(query)
+                with st.chat_message("assistant"):
+                    st.markdown(response_data["answer"])
+                    if response_data.get("error"):
+                        st.error(f"Error: {response_data['error']}")
+            
+            # Display the current user message
             with st.chat_message("user"):
-                st.markdown(query)
+                st.markdown(last_query)
+            
+            # Stream the assistant response
             with st.chat_message("assistant"):
-                st.markdown(response_data["answer"])
-                if response_data.get("error"):
-                    st.error(f"Error: {response_data['error']}")
+                message_placeholder = st.empty()
+                
+                try:
+                    full_response = ""
+                    response_generator = call_ollama_direct_stream(last_query, "llama3:8b")
+                    
+                    for chunk in response_generator:
+                        if chunk.get("success") and "partial_response" in chunk:
+                            full_response = chunk["partial_response"]
+                            message_placeholder.markdown(full_response + "▌")
+                            
+                            if chunk.get("done"):
+                                break
+                    
+                    # Final update without cursor
+                    message_placeholder.markdown(full_response)
+                    
+                    # Update session state with final response
+                    st.session_state.llm_chat_history[-1] = (last_query, {
+                        "answer": full_response,
+                        "model_used": "llama3:8b",
+                        "error": None
+                    })
+                    
+                    logger.log_ai_query(
+                        user_email=user_email, 
+                        query=last_query, 
+                        response_tokens=len(full_response.split())
+                    )
+
+                except Exception as e:
+                    error_message = f"An error occurred: {str(e)}"
+                    message_placeholder.markdown(error_message)
+                    
+                    # Update session state with error
+                    st.session_state.llm_chat_history[-1] = (last_query, {
+                        "answer": error_message,
+                        "model_used": "llama3:8b",
+                        "error": str(e)
+                    })
+                    
+                    logger.log_error(user_email, f"LLM Chat Error: {str(e)}", "llm_chat_error")
+    
+    else:
+        # Display regular chat history
+        with chat_container:
+            for query, response_data in st.session_state.llm_chat_history:
+                with st.chat_message("user"):
+                    st.markdown(query)
+                with st.chat_message("assistant"):
+                    st.markdown(response_data["answer"])
+                    if response_data.get("error"):
+                        st.error(f"Error: {response_data['error']}")
 
     # Chat input
     prompt = st.chat_input("Ask the LLM anything...", key="llm_prompt")
 
     if prompt:
-        st.session_state.current_llm_query = prompt
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # Add user message to chat history immediately
+        st.session_state.llm_chat_history.append((prompt, {"answer": "", "model_used": "llama3:8b"}))
         
-        with st.spinner("🤖 LLM is thinking..."):
-            try:
-                # Use the RAG engine's direct LLM call method if it exists,
-                # or implement a direct Ollama call here.
-                # Assuming RAGEngine has a method like generate_direct_llm_response
-                # For this example, we'll simulate it or call a simplified version of RAG's generate_response without context.
-                
-                # This would be a more direct call to the LLM, perhaps via rag_engine.generate_direct_llm_response
-                # or a new method in RAGEngine that doesn't require context_documents.
-                # For now, let's use the existing generate_response with empty context as a stand-in.
-                ai_response = rag_engine.generate_response(query=prompt, context_documents=[]) 
-                
-                response_data = {
-                    "answer": ai_response.get("answer", "No answer received."),
-                    "model_used": ai_response.get("model_used"), # Ensure this is populated by generate_response
-                    "error": ai_response.get("error")
-                }
-                
-                logger.log_ai_query(
-                    user_email=user_email, 
-                    query=prompt, 
-                    query_type="llm_direct",
-                    response_preview=response_data["answer"][:100],
-                    # response_tokens=ai_response.get("response_tokens") # If available
-                )
-
-            except Exception as e:
-                logger.log_error(user_email, f"LLM Chat Error: {str(e)}", "llm_chat_error")
-                response_data = {"answer": f"An error occurred: {str(e)}", "error": str(e)}
-
-        st.session_state.llm_chat_history.append((prompt, response_data))
-        with st.chat_message("assistant"):
-            st.markdown(response_data["answer"])
-            if response_data.get("error"):
-                st.error(f"Error: {response_data['error']}")
-        st.session_state.current_llm_query = "" # Clear after processing
+        # Force refresh to show user message in the container
+        st.rerun()
 
 # Display navigation sidebar
 display_navigation_sidebar(current_page="LLM Chat")
