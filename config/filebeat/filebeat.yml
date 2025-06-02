@@ -1,0 +1,32 @@
+# Filebeat configuration
+
+filebeat.inputs:
+- type: container
+  paths:
+    - /var/lib/docker/containers/*/*.log # Docker logs
+  processors:
+    - add_docker_metadata: ~
+
+- type: filestream
+  id: my-app-logs
+  paths:
+    - /var/log/legal-ai/**/*.log # Application regular logs
+    - /var/log/legal-ai/**/*.jsonl # Application audit/JSONL logs
+  parsers:
+    - ndjson:
+        keys_under_root: true
+        add_error_key: true
+        message_key: message # Assuming 'message' is the primary text field in JSON logs
+  fields:
+    log_type: privategpt_app
+
+# General processors
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+# logging.level: debug # Optional: for debugging Filebeat 

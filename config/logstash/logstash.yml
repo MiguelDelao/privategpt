@@ -1,0 +1,4 @@
+# Logstash settings configuration
+
+http.host: "0.0.0.0"
+# xpack.monitoring.elasticsearch.hosts: [ "http://elasticsearch:9200" ] # Optional: for Logstash monitoring 

@@ -1,0 +1,128 @@
+{
+  "version": "8.11.3",
+  "objects": [
+    {
+      "id": "docker-logs-index-pattern",
+      "type": "index-pattern",
+      "version": 1,
+      "attributes": {
+        "title": "docker-logs-*",
+        "timeFieldName": "@timestamp",
+        "fields": "[{\"name\":\"@timestamp\",\"type\":\"date\",\"searchable\":true,\"aggregatable\":true},{\"name\":\"clean_message\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":false},{\"name\":\"terminal_message\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":false},{\"name\":\"service_name\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":true},{\"name\":\"container\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":true},{\"name\":\"log_level\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":true},{\"name\":\"logger_name\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":true},{\"name\":\"thread\",\"type\":\"string\",\"searchable\":true,\"aggregatable\":true},{\"name\":\"pid\",\"type\":\"number\",\"searchable\":true,\"aggregatable\":true}]"
+      }
+    },
+    {
+      "id": "docker-logs-terminal-dashboard",
+      "type": "dashboard",
+      "version": 1,
+      "attributes": {
+        "title": "Docker Services Terminal Logs",
+        "description": "Terminal-style log viewer for Docker services with clean message display",
+        "panelsJSON": "[{\"version\":\"8.11.3\",\"gridData\":{\"x\":0,\"y\":0,\"w\":48,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{\"columns\":[\"service_name\",\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"sampleSize\":500},\"id\":\"all-services-logs\",\"type\":\"logs\"},{\"version\":\"8.11.3\",\"gridData\":{\"x\":0,\"y\":15,\"w\":24,\"h\":15,\"i\":\"2\"},\"panelIndex\":\"2\",\"embeddableConfig\":{\"columns\":[\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"query\":{\"match\":{\"service_name\":\"auth\"}},\"sampleSize\":200},\"id\":\"auth-service-logs\",\"type\":\"logs\"},{\"version\":\"8.11.3\",\"gridData\":{\"x\":24,\"y\":15,\"w\":24,\"h\":15,\"i\":\"3\"},\"panelIndex\":\"3\",\"embeddableConfig\":{\"columns\":[\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"query\":{\"match\":{\"service_name\":\"streamlit\"}},\"sampleSize\":200},\"id\":\"streamlit-logs\",\"type\":\"logs\"},{\"version\":\"8.11.3\",\"gridData\":{\"x\":0,\"y\":30,\"w\":24,\"h\":15,\"i\":\"4\"},\"panelIndex\":\"4\",\"embeddableConfig\":{\"columns\":[\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"query\":{\"match\":{\"service_name\":\"ollama\"}},\"sampleSize\":200},\"id\":\"ollama-logs\",\"type\":\"logs\"},{\"version\":\"8.11.3\",\"gridData\":{\"x\":24,\"y\":30,\"w\":24,\"h\":15,\"i\":\"5\"},\"panelIndex\":\"5\",\"embeddableConfig\":{\"columns\":[\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"query\":{\"match\":{\"service_name\":\"weaviate\"}},\"sampleSize\":200},\"id\":\"weaviate-logs\",\"type\":\"logs\"},{\"version\":\"8.11.3\",\"gridData\":{\"x\":0,\"y\":45,\"w\":24,\"h\":15,\"i\":\"6\"},\"panelIndex\":\"6\",\"embeddableConfig\":{\"columns\":[\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"query\":{\"match\":{\"service_name\":\"traefik\"}},\"sampleSize\":200},\"id\":\"traefik-logs\",\"type\":\"logs\"},{\"version\":\"8.11.3\",\"gridData\":{\"x\":24,\"y\":45,\"w\":24,\"h\":15,\"i\":\"7\"},\"panelIndex\":\"7\",\"embeddableConfig\":{\"columns\":[\"log_level\",\"terminal_message\"],\"sort\":[\"@timestamp\",\"desc\"],\"query\":{\"bool\":{\"should\":[{\"match\":{\"log_level\":\"ERROR\"}},{\"match\":{\"log_level\":\"WARN\"}}]}},\"sampleSize\":200},\"id\":\"error-warn-logs\",\"type\":\"logs\"}]",
+        "optionsJSON": "{\"useMargins\":true,\"syncColors\":false,\"hidePanelTitles\":false}",
+        "timeRestore": false,
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"query\":{\"query\":\"\",\"language\":\"kuery\"},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "all-services-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "All Docker Services Logs",
+        "description": "Terminal view of all Docker service logs",
+        "columns": ["service_name", "log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"query\":\"\",\"language\":\"kuery\"},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "auth-service-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "Authentication Service Logs",
+        "description": "Terminal view of authentication service logs",
+        "columns": ["log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"match\":{\"service_name\":\"auth\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "streamlit-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "Streamlit Application Logs",
+        "description": "Terminal view of Streamlit application logs",
+        "columns": ["log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"match\":{\"service_name\":\"streamlit\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "ollama-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "Ollama LLM Service Logs",
+        "description": "Terminal view of Ollama service logs",
+        "columns": ["log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"match\":{\"service_name\":\"ollama\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "weaviate-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "Weaviate Vector DB Logs",
+        "description": "Terminal view of Weaviate database logs",
+        "columns": ["log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"match\":{\"service_name\":\"weaviate\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "traefik-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "Traefik Proxy Logs",
+        "description": "Terminal view of Traefik reverse proxy logs",
+        "columns": ["log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"match\":{\"service_name\":\"traefik\"}},\"filter\":[]}"
+        }
+      }
+    },
+    {
+      "id": "error-warn-logs",
+      "type": "search",
+      "version": 1,
+      "attributes": {
+        "title": "Errors & Warnings",
+        "description": "Terminal view of error and warning logs from all services",
+        "columns": ["service_name", "log_level", "terminal_message"],
+        "sort": [["@timestamp", "desc"]],
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"index\":\"docker-logs-index-pattern\",\"query\":{\"bool\":{\"should\":[{\"match\":{\"log_level\":\"ERROR\"}},{\"match\":{\"log_level\":\"WARN\"}}]}},\"filter\":[]}"
+        }
+      }
+    }
+  ]
+} 

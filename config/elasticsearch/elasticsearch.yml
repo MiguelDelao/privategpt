@@ -1,0 +1,4 @@
+# Elasticsearch configuration
+
+cluster.name: "privategpt-elk"
+network.host: 0.0.0.0 

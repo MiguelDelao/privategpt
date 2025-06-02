@@ -1,0 +1,7 @@
+# Kibana configuration
+
+server.host: "0.0.0.0"
+server.name: "privategpt-kibana"
+server.basePath: "/kibana"
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+# xpack.monitoring.ui.container.elasticsearch.enabled: true # Optional: for Kibana monitoring 
