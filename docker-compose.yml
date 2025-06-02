@@ -90,14 +90,18 @@ services:
     networks:
       - legal-ai-network
     restart: unless-stopped
+    entrypoint: /bin/sh
     command: >
-      /bin/bash -c "
+      -c "
+      set -e;
       /bin/ollama serve &
       OLLAMA_PID=$$!;
       echo 'Waiting for Ollama to start...';
-      sleep 5;
-      ollama pull ${OLLAMA_MODEL_DEV:-llama3:8b};
-      wait $$OLLAMA_PID
+      sleep 15;
+      echo 'Attempting to pull model: $${OLLAMA_MODEL_DEV:-llama3:8b}';
+      ollama pull $${OLLAMA_MODEL_DEV:-llama3:8b};
+      echo 'Model pull attempt finished. Ollama service (PID $$OLLAMA_PID) continues in background.';
+      wait $$OLLAMA_PID;
       "
     healthcheck:
       test: ["CMD", "ollama", "list"]
@@ -226,7 +230,7 @@ services:
       - "logging.service=grafana"
 
   victorialogs:
-    image: victoriametrics/victoria-logs:v0.15.0-victorialogs
+    image: victoriametrics/victoria-logs:v1.23.2-victorialogs
     container_name: victorialogs
     command:
       - "-storageDataPath=/victoria-logs-data"
