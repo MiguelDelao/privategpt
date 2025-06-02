@@ -1,25 +1,38 @@
 """
-PrivateGPT Database Service
+PrivateGPT Knowledge Service  
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import json
+from datetime import datetime
 
 from .routers import documents, search, chat
 from .services.weaviate_client import WeaviateService
 from .services.embedding import EmbeddingService
 
+def structured_log(data):
+    """Structured logging function"""
+    print(json.dumps(data))
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+structured_log({
+    "level": "INFO",
+    "message": "Starting Knowledge Service",
+    "service": "knowledge-service",
+    "timestamp": datetime.utcnow().isoformat(),
+})
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
-    logger.info("🚀 Starting Database Service...")
+    logger.info("🚀 Starting Knowledge Service...")
     
     # Initialize Weaviate connection
     try:
@@ -44,13 +57,13 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("🛑 Shutting down Database Service...")
+    logger.info("🛑 Shutting down Knowledge Service...")
     if hasattr(app.state, 'weaviate'):
         await app.state.weaviate.close()
 
 # Create FastAPI app
 app = FastAPI(
-    title="PrivateGPT Database Service",
+    title="PrivateGPT Knowledge Service",
     description="Document processing and retrieval-augmented generation API",
     version="1.0.0",
     lifespan=lifespan
@@ -74,7 +87,7 @@ app.include_router(chat.router, prefix="/chat", tags=["chat"])
 async def root():
     """Root endpoint"""
     return {
-        "service": "PrivateGPT Database Service",
+        "service": "PrivateGPT Knowledge Service",
         "status": "healthy",
         "version": "1.0.0",
         "endpoints": {
@@ -90,7 +103,7 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     health_status = {
-        "service": "database-service",
+        "service": "knowledge-service",
         "status": "healthy",
         "components": {},
         "version": "1.0.0"

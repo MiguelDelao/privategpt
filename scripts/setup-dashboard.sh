@@ -61,9 +61,9 @@ echo "Cleaning up old dashboard components..."
     curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/auth-service-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
     curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/streamlit-app-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
     curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/ollama-service-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
-    curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/database-service-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
-    curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/weaviate-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
-    curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/n8n-service-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
+    curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/knowledge-service-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
+    curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/weaviate-db-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
+    curl -s -X DELETE "http://localhost:5601/api/saved_objects/search/n8n-automation-logs" -H "kbn-xsrf: true" > /dev/null 2>&1 &
     wait
 }
 
@@ -72,7 +72,7 @@ echo "Creating saved searches with correct filtering..."
 
 {
 # Create simple saved searches with just 2 columns
-for service in "auth-service:🔐 Auth Service" "streamlit-app:🖥️ Streamlit App" "ollama-service:🧠 Ollama LLM" "database-service:🗃️ Database Service" "weaviate-db:🔍 Weaviate DB" "n8n-automation:🔄 N8N Automation"; do
+for service in "auth-service:🔐 Auth Service" "streamlit-app:🖥️ Streamlit App" "ollama-service:🧠 Ollama LLM" "knowledge-service:🗃️ Knowledge Service" "weaviate-db:🔍 Weaviate DB" "n8n-automation:🔄 N8N Automation"; do
     container=$(echo $service | cut -d: -f1)
     title=$(echo $service | cut -d: -f2-)
     
@@ -111,7 +111,7 @@ dashboard_json='{
   "attributes": {
     "title": "PrivateGPT System Monitor",
     "description": "Container logs with 2-column layout: timestamp + message",
-    "panelsJSON": "[{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":0,\"w\":48,\"h\":25,\"i\":\"1\"},\"panelIndex\":\"1\",\"panelRefName\":\"panel_1\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"auth-service-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":25,\"w\":48,\"h\":25,\"i\":\"2\"},\"panelIndex\":\"2\",\"panelRefName\":\"panel_2\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"streamlit-app-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":50,\"w\":48,\"h\":25,\"i\":\"3\"},\"panelIndex\":\"3\",\"panelRefName\":\"panel_3\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"ollama-service-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":75,\"w\":48,\"h\":25,\"i\":\"4\"},\"panelIndex\":\"4\",\"panelRefName\":\"panel_4\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"database-service-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":100,\"w\":48,\"h\":25,\"i\":\"5\"},\"panelIndex\":\"5\",\"panelRefName\":\"panel_5\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"weaviate-db-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":125,\"w\":48,\"h\":25,\"i\":\"6\"},\"panelIndex\":\"6\",\"panelRefName\":\"panel_6\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"n8n-automation-logs\"}}]",
+    "panelsJSON": "[{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":0,\"w\":48,\"h\":25,\"i\":\"1\"},\"panelIndex\":\"1\",\"panelRefName\":\"panel_1\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"auth-service-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":25,\"w\":48,\"h\":25,\"i\":\"2\"},\"panelIndex\":\"2\",\"panelRefName\":\"panel_2\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"streamlit-app-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":50,\"w\":48,\"h\":25,\"i\":\"3\"},\"panelIndex\":\"3\",\"panelRefName\":\"panel_3\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"ollama-service-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":75,\"w\":48,\"h\":25,\"i\":\"4\"},\"panelIndex\":\"4\",\"panelRefName\":\"panel_4\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"knowledge-service-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":100,\"w\":48,\"h\":25,\"i\":\"5\"},\"panelIndex\":\"5\",\"panelRefName\":\"panel_5\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"weaviate-db-logs\"}},{\"version\":\"8.11.1\",\"type\":\"search\",\"gridData\":{\"x\":0,\"y\":125,\"w\":48,\"h\":25,\"i\":\"6\"},\"panelIndex\":\"6\",\"panelRefName\":\"panel_6\",\"embeddableConfig\":{\"timeRange\":{\"from\":\"now-15m\",\"to\":\"now\"},\"hidePanelTitles\":false,\"enhancements\":{},\"savedObjectId\":\"n8n-automation-logs\"}}]",
     "optionsJSON": "{\"useMargins\":true,\"syncColors\":false,\"hidePanelTitles\":false}",
     "version": 1,
     "timeRestore": true,
@@ -140,7 +140,7 @@ dashboard_json='{
     {
       "name": "panel_4",
       "type": "search",
-      "id": "database-service-logs"
+      "id": "knowledge-service-logs"
     },
     {
       "name": "panel_5",

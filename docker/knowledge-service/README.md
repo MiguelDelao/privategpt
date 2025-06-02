@@ -1,15 +1,26 @@
-# PrivateGPT Database Service
+# Knowledge Service
 
-A FastAPI microservice for document processing and retrieval-augmented generation (RAG) functionality.
+The Knowledge Service is a FastAPI-based microservice that handles document processing, storage, and retrieval-augmented generation (RAG) for the PrivateGPT system.
 
 ## Features
 
-- **Document Upload & Processing**: Support for PDF, DOCX, and text files
-- **Intelligent Chunking**: Automatic text extraction and chunking with overlap
-- **Vector Embeddings**: BGE model integration for semantic search
-- **Vector Database**: Weaviate integration for efficient similarity search
-- **RAG Chat**: LLM-powered conversations with document context
-- **RESTful API**: Clean, documented endpoints for all operations
+- **Document Processing**: Upload and process various document types (PDF, TXT, DOCX)
+- **Vector Storage**: Store and retrieve document embeddings using Weaviate
+- **Semantic Search**: Find relevant documents based on semantic similarity
+- **RAG Chat**: Generate responses using retrieved context and LLM integration
+- **Health Monitoring**: Built-in health checks and monitoring endpoints
+
+## Quick Start
+
+### Docker (Recommended)
+
+```bash
+# Build the image
+docker build -t knowledge-service .
+
+# Run the container
+docker-compose up knowledge-service
+```
 
 ## Architecture
 
@@ -115,10 +126,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### Docker Development
 ```bash
 # Build the image
-docker build -t database-service .
+docker build -t knowledge-service .
 
 # Run with docker-compose
-docker-compose up database-service
+docker-compose up knowledge-service
 ```
 
 ## Service Dependencies

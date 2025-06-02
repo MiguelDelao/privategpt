@@ -6,7 +6,7 @@ services:
     image: traefik:v3.0
     container_name: traefik-gateway
     ports:
-      - "8080:8080"  # Main application port
+      - "8080:8080"  # Back to 8080 for port forwarding
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -27,15 +27,15 @@ services:
   auth-service:
     build: ./docker/auth-service
     container_name: auth-service
+    ports:
+      - "8001:8000"
     environment:
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
-      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
-      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@admin.com}
-      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your_super_secret_jwt_key_change_this_in_production}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRATION_HOURS=8
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=["http://localhost", "http://localhost:8501"]
     volumes:
-      - auth-data:/app/data
       - ./logs/auth:/app/logs
     networks:
       - legal-ai-network
@@ -46,176 +46,188 @@ services:
       timeout: 10s
       retries: 3
     labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`localhost`) && PathPrefix(`/auth`)"
+      - "traefik.http.services.auth.loadbalancer.server.port=8000"
       - "logging.service=auth-service"
 
-  # Database Service for RAG
-  database-service:
-    build: ./docker/database
-    container_name: database-service
+  # Database/Document Processing Service (FastAPI + Weaviate Client)
+  knowledge-service:
+    build: ./docker/knowledge-service
+    container_name: knowledge-service
+    ports:
+      - "8000:8000"
     environment:
       - WEAVIATE_URL=http://weaviate-db:8080
-      - OLLAMA_URL=http://ollama-service:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL_DEV:-llama3:8b}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
-      - CHUNK_SIZE=${CHUNK_SIZE:-1000}
-      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-200}
+      - BGE_EMBEDDING_URL=http://t2v-transformers:8080
+      - LOG_LEVEL=INFO
+      - API_TITLE=Knowledge Service API
+      - API_VERSION=1.0.0
     volumes:
-      - ./data/uploads:/app/uploads
-      - ./logs/database:/app/logs
+      - ./knowledge-service-data:/app/data
+      - ./logs/knowledge-service:/app/logs
     networks:
       - legal-ai-network
     restart: unless-stopped
-    depends_on:
-      - weaviate
-      - ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+    depends_on:
+      - weaviate-db
+      - t2v-transformers
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.database.rule=PathPrefix(`/api/database`)"
-      - "traefik.http.routers.database.middlewares=database-stripprefix"
-      - "traefik.http.middlewares.database-stripprefix.stripprefix.prefixes=/api/database"
-      - "traefik.http.services.database.loadbalancer.server.port=8000"
-      - "logging.service=database-service"
+      - "logging.service=knowledge-service"
 
-  # Main Streamlit Application
+  # Streamlit Web Application
   streamlit-app:
     build: ./docker/streamlit
     container_name: streamlit-app
     environment:
-      - AUTH_SERVICE_URL=http://auth-service:8000
-      - DATABASE_SERVICE_URL=http://database-service:8000
       - OLLAMA_URL=http://ollama-service:11434
       - WEAVIATE_URL=http://weaviate-db:8080
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
     volumes:
       - ./data/uploads:/app/uploads
       - ./logs/app:/app/logs
     networks:
       - legal-ai-network
     restart: unless-stopped
-    depends_on:
-      - auth-service
-      - database-service
-      - ollama
-      - weaviate
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=PathPrefix(`/`)"
-      - "traefik.http.services.app.loadbalancer.server.port=8501"
-      - "logging.service=streamlit"
-
-  # LLM Serving with Ollama
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama-service
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
-      - OLLAMA_ORIGINS=${OLLAMA_ORIGINS:-*}
-      - OLLAMA_DEBUG=${OLLAMA_DEBUG:-false}
-      - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3:8b}
-      - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3:70b}
-    volumes:
-      - ollama-data:/root/.ollama
-      - ./logs/ollama:/var/log/ollama
-    networks:
-      - legal-ai-network
-    restart: unless-stopped
-    entrypoint: /bin/sh
-    command: >
-      -c "
-      set -e;
-      /bin/ollama serve &
-      OLLAMA_PID=$$!;
-      echo 'Waiting for Ollama to start...';
-      sleep 15;
-      echo 'Attempting to pull model: $${OLLAMA_MODEL_DEV:-llama3:8b}';
-      ollama pull $${OLLAMA_MODEL_DEV:-llama3:8b};
-      echo 'Model pull attempt finished. Ollama service (PID $$OLLAMA_PID) continues in background.';
-      wait $$OLLAMA_PID;
-      "
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
-    labels:
-      - "logging.service=ollama"
-
-  # Vector Database with Auto-chunking
-  weaviate:
-    image: semitechnologies/weaviate:1.22.4
-    container_name: weaviate-db
-    environment:
-      - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
-      - AUTHENTICATION_APIKEY_ENABLED=false
-      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
-      - DEFAULT_VECTORIZER_MODULE=text2vec-transformers
-      - ENABLE_MODULES=text2vec-transformers
-      - CLUSTER_HOSTNAME=node1
-      - TRANSFORMERS_INFERENCE_API=http://t2v-transformers:8080
-    volumes:
-      - weaviate-data:/var/lib/weaviate
-      - ./logs/weaviate:/var/log/weaviate
-    networks:
-      - legal-ai-network
-    restart: unless-stopped
     depends_on:
-      - t2v-transformers
-    labels:
-      - "logging.service=weaviate"
-
-  # BGE Embeddings Service
-  t2v-transformers:
-    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2-1.8.5
-    container_name: bge-embeddings
-    environment:
-      - ENABLE_CUDA=0  # CPU-based for cost efficiency
-    networks:
-      - legal-ai-network
-    restart: unless-stopped
-    labels:
-      - "logging.service=embeddings"
-
-  # Document Processing Workflows
-  n8n:
-    build: ./docker/n8n
-    container_name: n8n-automation
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
-      - N8N_PATH=/n8n
-      - WEBHOOK_URL=http://localhost:8080/n8n/
-      - N8N_EDITOR_BASE_URL=http://localhost:8080/n8n/
-      - DATABASE_SERVICE_URL=http://database-service:8000
-      - WEAVIATE_URL=http://weaviate-db:8080
-      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
-      - NODE_ENV=production
-    volumes:
-      - n8n-data:/home/node/.n8n
-      - ./data/uploads:/app/uploads
-      - ./logs/n8n:/app/logs
-    networks:
-      - legal-ai-network
-    restart: unless-stopped
-    depends_on:
-      - database-service
-      - weaviate
+      - auth-service
+      - ollama-service
+      - weaviate-db
+      - knowledge-service
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=PathPrefix(`/n8n`)"
-      - "traefik.http.routers.n8n.middlewares=n8n-stripprefix"
-      - "traefik.http.middlewares.n8n-stripprefix.stripprefix.prefixes=/n8n"
+      - "traefik.http.routers.streamlit.rule=Host(`localhost`)"
+      - "traefik.http.services.streamlit.loadbalancer.server.port=8501"
+      - "logging.service=streamlit-app"
+
+  # LLM Service (Ollama)
+  ollama-service:
+    image: ollama/ollama:latest
+    container_name: ollama-service
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./data/models:/models
+    networks:
+      - legal-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ollama.rule=Host(`localhost`) && PathPrefix(`/ollama`)"
+      - "traefik.http.services.ollama.loadbalancer.server.port=11434"
+      - "logging.service=ollama-service"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Vector Database (Weaviate)
+  weaviate-db:
+    image: semitechnologies/weaviate:1.26.1
+    container_name: weaviate-db
+    restart: unless-stopped
+    ports:
+      - "8081:8080"  # Changed to 8081 to avoid conflict with Traefik
+      - "50051:50051"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-transformers'
+      ENABLE_MODULES: 'text2vec-transformers'
+      CLUSTER_HOSTNAME: 'node1'
+      TRANSFORMERS_INFERENCE_API: 'http://t2v-transformers:8080'
+      LOG_LEVEL: 'info'
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    networks:
+      - legal-ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.weaviate.rule=Host(`localhost`) && PathPrefix(`/weaviate`)"
+      - "traefik.http.services.weaviate.loadbalancer.server.port=8080"
+      - "logging.service=weaviate-db"
+
+  # Text-to-Vector Embeddings (BGE Model)
+  t2v-transformers:
+    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
+    container_name: t2v-transformers
+    environment:
+      ENABLE_CUDA: '1'
+    volumes:
+      - transformers_cache:/tmp/.cache
+    networks:
+      - legal-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/.well-known/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "logging.service=t2v-transformers"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Document Processing Workflows
+  n8n-automation:
+    image: n8nio/n8n:latest
+    container_name: n8n-automation
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-change_this_password}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./data/uploads:/data/uploads:ro
+      - ./logs/n8n:/logs
+    networks:
+      - legal-ai-network
+    restart: unless-stopped
+    depends_on:
+      - knowledge-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`localhost`) && PathPrefix(`/n8n`)"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
-      - "logging.service=n8n"
+      - "logging.service=n8n-automation"
 
   # ELK Stack and Beats
   elasticsearch:
@@ -317,10 +329,11 @@ networks:
 
 volumes:
   # Data persistence
-  ollama-data:
-  weaviate-data:
+  ollama_data:
+  weaviate_data:
+  transformers_cache:
   auth-data:
-  n8n-data:
+  n8n_data:
   elasticsearch-data:
 
   # SSL certificates
