@@ -9,106 +9,113 @@ privategpt/
 ├── 📄 README.md                           # Main documentation
 ├── 📄 PROJECT_STRUCTURE.md               # This file
 ├── 📄 docker-compose.yml                 # Main orchestration file
-├── 📄 env.example                        # Environment template
+├── 📄 env.example                        # Environment template for core services
+├── 📄 config.env.example                 # Environment template for UI/auth (potentially different)
 ├── 🔧 setup.sh                          # Automated setup script
 ├── 📄 Makefile                          # Management commands (optional)
+├── 📄 requirements.txt                   # Python dependencies for some host scripts (e.g., download_test_datasets.py)
+├── 📄 download_test_datasets.py          # Script to download test datasets
+├── 📄 weaviate_service.py                # Host script related to Weaviate (details TBD)
+├── 📄 client_example.py                  # Example client for interacting with services
+├── 📄 .gitignore                         # Specifies intentionally untracked files for Git
 │
 ├── 🐳 docker/                           # Container definitions
 │   ├── auth-service/                    # JWT Authentication service
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   ├── auth_service.py              # Main auth service
-│   │   └── utils.py                     # Compliance utilities
+│   │   ├── auth_service.py              # Main auth service logic
+│   │   └── utils.py                     # Audit logging and security utilities
 │   │
 │   ├── streamlit/                       # Web UI application
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   ├── streamlit_app.py             # Main Streamlit app
+│   │   ├── app.py                       # Main Streamlit app (login page)
+│   │   ├── pages_utils.py               # Shared utilities for Streamlit pages
+│   │   ├── .streamlit/                  # Streamlit configuration (e.g., config.toml)
+│   │   ├── pages/                       # Streamlit multi-page app pages
+│   │   │   ├── dashboard.py
+│   │   │   ├── document_management.py
+│   │   │   ├── rag_chat.py
+│   │   │   ├── llm_chat.py
+│   │   │   ├── admin_panel.py
+│   │   │   └── __init__.py
 │   │   └── utils/                       # UI utilities
-│   │       ├── auth_client.py           # Auth service client
-│   │       ├── rag_engine.py            # RAG integration
-│   │       ├── document_processor.py    # Document handling
-│   │       └── logger.py                # UI logging
+│   │       ├── auth_client.py           # Client for auth-service
+│   │       ├── rag_engine.py            # RAG logic with Weaviate and Ollama
+│   │       ├── document_processor.py    # Text extraction from documents
+│   │       └── logger.py                # UI-specific logging
 │   │
-│   └── n8n/                            # Document processing
-│       ├── Dockerfile
-│       └── workflows/                   # n8n workflow definitions
+│   └── n8n/                            # Workflow automation (manual workflow import)
+│       └── Dockerfile                   # (Workflows are manually imported, not in codebase)
 │
 ├── ⚙️ config/                           # Service configurations
 │   ├── traefik/                        # Reverse proxy config
-│   │   ├── traefik.yml
-│   │   └── dynamic.yml
+│   │   └── traefik.yml                  # Static Traefik configuration
 │   │
 │   ├── prometheus/                     # Metrics collection
 │   │   ├── prometheus.yml              # Main Prometheus config
-│   │   └── alerts.yml                  # Legal compliance alerts
+│   │   └── alerts.yml                  # Alerting rules
 │   │
 │   ├── grafana/                        # Monitoring dashboards
-│   │   ├── datasources.yml             # Data source config
-│   │   └── dashboards/                 # Legal-specific dashboards
-│   │       ├── executive-dashboard.json
-│   │       ├── compliance-dashboard.json
-│   │       └── operations-dashboard.json
+│   │   ├── datasources/
+│   │   │   └── datasources.yml         # Grafana datasource definitions (Prometheus, VictoriaLogs)
+│   │   └── dashboards/
+│   │       ├── dashboards.yml          # Grafana dashboard provider configuration
+│   │       └── json/                   # Dashboard JSON files
+│   │           ├── docker-services-logs-dashboard.json
+│   │           ├── legal-compliance-dashboard.json
+│   │           └── privategpt-dashboard.json
 │   │
-│   ├── loki/                           # Log aggregation
-│   │   └── loki.yml
+│   ├── fluent-bit/                     # Log collection and forwarding
+│   │   ├── fluent-bit.conf             # Fluent Bit main configuration
+│   │   └── parsers.conf                # Fluent Bit parser configurations
 │   │
-│   ├── promtail/                       # Log collection
-│   │   └── promtail.yml
-│   │
-│   └── alertmanager/                   # Alert management
-│       └── alertmanager.yml
+│   └── alertmanager/                   # Alert management (config not shown, default assumed)
+│       └── alertmanager.yml            # (If specific config is needed)
 │
-├── 📊 data/                            # Application data
-│   ├── uploads/                        # Document upload staging
-│   └── backups/                        # Automated backups
+├── 📊 data/                            # Application data (persistent volumes typically map here or similar)
+│   ├── uploads/                        # Document upload staging (used by Streamlit and n8n)
+│   └── backups/                        # Placeholder for automated backups
 │
-├── 📋 logs/                            # Structured logging
-│   ├── audit/                          # Legal compliance logs
-│   ├── security/                       # Security event logs
-│   ├── auth/                           # Authentication logs
-│   ├── app/                            # Application logs
-│   ├── ollama/                         # LLM service logs
-│   ├── weaviate/                       # Vector DB logs
-│   ├── n8n/                            # Workflow logs
-│   └── grafana/                        # Monitoring logs
+├── 📋 logs/                            # Host-mapped log directories for services
+│   ├── audit/                          # (Potentially for auth-service audit logs if mapped)
+│   ├── security/                       # (Potentially for auth-service security alerts if mapped)
+│   ├── auth/                           # Logs from auth-service
+│   ├── app/                            # Logs from streamlit-app
+│   ├── ollama/                         # Logs from ollama service
+│   ├── weaviate/                       # Logs from weaviate service
+│   ├── n8n/                            # Logs from n8n service
+│   └── grafana/                        # Logs from grafana service
 │
-├── 📚 docs/                            # Documentation
-│   ├── api/                            # API documentation
-│   ├── compliance/                     # Legal compliance guides
-│   ├── deployment/                     # Deployment guides
-│   └── user-manual/                    # User documentation
+├── 📚 docs/                            # Documentation (placeholder, not explored)
+│   ├── api/
+│   ├── compliance/
+│   ├── deployment/
+│   └── user-manual/
 │
-├── 🧪 scripts/                         # Utility scripts
-│   ├── init-weaviate-schema.py         # Database initialization
-│   ├── test-deployment.py              # System validation
-│   ├── backup-data.sh                  # Backup automation
-│   └── restore-data.sh                 # Restore procedures
-│
-└── 🔧 tools/                           # Development tools
-    ├── monitoring/                     # Monitoring utilities
-    ├── compliance/                     # Compliance checking
-    └── performance/                    # Performance testing
+└── 🧪 scripts/                         # Utility scripts
+    ├── init-ollama.sh                 # Initializes Ollama models
+    └── setup-n8n-workflows.sh         # Prepares for manual n8n workflow import
 ```
 
 ## 📋 Key Components
 
 ### 🐳 Docker Services
 
-| Service | Description | Port | Purpose |
-|---------|-------------|------|---------|
-| **traefik** | Reverse proxy & load balancer | 80, 443 | Unified access point |
-| **auth-service** | JWT authentication | 8000 | User management & security |
-| **streamlit-app** | Web UI application | 8501 | Main user interface |
-| **ollama** | LLM serving (LLaMA-3) | 11434 | AI inference engine |
-| **weaviate** | Vector database | 8080 | Document search & RAG |
-| **t2v-transformers** | BGE embeddings | 8080 | Text embedding generation |
-| **n8n** | Document processing | 5678 | Workflow automation |
-| **prometheus** | Metrics collection | 9090 | System monitoring |
-| **grafana** | Visualization & alerts | 3000 | Compliance dashboards |
-| **loki** | Log aggregation | 3100 | Centralized logging |
-| **promtail** | Log collection | - | Log shipping |
-| **alertmanager** | Alert routing | 9093 | Compliance alerts |
+| Service            | Description                               | Exposed Port | Internal Port | Purpose                                  |
+|--------------------|-------------------------------------------|--------------|---------------|------------------------------------------|
+| **traefik**        | Reverse proxy & load balancer             | 80, 443, 8080| 80, 443, 8080 | Unified access point, Dashboard          |
+| **auth-service**   | JWT authentication                        | (via Traefik)| 8000          | User management & security               |
+| **streamlit-app**  | Web UI application                        | (via Traefik)| 8501          | Main user interface                      |
+| **ollama**         | LLM serving (LLaMA-3)                     | (via Traefik)| 11434         | AI inference engine                      |
+| **weaviate**       | Vector database                           | (via Traefik)| 8080          | Document search & RAG                    |
+| **t2v-transformers**| BGE embeddings for Weaviate             | (internal)   | 8080          | Text embedding generation                |
+| **n8n**            | Document processing & workflow automation | (via Traefik)| 5678          | Workflow automation (manual import)      |
+| **prometheus**     | Metrics collection                        | (via Traefik)| 9090          | System monitoring                        |
+| **grafana**        | Visualization & dashboards                | (via Traefik)| 3000          | Monitoring dashboards                    |
+| **victorialogs**   | Log aggregation                           | (via Traefik)| 9428          | Centralized logging                      |
+| **fluent-bit**     | Log collection and forwarding             | (internal)   | 2020 (HTTP)   | Log shipping to VictoriaLogs             |
+| **alertmanager**   | Alert routing                             | (via Traefik)| 9093          | Compliance & system alerts               |
 
 ### 🔐 Security Features
 
@@ -130,17 +137,31 @@ privategpt/
 
 ```mermaid
 flowchart TD
-    A[User] --> B[Traefik Gateway]
+    A[User] --> B(Traefik Gateway)
     B --> C[Streamlit UI]
     C --> D[Auth Service]
     C --> E[Weaviate]
     C --> F[Ollama]
-    G[n8n] --> E
-    E --> H[BGE Embeddings]
-    I[Promtail] --> J[Loki]
-    K[Prometheus] --> L[Grafana]
-    M[All Services] --> I
-    M --> K
+    
+    subgraph "Background Processing / Alternative Ingestion"
+        G[External File Drop /data/uploads] --> N8N[n8n Workflows]
+        N8N --> E
+    end
+
+    E --> H[t2v-transformers BGE Embeddings]
+    
+    subgraph "Log Management"
+        AllServices[All Docker Services] --> FB[Fluent Bit]
+        FB --> VL[VictoriaLogs]
+    end
+    
+    subgraph "Metrics & Alerting"
+        AllServices --> P[Prometheus]
+        P --> GR[Grafana]
+        P --> AM[Alertmanager]
+    end
+
+    VL --> GR
 ```
 
 ## 🚀 Deployment Process
