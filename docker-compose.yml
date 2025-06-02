@@ -48,14 +48,49 @@ services:
     labels:
       - "logging.service=auth-service"
 
+  # Database Service for RAG
+  database-service:
+    build: ./docker/database
+    container_name: database-service
+    environment:
+      - WEAVIATE_URL=http://weaviate-db:8080
+      - OLLAMA_URL=http://ollama-service:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL_DEV:-llama3:8b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      - CHUNK_SIZE=${CHUNK_SIZE:-1000}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-200}
+    volumes:
+      - ./data/uploads:/app/uploads
+      - ./logs/database:/app/logs
+    networks:
+      - legal-ai-network
+    restart: unless-stopped
+    depends_on:
+      - weaviate
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.database.rule=PathPrefix(`/api/database`)"
+      - "traefik.http.routers.database.middlewares=database-stripprefix"
+      - "traefik.http.middlewares.database-stripprefix.stripprefix.prefixes=/api/database"
+      - "traefik.http.services.database.loadbalancer.server.port=8000"
+      - "logging.service=database-service"
+
   # Main Streamlit Application
   streamlit-app:
     build: ./docker/streamlit
     container_name: streamlit-app
     environment:
       - AUTH_SERVICE_URL=http://auth-service:8000
-      - OLLAMA_URL=http://ollama:11434
-      - WEAVIATE_URL=http://weaviate:8080
+      - DATABASE_SERVICE_URL=http://database-service:8000
+      - OLLAMA_URL=http://ollama-service:11434
+      - WEAVIATE_URL=http://weaviate-db:8080
       - ENVIRONMENT=${ENVIRONMENT:-production}
     volumes:
       - ./data/uploads:/app/uploads
@@ -65,6 +100,7 @@ services:
     restart: unless-stopped
     depends_on:
       - auth-service
+      - database-service
       - ollama
       - weaviate
     labels:
@@ -159,7 +195,8 @@ services:
       - N8N_PATH=/n8n
       - WEBHOOK_URL=http://localhost:8080/n8n/
       - N8N_EDITOR_BASE_URL=http://localhost:8080/n8n/
-      - WEAVIATE_URL=http://weaviate:8080
+      - DATABASE_SERVICE_URL=http://database-service:8000
+      - WEAVIATE_URL=http://weaviate-db:8080
       - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
       - NODE_ENV=production
     volumes:
@@ -170,6 +207,7 @@ services:
       - legal-ai-network
     restart: unless-stopped
     depends_on:
+      - database-service
       - weaviate
     labels:
       - "traefik.enable=true"

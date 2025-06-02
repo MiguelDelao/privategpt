@@ -1,7 +1,7 @@
 # PrivateGPT Legal AI - Makefile
 # Simple commands for development and deployment
 
-.PHONY: help install setup start stop restart build clean reset nuke logs status shell setup-elk elk-status logs-elk kibana kibana-tunnel logs-search logs-errors-elk verify-elk restart-elk
+.PHONY: help install setup start stop restart build clean reset nuke logs status shell setup-elk elk-status logs-elk kibana kibana-tunnel logs-search logs-errors-elk verify-elk restart-elk setup-dashboard discover
 
 # Default target
 help:
@@ -27,7 +27,8 @@ help:
 	@echo ""
 	@echo "Monitoring & Logging (ELK Stack):"
 	@echo "  make setup-elk     - Show ELK data access info (no pre-built dashboards)"
-	@echo "  make setup-elk-dashboards - Install pre-built dashboards (optional)"
+	@echo "  make setup-dashboard - Create data views for log access"
+	@echo "  make discover      - Open Kibana Discover for log analysis"
 	@echo "  make kibana        - Show Kibana dashboard access info"
 	@echo "  make logs-elk      - Show ELK stack service logs"
 	@echo "  make elk-status    - Check ELK stack health"
@@ -76,8 +77,10 @@ setup: init
 	@mkdir -p data/uploads logs/{auth,app,ollama,weaviate,n8n,grafana}
 	@echo "Created directories"
 	@$(MAKE) start
-	@echo "ELK Stack is ready for custom dashboards"
-	@$(MAKE) kibana
+	@echo "Creating custom dashboard..."
+	@chmod +x scripts/setup-dashboard.sh
+	@./scripts/setup-dashboard.sh > /dev/null 2>&1 && echo "✅ Dashboard ready" || echo "⚠️ Dashboard setup had issues"
+	@echo "✅ Setup complete - access dashboard via 'make elk-status'"
 
 # ELK Stack Setup Commands (Optional)
 
@@ -94,6 +97,12 @@ setup-elk:
 	@curl -s "http://localhost:9200/_cat/indices?h=index,docs.count" 2>/dev/null | grep -E "(filebeat|metricbeat)" | sed 's/^/   /' || echo "   Warning: Data collection starting (may take a few minutes)"
 	@echo ""
 	@$(MAKE) kibana
+
+# Setup custom dashboard automatically
+setup-dashboard:
+	@echo "Setting up PrivateGPT Custom Dashboard..."
+	@chmod +x scripts/setup-dashboard.sh
+	@./scripts/setup-dashboard.sh
 
 # Development commands
 start:
@@ -114,10 +123,12 @@ restart: stop start
 build:
 	@echo "Building and starting services..."
 	@docker-compose up -d --build
+	@echo "Creating custom dashboard..."
+	@chmod +x scripts/setup-dashboard.sh
+	@./scripts/setup-dashboard.sh > /dev/null 2>&1 && echo "✅ Dashboard ready" || echo "⚠️ Dashboard setup had issues"
 	@echo "✅ Services built and started"
-	@echo "ELK Stack ready for custom dashboards"
 
-go: reset build
+go: reset clean build
 	@echo "✅ System fully reset and rebuilt"
 
 # Cleanup commands
@@ -157,19 +168,19 @@ elk-status: ## 📊 Check ELK Stack status and dashboard info
 	@echo "📈 Data Collection:"
 	@curl -s "http://localhost:9200/_cat/indices?h=index,docs.count,store.size" 2>/dev/null | grep -E "(filebeat|metricbeat)" | sed 's/^/  /' || echo "  ⚠️  No data collected yet (may take 2-3 minutes after startup)"
 	@echo ""
-	@echo "🚀 Ready Dashboard:"
+	@echo "🚀 Auto-Created Dashboard:"
 	@echo "  📊 PrivateGPT System Monitor"
-	@echo "  🔗 URL: http://localhost/kibana/app/dashboards#/view/d72e7c30-3f8a-11f0-8fcb-13b28cd3f8fa"
+	@echo "  🔗 URL: http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0"
 	@echo ""
-	@echo "📋 Container-Specific Panels:"
-	@echo "  🔐 Auth Service       - Authentication logs"
-	@echo "  🖥️ Streamlit App     - Main application logs"  
-	@echo "  🧠 Ollama LLM        - AI model interactions"
-	@echo "  ⚡ N8N Workflows     - Automation task logs"
-	@echo "  🗄️ Database Service  - Vector DB operations"
-	@echo "  📊 ELK Stack         - Monitoring infrastructure"
-	@echo "  ⚡ System Metrics    - Live system performance"
-	@echo "  📋 All App Logs     - Combined application view"
+	@echo "📋 Dashboard Panels:"
+	@echo "  🔐 Auth Service - Authentication service logs (container.name: auth-service)"
+	@echo "  🖥️ Streamlit App - Main application frontend logs (container.name: streamlit-app)"
+	@echo "  🧠 Ollama LLM - Language model service logs (container.name: ollama-service)"
+	@echo "  ⚡ N8N Workflows - Workflow automation logs (container.name: n8n-automation)"
+	@echo "  🗄️ Database Service - Weaviate vector database logs (container.name: weaviate-db)"
+	@echo "  📊 ELK Stack - Monitoring infrastructure logs (elasticsearch, logstash, kibana, etc.)"
+	@echo "  ⚡ System Metrics - CPU, memory, and container metrics"
+	@echo "  📋 All App Logs - Combined view of all application logs"
 	@echo ""
 	@echo "⚡ Quick Commands:"
 	@echo "  make dashboard  - Open dashboard directly"
@@ -185,11 +196,6 @@ kibana: ## 🔍 Open Kibana (ELK Stack Web Interface)
 	@echo "🔍 Opening Kibana..."
 	@echo "📊 Kibana URL: http://localhost/kibana/"
 	@command -v xdg-open >/dev/null && xdg-open http://localhost/kibana/ || echo "Manually open: http://localhost/kibana/"
-
-dashboard: ## 📊 Open PrivateGPT System Monitor Dashboard
-	@echo "📊 Opening PrivateGPT System Monitor Dashboard..."
-	@echo "🚀 Dashboard URL: http://localhost/kibana/app/dashboards#/view/d72e7c30-3f8a-11f0-8fcb-13b28cd3f8fa"
-	@command -v xdg-open >/dev/null && xdg-open "http://localhost/kibana/app/dashboards#/view/d72e7c30-3f8a-11f0-8fcb-13b28cd3f8fa" || echo "Manually open: http://localhost/kibana/app/dashboards#/view/d72e7c30-3f8a-11f0-8fcb-13b28cd3f8fa"
 
 # Utility commands
 logs:
@@ -404,4 +410,16 @@ restart-elk:
 	@echo "Restarting ELK Stack services only..."
 	@docker-compose restart elasticsearch logstash kibana filebeat metricbeat
 	@sleep 20
-	@$(MAKE) setup-elk 
+	@$(MAKE) setup-elk
+
+# Add new direct access command
+discover: ## 📊 Open Kibana Discover for log analysis
+	@echo "📊 Opening Kibana Discover..."
+	@echo "🔗 Container Logs: http://localhost/kibana/app/discover"
+	@command -v xdg-open >/dev/null && xdg-open "http://localhost/kibana/app/discover" || echo "Manually open: http://localhost/kibana/app/discover"
+
+# Add dashboard command back
+dashboard: ## 📊 Open PrivateGPT System Monitor Dashboard
+	@echo "📊 Opening PrivateGPT System Monitor Dashboard..."
+	@echo "🚀 Dashboard URL: http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0"
+	@command -v xdg-open >/dev/null && xdg-open "http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0" || echo "Manually open: http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0" 
