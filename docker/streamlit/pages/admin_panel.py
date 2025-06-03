@@ -7,11 +7,12 @@ import streamlit as st
 import pandas as pd # For displaying tables
 import sys
 import os
+import requests
 from datetime import datetime, timedelta
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, VECTOR_DB_NAME, WORKFLOW_ENGINE, VERSION_INFO,
     initialize_session_state, require_auth, display_navigation_sidebar, apply_page_styling,
-    get_logger, get_rag_engine, get_auth_client, add_demo_documents
+    get_logger, get_auth_client
 )
 
 # Page configuration
@@ -29,22 +30,27 @@ require_auth(admin_only=True, main_app_file="app.py")
 # Apply consistent styling
 apply_page_styling()
 
-# Add demo data
-add_demo_documents()
-
 # Add parent directory to path to import pages_utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- Helper Functions (Placeholders - to be implemented with backend logic) ---
 def get_system_health_status():
-    """Placeholder: Fetch actual system health from RAG engine or other services."""
+    """Fetch actual system health from knowledge service API."""
     try:
-        rag_engine = get_rag_engine()
-        health = rag_engine.health_check() # Assuming health_check returns a dict like {"weaviate": True, "ollama": True}
-        return health
+        # Check knowledge service health
+        response = requests.get("http://knowledge-service:8000/health", timeout=5)
+        if response.status_code == 200:
+            health_data = response.json()
+            return {
+                "weaviate": health_data.get("components", {}).get("weaviate") == "connected",
+                "embedding": health_data.get("components", {}).get("embedding") == "loaded",
+                "knowledge_service": True
+            }
+        else:
+            return {"weaviate": False, "embedding": False, "knowledge_service": False}
     except Exception as e:
-        # get_logger().log_error("admin", f"System health check failed: {e}", "admin_health_check")
-        return {"weaviate": False, "ollama": False, "error": str(e)}
+        get_logger().log_error("admin", f"System health check failed: {e}", "admin_health_check")
+        return {"weaviate": False, "embedding": False, "knowledge_service": False, "error": str(e)}
 
 def get_user_accounts():
     """Placeholder: Fetch user accounts from AuthClient."""
@@ -87,22 +93,44 @@ def display_admin_panel():
     col1, col2, col3, col4 = st.columns(4)
     
     try:
-        # Mock health check for demo
+        # Get real health status from APIs
+        health_status = get_system_health_status()
+        
         with col1:
-            st.metric("🗃️ Vector DB", "Online")
+            weaviate_status = "🟢 Online" if health_status.get("weaviate") else "🔴 Offline"
+            st.metric("🗃️ Vector DB", weaviate_status)
         
         with col2:
-            st.metric("🤖 LLM Service", "Online")
+            embedding_status = "🟢 Online" if health_status.get("embedding") else "🔴 Offline"
+            st.metric("🤖 Embedding Service", embedding_status)
         
         with col3:
-            st.metric("🔐 Auth Service", "Online")  # If we got here, auth is working
+            knowledge_status = "🟢 Online" if health_status.get("knowledge_service") else "🔴 Offline"
+            st.metric("🔐 Knowledge Service", knowledge_status)
         
         with col4:
-            docs_count = len(st.session_state.get("uploaded_documents", []))
+            try:
+                # Get document count from API
+                response = requests.get("http://knowledge-service:8000/documents/", timeout=5)
+                if response.status_code == 200:
+                    docs_count = response.json().get("total", 0)
+                else:
+                    docs_count = len(st.session_state.get("uploaded_documents", []))
+            except:
+                docs_count = len(st.session_state.get("uploaded_documents", []))
             st.metric("📄 Documents", docs_count)
     
     except Exception as e:
         st.error(f"Unable to check system health: {str(e)}")
+        # Fallback to basic info
+        with col1:
+            st.metric("🗃️ Vector DB", "Unknown")
+        with col2:
+            st.metric("🤖 Embedding Service", "Unknown")
+        with col3:
+            st.metric("🔐 Knowledge Service", "Unknown")
+        with col4:
+            st.metric("📄 Documents", len(st.session_state.get("uploaded_documents", [])))
     
     st.markdown("---")
     

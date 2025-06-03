@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 import re
 from io import BytesIO
 import uuid
+import io
 
 # Document processing imports
 try:
@@ -15,6 +16,10 @@ try:
 except ImportError:
     # These will be installed via requirements.txt
     pass
+
+# Enhanced PDF processing imports
+import fitz  # PyMuPDF
+import pdfplumber
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,8 @@ class ChunkingService:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
+        logger.info(f"📋 ChunkingService initialized - chunk_size: {chunk_size}, overlap: {chunk_overlap}")
+
     async def extract_text_from_file(self, file_content: bytes, content_type: str, filename: str) -> str:
         """
         Extract text from various file formats
@@ -40,50 +47,149 @@ class ChunkingService:
         Args:
             file_content: Raw file bytes
             content_type: MIME type of the file
-            filename: Original filename
+            filename: Original filename for format detection
             
         Returns:
             Extracted text content
         """
         try:
-            if content_type == "application/pdf" or filename.lower().endswith('.pdf'):
-                return await self._extract_from_pdf(file_content)
-            elif content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or filename.lower().endswith('.docx'):
+            # Determine file type
+            filename_lower = filename.lower()
+            
+            if filename_lower.endswith('.pdf') or 'pdf' in content_type.lower():
+                return await self._extract_from_pdf_enhanced(file_content, filename)
+            elif filename_lower.endswith('.docx') or 'wordprocessingml' in content_type.lower():
                 return await self._extract_from_docx(file_content)
-            elif content_type.startswith("text/") or filename.lower().endswith(('.txt', '.md', '.csv')):
+            elif filename_lower.endswith(('.txt', '.text')) or 'text' in content_type.lower():
                 return await self._extract_from_text(file_content)
             else:
-                # Try as text fallback
-                logger.warning(f"Unknown content type {content_type}, trying as text")
-                return await self._extract_from_text(file_content)
+                # Try to detect based on content
+                if file_content.startswith(b'%PDF'):
+                    return await self._extract_from_pdf_enhanced(file_content, filename)
+                elif file_content.startswith(b'PK\x03\x04'):
+                    return await self._extract_from_docx(file_content)
+                else:
+                    # Fallback to text
+                    return await self._extract_from_text(file_content)
+                    
+        except Exception as e:
+            logger.error(f"❌ Text extraction failed for {filename}: {e}")
+            raise
+
+    async def _extract_from_pdf_enhanced(self, file_content: bytes, filename: str) -> str:
+        """
+        Enhanced PDF text extraction using multiple methods for best results
+        
+        Uses PyMuPDF as primary, pdfplumber for tables, PyPDF2 as fallback
+        """
+        text_content = []
+        
+        try:
+            # Method 1: PyMuPDF (fitz) - Best for most PDFs
+            logger.info(f"🔍 Trying PyMuPDF extraction for {filename}")
+            doc = fitz.open(stream=file_content, filetype="pdf")
+            
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                
+                # Extract text with layout preservation
+                page_text = page.get_text("text")
+                
+                # Also try to extract tables if any
+                tables = page.find_tables()
+                table_text = ""
+                for table in tables:
+                    try:
+                        table_data = table.extract()
+                        # Convert table to readable text format
+                        for row in table_data:
+                            if row:  # Skip empty rows
+                                table_text += " | ".join(str(cell) if cell else "" for cell in row) + "\n"
+                        table_text += "\n"
+                    except:
+                        continue
+                
+                # Combine regular text and table text
+                combined_text = page_text
+                if table_text.strip():
+                    combined_text += f"\n\n--- Tables on Page {page_num + 1} ---\n{table_text}"
+                
+                if combined_text.strip():
+                    text_content.append(f"--- Page {page_num + 1} ---\n{combined_text}")
+            
+            doc.close()
+            
+            if text_content:
+                full_text = "\n\n".join(text_content)
+                logger.info(f"✅ PyMuPDF extracted {len(full_text)} characters from {filename}")
+                return full_text
                 
         except Exception as e:
-            logger.error(f"❌ Failed to extract text from {filename}: {e}")
-            raise
-    
-    async def _extract_from_pdf(self, file_content: bytes) -> str:
-        """Extract text from PDF file"""
+            logger.warning(f"⚠️ PyMuPDF extraction failed for {filename}: {e}, trying pdfplumber")
+        
         try:
-            # Create a PDF reader from bytes
-            pdf_file = BytesIO(file_content)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            # Method 2: pdfplumber - Excellent for tables and structured content
+            logger.info(f"🔍 Trying pdfplumber extraction for {filename}")
             
-            text_content = []
-            for page_num, page in enumerate(pdf_reader.pages):
-                try:
+            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                for page_num, page in enumerate(pdf.pages):
+                    page_text = ""
+                    
+                    # Extract regular text
                     text = page.extract_text()
-                    if text.strip():
-                        text_content.append(text)
-                except Exception as e:
-                    logger.warning(f"Failed to extract page {page_num}: {e}")
-                    continue
+                    if text:
+                        page_text += text
+                    
+                    # Extract tables with better formatting
+                    tables = page.extract_tables()
+                    if tables:
+                        page_text += f"\n\n--- Tables on Page {page_num + 1} ---\n"
+                        for table in tables:
+                            for row in table:
+                                if row:
+                                    page_text += " | ".join(str(cell) if cell else "" for cell in row) + "\n"
+                            page_text += "\n"
+                    
+                    if page_text.strip():
+                        text_content.append(f"--- Page {page_num + 1} ---\n{page_text}")
             
-            full_text = "\n\n".join(text_content)
-            logger.info(f"✅ Extracted {len(full_text)} characters from PDF")
-            return full_text
+            if text_content:
+                full_text = "\n\n".join(text_content)
+                logger.info(f"✅ pdfplumber extracted {len(full_text)} characters from {filename}")
+                return full_text
+                
+        except Exception as e:
+            logger.warning(f"⚠️ pdfplumber extraction failed for {filename}: {e}, falling back to PyPDF2")
+        
+        try:
+            # Method 3: PyPDF2 - Fallback method
+            logger.info(f"🔍 Trying PyPDF2 extraction for {filename}")
+            return await self._extract_from_pdf_fallback(file_content)
             
         except Exception as e:
-            logger.error(f"❌ PDF extraction failed: {e}")
+            logger.error(f"❌ All PDF extraction methods failed for {filename}: {e}")
+            raise
+
+    async def _extract_from_pdf_fallback(self, file_content: bytes) -> str:
+        """Fallback PDF extraction using PyPDF2"""
+        try:
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            text_content = []
+            
+            for page_num, page in enumerate(pdf_reader.pages):
+                try:
+                    page_text = page.extract_text()
+                    if page_text.strip():
+                        text_content.append(f"--- Page {page_num + 1} ---\n{page_text}")
+                except Exception as e:
+                    text_content.append(f"--- Page {page_num + 1} ---\n[Error extracting text: {str(e)}]")
+            
+            full_text = "\n\n".join(text_content)
+            logger.info(f"✅ PyPDF2 fallback extracted {len(full_text)} characters")
+            return full_text
+        
+        except Exception as e:
+            logger.error(f"❌ PyPDF2 fallback extraction failed: {e}")
             raise
     
     async def _extract_from_docx(self, file_content: bytes) -> str:

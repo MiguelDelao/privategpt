@@ -2,7 +2,7 @@
 Document management router
 """
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, List
 import logging
@@ -26,10 +26,8 @@ chunking_service = ChunkingService()
 embedding_service = EmbeddingService()
 
 
-async def get_weaviate_service() -> WeaviateService:
+async def get_weaviate_service(request: Request) -> WeaviateService:
     """Dependency to get Weaviate service from app state"""
-    from fastapi import Request
-    request = Request.scope
     if hasattr(request.app.state, 'weaviate'):
         return request.app.state.weaviate
     raise HTTPException(status_code=503, detail="Weaviate service not available")
@@ -42,7 +40,7 @@ async def upload_document(
     weaviate: WeaviateService = Depends(get_weaviate_service)
 ):
     """
-    Upload and process a document
+    Upload and process a document with progress tracking
     
     Supports PDF, DOCX, and text files.
     Returns document information after processing and storing.
@@ -59,7 +57,8 @@ async def upload_document(
         if not file_content:
             raise HTTPException(status_code=400, detail="Empty file")
         
-        logger.info(f"📁 Processing upload: {file.filename} ({len(file_content)} bytes)")
+        file_size_mb = len(file_content) / 1024 / 1024
+        logger.info(f"📁 Processing upload: {file.filename} ({file_size_mb:.1f}MB)")
         
         # Parse metadata
         import json
@@ -69,6 +68,7 @@ async def upload_document(
             raise HTTPException(status_code=400, detail="Invalid metadata JSON")
         
         # Process document (extract text and chunk)
+        logger.info(f"🔍 Starting text extraction for {file.filename}")
         doc_result = await chunking_service.process_document(
             file_content=file_content,
             content_type=file.content_type or "application/octet-stream",
@@ -76,19 +76,36 @@ async def upload_document(
             metadata=doc_metadata
         )
         
+        chunk_count = len(doc_result["chunks"])
+        logger.info(f"📋 Created {chunk_count} chunks, starting embedding generation...")
+        
         # Initialize embedding service if needed
         if not embedding_service.model:
             await embedding_service.initialize()
         
-        # Generate embeddings for all chunks
+        # Generate embeddings for all chunks with batch processing
         chunk_texts = [chunk["content"] for chunk in doc_result["chunks"]]
-        embeddings = await embedding_service.embed_texts(chunk_texts)
+        
+        # Process embeddings in batches for better memory management
+        batch_size = 50  # Process 50 chunks at a time
+        all_embeddings = []
+        
+        for i in range(0, len(chunk_texts), batch_size):
+            batch_end = min(i + batch_size, len(chunk_texts))
+            batch_texts = chunk_texts[i:batch_end]
+            
+            logger.info(f"🔄 Processing embedding batch {i//batch_size + 1}/{(len(chunk_texts) + batch_size - 1)//batch_size} ({len(batch_texts)} chunks)")
+            
+            batch_embeddings = await embedding_service.embed_texts(batch_texts)
+            all_embeddings.extend(batch_embeddings)
+        
+        logger.info(f"✅ Generated {len(all_embeddings)} embeddings, storing in Weaviate...")
         
         # Store in Weaviate
         chunk_ids = await weaviate.store_document_chunks(
             document_id=doc_result["document_id"],
             chunks=doc_result["chunks"],
-            embeddings=embeddings
+            embeddings=all_embeddings
         )
         
         # Prepare response
@@ -103,7 +120,7 @@ async def upload_document(
         )
         
         processing_time = (time.time() - start_time) * 1000
-        logger.info(f"✅ Document processed in {processing_time:.1f}ms: {file.filename}")
+        logger.info(f"✅ Document processed in {processing_time:.1f}ms: {file.filename} ({chunk_count} chunks)")
         
         return response
         
@@ -327,4 +344,20 @@ async def get_document_chunks(
         raise
     except Exception as e:
         logger.error(f"❌ Failed to get chunks for document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get chunks: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to get chunks: {str(e)}")
+
+
+@router.get("/upload-progress/{document_id}")
+async def get_upload_progress(document_id: str):
+    """
+    Get real-time progress for document processing
+    This would be enhanced with actual progress tracking in a production system
+    """
+    # This is a placeholder - in a real system you'd track progress in Redis/database
+    return {
+        "document_id": document_id,
+        "status": "processing",
+        "progress": 0.5,
+        "current_stage": "Generating embeddings...",
+        "estimated_completion": "2 minutes"
+    } 

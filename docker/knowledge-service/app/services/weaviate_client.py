@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 import os
 from datetime import datetime
 import json
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -20,26 +21,36 @@ class WeaviateService:
         self.collection_name = "PrivateGPTDocuments"
         
     async def initialize(self):
-        """Initialize connection to Weaviate"""
-        try:
-            # Get Weaviate connection details from environment
-            weaviate_url = os.getenv("WEAVIATE_URL", "http://weaviate-db:8080")
-            
-            self.client = weaviate.Client(
-                url=weaviate_url,
-                timeout_config=(5, 15)  # (connection, read) timeout
-            )
-            
-            # Test connection
-            if self.client.is_ready():
-                logger.info(f"✅ Connected to Weaviate at {weaviate_url}")
-                await self._ensure_schema()
-            else:
-                raise Exception("Weaviate is not ready")
+        """Initialize connection to Weaviate with retry logic"""
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                # Get Weaviate connection details from environment
+                weaviate_url = os.getenv("WEAVIATE_URL", "http://weaviate-db:8080")
                 
-        except Exception as e:
-            logger.error(f"❌ Failed to connect to Weaviate: {e}")
-            raise
+                self.client = weaviate.Client(
+                    url=weaviate_url,
+                    timeout_config=(10, 30)  # Increased timeouts: (connection, read)
+                )
+                
+                # Test connection
+                if self.client.is_ready():
+                    logger.info(f"✅ Connected to Weaviate at {weaviate_url}")
+                    await self._ensure_schema()
+                    return  # Success, exit retry loop
+                else:
+                    raise Exception("Weaviate is not ready")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Weaviate connection attempt {attempt + 1}/{max_retries} failed: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"🔄 Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"❌ Failed to connect to Weaviate after {max_retries} attempts")
+                    raise
     
     async def _ensure_schema(self):
         """Ensure the document schema exists in Weaviate"""
@@ -255,35 +266,53 @@ class WeaviateService:
             return None
     
     async def list_documents(self, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
-        """List all documents with pagination"""
+        """List all documents with pagination - optimized version"""
         try:
-            # Calculate offset
-            offset = (page - 1) * page_size
-            
-            # Get unique documents (group by documentId)
+            # Get a large sample of chunks to find unique documents
+            # This is much faster than aggregation on large datasets
             result = (
                 self.client.query
-                .aggregate(self.collection_name)
-                .with_group_by_filter(["documentId"])
-                .with_fields("groupedBy { value } meta { count }")
+                .get(self.collection_name, ["documentId", "filename", "contentType", "createdAt", "metadata"])
+                .with_limit(1000)  # Get enough to find all unique documents
                 .do()
             )
             
-            # TODO: Implement proper pagination for grouped results
-            # This is a simplified version
-            groups = result["data"]["Aggregate"][self.collection_name]
+            chunks = result["data"]["Get"][self.collection_name]
             
-            documents = []
-            for group in groups[:page_size]:
-                doc_id = group["groupedBy"]["value"]
-                doc_info = await self.get_document_info(doc_id)
-                if doc_info:
-                    doc_info["chunk_count"] = group["meta"]["count"]
-                    documents.append(doc_info)
+            # Group by document ID to get unique documents
+            document_map = {}
+            document_chunk_counts = {}
+            
+            for chunk in chunks:
+                doc_id = chunk["documentId"]
+                if doc_id not in document_map:
+                    document_map[doc_id] = {
+                        "id": doc_id,
+                        "filename": chunk.get("filename", ""),
+                        "content_type": chunk.get("contentType", ""),
+                        "created_at": chunk.get("createdAt", ""),
+                        "metadata": json.loads(chunk.get("metadata", "{}"))
+                    }
+                    document_chunk_counts[doc_id] = 0
+                document_chunk_counts[doc_id] += 1
+            
+            # Add chunk counts
+            for doc_id in document_map:
+                document_map[doc_id]["chunk_count"] = document_chunk_counts[doc_id]
+            
+            # Convert to list and sort by creation time (newest first)
+            documents = list(document_map.values())
+            documents.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            
+            # Apply pagination
+            total = len(documents)
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            paginated_documents = documents[start_idx:end_idx]
             
             return {
-                "documents": documents,
-                "total": len(groups),
+                "documents": paginated_documents,
+                "total": total,
                 "page": page,
                 "page_size": page_size
             }

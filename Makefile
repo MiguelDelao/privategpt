@@ -214,6 +214,14 @@ logs-ollama:
 	@echo "Showing ollama logs..."
 	@docker-compose logs -f ollama
 
+logs-weaviate:
+	@echo "Showing weaviate db logs..."
+	@docker-compose logs -f weaviate-db
+
+logs-knowledge:
+	@echo "Showing knowledge service logs..."
+	@docker-compose logs -f knowledge-service
+
 status:
 	@echo "PrivateGPT Service Status"
 	@echo "========================="

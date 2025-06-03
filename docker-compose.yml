@@ -60,6 +60,11 @@ services:
     environment:
       - WEAVIATE_URL=http://weaviate-db:8080
       - BGE_EMBEDDING_URL=http://t2v-transformers:8080
+      - OLLAMA_URL=http://ollama-service:11434
+      - MODEL_MODE=${MODEL_MODE:-dev}
+      - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3:8b}
+      - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3:70b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL_DEV:-llama3:8b}
       - LOG_LEVEL=INFO
       - API_TITLE=Knowledge Service API
       - API_VERSION=1.0.0
@@ -117,9 +122,14 @@ services:
     container_name: ollama-service
     ports:
       - "11434:11434"
+    environment:
+      - MODEL_MODE=${MODEL_MODE:-dev}
+      - OLLAMA_MODEL_DEV=${OLLAMA_MODEL_DEV:-llama3:8b}
+      - OLLAMA_MODEL_PROD=${OLLAMA_MODEL_PROD:-llama3:70b}
     volumes:
       - ollama_data:/root/.ollama
       - ./data/models:/models
+      - ./scripts:/scripts
     networks:
       - legal-ai-network
     restart: unless-stopped

@@ -7,9 +7,8 @@ import os
 import streamlit as st
 from datetime import datetime
 from utils.auth_client import AuthClient
-from utils.rag_engine import RAGEngine
-from utils.document_processor import DocumentProcessor
 from utils.logger import Logger
+from utils.document_processor import DocumentProcessor
 
 # --- Application Constants ---
 APP_TITLE = "PrivateGPT Legal AI Suite"
@@ -31,10 +30,6 @@ def get_auth_client():
     return AuthClient(AUTH_SERVICE_URL)
 
 @st.cache_resource
-def get_rag_engine():
-    return RAGEngine(OLLAMA_URL, WEAVIATE_URL)
-
-@st.cache_resource
 def get_document_processor():
     return DocumentProcessor()
 
@@ -53,6 +48,8 @@ def initialize_session_state():
         st.session_state.user_role = None
     if "access_token" not in st.session_state:
         st.session_state.access_token = None
+    if "user_info" not in st.session_state:
+        st.session_state.user_info = {"user": {"email": "unknown@example.com", "role": "user"}}
     
     # App-specific data
     if "chat_history" not in st.session_state:
@@ -67,53 +64,6 @@ def initialize_session_state():
     # For passing messages between pages
     if "login_error_message" not in st.session_state:
         st.session_state.login_error_message = None
-
-def add_demo_documents():
-    """Add some demo documents for testing"""
-    if len(st.session_state.get("uploaded_documents", [])) == 0:
-        demo_docs = [
-            {
-                "name": "Alpha Corp Contract.pdf",
-                "status": "Processed",
-                "ingested_at": datetime(2024, 1, 15, 10, 30),
-                "size": "2.3MB",
-                "type": "contract",
-                "document_id": "demo-001",
-                "client_matter": "Contract Review",
-                "uploaded_by": "demo@lawfirm.com"
-            },
-            {
-                "name": "Smith v Jones Case Law.pdf",
-                "status": "Processed", 
-                "ingested_at": datetime(2024, 1, 10, 14, 15),
-                "size": "1.8MB",
-                "type": "case_law",
-                "document_id": "demo-002",
-                "client_matter": "Case Analysis",
-                "uploaded_by": "lawyer1@lawfirm.com"
-            },
-            {
-                "name": "IP Filing Motion.docx",
-                "status": "Processed",
-                "ingested_at": datetime(2024, 1, 8, 9, 45),
-                "size": "856KB",
-                "type": "filing",
-                "document_id": "demo-003",
-                "client_matter": "General Research",
-                "uploaded_by": "admin@lawfirm.com"
-            },
-            {
-                "name": "Legal Research Memo.txt",
-                "status": "Processed",
-                "ingested_at": datetime(2024, 1, 5, 16, 20),
-                "size": "432KB",
-                "type": "memo",
-                "document_id": "demo-004",
-                "client_matter": "Contract Review",
-                "uploaded_by": "lawyer1@lawfirm.com"
-            }
-        ]
-        st.session_state.uploaded_documents = demo_docs
 
 def require_auth(admin_only=False, main_app_file="app.py"):
     """
@@ -141,6 +91,7 @@ def require_auth(admin_only=False, main_app_file="app.py"):
         if not user_info:
             raise Exception("Invalid token")
         # Update session state with fresh user info
+        st.session_state.user_info = user_info  # Set the complete user_info object
         st.session_state.user_email = user_info.get("user", {}).get("email", st.session_state.user_email)
         st.session_state.user_role = user_info.get("user", {}).get("role", st.session_state.user_role)
     except Exception:

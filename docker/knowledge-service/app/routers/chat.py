@@ -2,7 +2,7 @@
 Chat router for RAG-powered conversations
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional, List
 import logging
 import time
@@ -21,10 +21,8 @@ router = APIRouter()
 embedding_service = EmbeddingService()
 
 
-async def get_weaviate_service() -> WeaviateService:
+async def get_weaviate_service(request: Request) -> WeaviateService:
     """Dependency to get Weaviate service from app state"""
-    from fastapi import Request
-    request = Request.scope
     if hasattr(request.app.state, 'weaviate'):
         return request.app.state.weaviate
     raise HTTPException(status_code=503, detail="Weaviate service not available")
@@ -258,7 +256,16 @@ async def _generate_llm_response(
     """
     try:
         ollama_url = os.getenv("OLLAMA_URL", "http://ollama-service:11434")
-        model_name = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+        
+        # Smart model selection based on MODEL_MODE
+        model_mode = os.getenv("MODEL_MODE", "dev")
+        if model_mode == "prod":
+            model_name = os.getenv("OLLAMA_MODEL_PROD", "llama3:70b")
+        else:
+            model_name = os.getenv("OLLAMA_MODEL_DEV", "llama3:8b")
+        
+        # Fallback to direct OLLAMA_MODEL if set
+        model_name = os.getenv("OLLAMA_MODEL", model_name)
         
         # Prepare the request for Ollama
         ollama_request = {
@@ -307,6 +314,16 @@ async def list_available_models():
     try:
         ollama_url = os.getenv("OLLAMA_URL", "http://ollama-service:11434")
         
+        # Smart model selection based on MODEL_MODE
+        model_mode = os.getenv("MODEL_MODE", "dev")
+        if model_mode == "prod":
+            current_model = os.getenv("OLLAMA_MODEL_PROD", "llama3:70b")
+        else:
+            current_model = os.getenv("OLLAMA_MODEL_DEV", "llama3:8b")
+        
+        # Fallback to direct OLLAMA_MODEL if set
+        current_model = os.getenv("OLLAMA_MODEL", current_model)
+        
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{ollama_url}/api/tags")
             
@@ -314,19 +331,35 @@ async def list_available_models():
                 models_data = response.json()
                 return {
                     "models": models_data.get("models", []),
-                    "current_model": os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+                    "current_model": current_model,
+                    "model_mode": model_mode,
+                    "available_models": {
+                        "dev": os.getenv("OLLAMA_MODEL_DEV", "llama3:8b"),
+                        "prod": os.getenv("OLLAMA_MODEL_PROD", "llama3:70b")
+                    }
                 }
             else:
                 return {
                     "models": [],
-                    "current_model": os.getenv("OLLAMA_MODEL", "llama3.2:latest"),
+                    "current_model": current_model,
+                    "model_mode": model_mode,
                     "error": "Could not fetch models from Ollama service"
                 }
                 
     except Exception as e:
         logger.error(f"❌ Failed to list models: {e}")
+        
+        # Smart model selection for error response
+        model_mode = os.getenv("MODEL_MODE", "dev")
+        if model_mode == "prod":
+            current_model = os.getenv("OLLAMA_MODEL_PROD", "llama3:70b")
+        else:
+            current_model = os.getenv("OLLAMA_MODEL_DEV", "llama3:8b")
+        current_model = os.getenv("OLLAMA_MODEL", current_model)
+        
         return {
             "models": [],
-            "current_model": os.getenv("OLLAMA_MODEL", "llama3.2:latest"),
+            "current_model": current_model,
+            "model_mode": model_mode,
             "error": str(e)
         } 

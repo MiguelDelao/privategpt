@@ -8,11 +8,12 @@ import pandas as pd
 import plotly.express as px
 import sys
 import os
+import requests
 from datetime import datetime
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, VECTOR_DB_NAME, WORKFLOW_ENGINE, VERSION_INFO,
-    initialize_session_state, require_auth, apply_page_styling, add_demo_documents,
-    display_navigation_sidebar, get_logger, get_rag_engine
+    initialize_session_state, require_auth, apply_page_styling,
+    display_navigation_sidebar, get_logger
 )
 
 # Page configuration
@@ -29,9 +30,6 @@ require_auth(main_app_file="app.py")
 
 # Apply consistent styling
 apply_page_styling()
-
-# Add demo documents
-add_demo_documents()
 
 # Add parent directory to path to import pages_utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -51,34 +49,54 @@ def get_recent_activities(limit=5):
     if "uploaded_documents" in st.session_state and st.session_state.uploaded_documents:
         last_doc = st.session_state.uploaded_documents[0]
         demo_activities.insert(0, {
-            "timestamp": last_doc.get("ingested_at", datetime.now()), 
-            "user": last_doc.get("uploaded_by", st.session_state.user_email), 
-            "action": f"Processed '{last_doc['name']}'",
+            "timestamp": last_doc.get("Ingested At", last_doc.get("ingested_at", datetime.now())), 
+            "user": last_doc.get("Uploaded By", last_doc.get("uploaded_by", st.session_state.user_email)), 
+            "action": f"Processed '{last_doc.get('Name', last_doc.get('name', 'Unknown Document'))}'",
             "type": "document"
         })
     return sorted(demo_activities, key=lambda x: x["timestamp"], reverse=True)[:limit]
 
 def get_document_statistics():
-    """Get document statistics from RAG Engine or session state"""
+    """Get document statistics from Knowledge Service API"""
     try:
-        rag_engine = get_rag_engine()
-        stats = rag_engine.get_document_stats()
-        # Augment with session data if needed for a more complete picture during demo
-        if not stats["total_documents"] and "uploaded_documents" in st.session_state:
-            stats["total_documents"] = len(st.session_state.uploaded_documents)
+        # Try to get stats from the knowledge service API
+        response = requests.get("http://knowledge-service:8000/documents/", timeout=10)
+        if response.status_code == 200:
+            result = response.json()
+            documents = result.get("documents", [])
+            
+            # Calculate statistics
+            total_documents = len(documents)
             type_counts = {}
-            for doc in st.session_state.uploaded_documents:
-                doc_type = doc.get("type", "unknown")
+            total_size = 0
+            
+            for doc in documents:
+                # Count document types
+                doc_type = doc.get("content_type", "unknown").replace("application/", "")
                 type_counts[doc_type] = type_counts.get(doc_type, 0) + 1
-            stats["document_types"] = type_counts
-        return stats
+                
+                # Calculate average size (if available)
+                size_mb = doc.get("size_mb", 0)
+                total_size += size_mb
+            
+            avg_doc_size_kb = (total_size * 1024 / total_documents) if total_documents > 0 else 0
+            
+            return {
+                "total_documents": total_documents,
+                "document_types": type_counts,
+                "average_doc_size_kb": avg_doc_size_kb
+            }
+        else:
+            # Fallback to session state if API fails
+            raise Exception(f"API returned {response.status_code}")
+            
     except Exception as e:
-        # Fallback to session state if RAG engine fails (e.g. not fully started)
-        # get_logger().log_error(st.session_state.user_email, f"Dashboard RAG stats error: {e}", "dashboard_stats")
+        # Fallback to session state if knowledge service fails
+        get_logger().log_error(st.session_state.user_email, f"Dashboard API stats error: {e}", "dashboard_stats")
         total_docs = len(st.session_state.get("uploaded_documents", []))
         type_counts = {}
         for doc in st.session_state.get("uploaded_documents", []):
-            doc_type = doc.get("type", "unknown")
+            doc_type = doc.get("Type", doc.get("type", "unknown"))
             type_counts[doc_type] = type_counts.get(doc_type, 0) + 1
         return {"total_documents": total_docs, "document_types": type_counts, "average_doc_size_kb": 0}
 
