@@ -15,9 +15,11 @@ privategpt/
 ├── 📄 Makefile                          # Management commands (optional)
 ├── 📄 requirements.txt                   # Python dependencies for some host scripts (e.g., download_test_datasets.py)
 ├── 📄 download_test_datasets.py          # Script to download test datasets
-├── 📄 weaviate_service.py                # Host script related to Weaviate (details TBD)
 ├── 📄 client_example.py                  # Example client for interacting with services
 ├── 📄 .gitignore                         # Specifies intentionally untracked files for Git
+├── 📄 KNOWLEDGE_SERVICE_COMPLETION.md    # Knowledge service implementation status
+├── 📄 README_weaviate_service.md         # Weaviate service documentation
+├── 📄 start_service.sh                   # Service startup script
 │
 ├── 🐳 docker/                           # Container definitions
 │   ├── auth-service/                    # JWT Authentication service
@@ -45,6 +47,27 @@ privategpt/
 │   │       ├── document_processor.py    # Text extraction from documents
 │   │       └── logger.py                # UI-specific logging
 │   │
+│   ├── knowledge-service/               # Document processing microservice
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── README.md
+│   │   └── app/                         # FastAPI application
+│   │       ├── __init__.py
+│   │       ├── main.py                  # FastAPI entry point
+│   │       ├── models/                  # Pydantic data models
+│   │       │   ├── __init__.py
+│   │       │   └── schemas.py           # API schemas
+│   │       ├── routers/                 # API endpoint definitions
+│   │       │   ├── __init__.py
+│   │       │   ├── documents.py         # Document CRUD operations
+│   │       │   ├── search.py            # Search endpoints
+│   │       │   └── chat.py              # RAG chat endpoints
+│   │       └── services/                # Business logic layer
+│   │           ├── __init__.py
+│   │           ├── weaviate_client.py   # Vector DB operations
+│   │           ├── embedding.py         # Embedding generation
+│   │           └── chunking.py          # Document chunking
+│   │
 │   └── n8n/                            # Workflow automation (manual workflow import)
 │       └── Dockerfile                   # (Workflows are manually imported, not in codebase)
 │
@@ -52,40 +75,37 @@ privategpt/
 │   ├── traefik/                        # Reverse proxy config
 │   │   └── traefik.yml                  # Static Traefik configuration
 │   │
-│   ├── prometheus/                     # Metrics collection
-│   │   ├── prometheus.yml              # Main Prometheus config
-│   │   └── alerts.yml                  # Alerting rules
+│   ├── elasticsearch/                  # Search & analytics engine
+│   │   └── elasticsearch.yml           # Elasticsearch configuration
 │   │
-│   ├── grafana/                        # Monitoring dashboards
-│   │   ├── datasources/
-│   │   │   └── datasources.yml         # Grafana datasource definitions (Prometheus, VictoriaLogs)
-│   │   └── dashboards/
-│   │       ├── dashboards.yml          # Grafana dashboard provider configuration
-│   │       └── json/                   # Dashboard JSON files
-│   │           ├── docker-services-logs-dashboard.json
-│   │           ├── legal-compliance-dashboard.json
-│   │           └── privategpt-dashboard.json
+│   ├── logstash/                       # Log processing pipeline
+│   │   ├── logstash.conf               # Main logstash pipeline
+│   │   └── logstash.yml                # Logstash service configuration
 │   │
-│   ├── fluent-bit/                     # Log collection and forwarding
-│   │   ├── fluent-bit.conf             # Fluent Bit main configuration
-│   │   └── parsers.conf                # Fluent Bit parser configurations
+│   ├── kibana/                         # Log visualization & dashboards
+│   │   └── kibana.yml                  # Kibana configuration
 │   │
-│   └── alertmanager/                   # Alert management (config not shown, default assumed)
-│       └── alertmanager.yml            # (If specific config is needed)
+│   ├── filebeat/                       # Log collection agent
+│   │   └── filebeat.yml                # Filebeat configuration
+│   │
+│   ├── metricbeat/                     # System metrics collection
+│   │   └── metricbeat.yml              # Metricbeat configuration
+│   │
+│   └── n8n/                           # n8n workflow configurations
+│       └── workflows/                  # n8n workflow definitions
 │
 ├── 📊 data/                            # Application data (persistent volumes typically map here or similar)
 │   ├── uploads/                        # Document upload staging (used by Streamlit and n8n)
 │   └── backups/                        # Placeholder for automated backups
 │
 ├── 📋 logs/                            # Host-mapped log directories for services
-│   ├── audit/                          # (Potentially for auth-service audit logs if mapped)
-│   ├── security/                       # (Potentially for auth-service security alerts if mapped)
 │   ├── auth/                           # Logs from auth-service
 │   ├── app/                            # Logs from streamlit-app
 │   ├── ollama/                         # Logs from ollama service
 │   ├── weaviate/                       # Logs from weaviate service
 │   ├── n8n/                            # Logs from n8n service
-│   └── grafana/                        # Logs from grafana service
+│   ├── knowledge-service/              # Logs from knowledge service
+│   └── grafana/                        # Legacy logs directory
 │
 ├── 📚 docs/                            # Documentation (placeholder, not explored)
 │   ├── api/
@@ -93,9 +113,13 @@ privategpt/
 │   ├── deployment/
 │   └── user-manual/
 │
-└── 🧪 scripts/                         # Utility scripts
-    ├── init-ollama.sh                 # Initializes Ollama models
-    └── setup-n8n-workflows.sh         # Prepares for manual n8n workflow import
+├── 🧪 scripts/                         # Utility scripts
+│   ├── init-ollama.sh                 # Initializes Ollama models
+│   ├── setup-n8n-workflows.sh         # Prepares for manual n8n workflow import
+│   └── setup-dashboard.sh             # Sets up ELK monitoring dashboards
+│
+├── 🗄️ knowledge-service-data/          # Knowledge service persistent data
+└── 📁 test-documents/                  # Test documents for system validation
 ```
 
 ## 📋 Key Components
@@ -104,18 +128,19 @@ privategpt/
 
 | Service            | Description                               | Exposed Port | Internal Port | Purpose                                  |
 |--------------------|-------------------------------------------|--------------|---------------|------------------------------------------|
-| **traefik**        | Reverse proxy & load balancer             | 80, 443, 8080| 80, 443, 8080 | Unified access point, Dashboard          |
+| **traefik**        | Reverse proxy & load balancer             | 8080, 443    | 8080, 443     | Unified access point, Dashboard          |
 | **auth-service**   | JWT authentication                        | (via Traefik)| 8000          | User management & security               |
 | **streamlit-app**  | Web UI application                        | (via Traefik)| 8501          | Main user interface                      |
-| **ollama**         | LLM serving (LLaMA-3)                     | (via Traefik)| 11434         | AI inference engine                      |
-| **weaviate**       | Vector database                           | (via Traefik)| 8080          | Document search & RAG                    |
+| **knowledge-service**| Document processing microservice         | (via Traefik)| 8000          | Document upload, RAG, search             |
+| **ollama-service** | LLM serving (LLaMA-3)                     | (via Traefik)| 11434         | AI inference engine                      |
+| **weaviate-db**    | Vector database                           | 8081         | 8080          | Document search & RAG                    |
 | **t2v-transformers**| BGE embeddings for Weaviate             | (internal)   | 8080          | Text embedding generation                |
-| **n8n**            | Document processing & workflow automation | (via Traefik)| 5678          | Workflow automation (manual import)      |
-| **prometheus**     | Metrics collection                        | (via Traefik)| 9090          | System monitoring                        |
-| **grafana**        | Visualization & dashboards                | (via Traefik)| 3000          | Monitoring dashboards                    |
-| **victorialogs**   | Log aggregation                           | (via Traefik)| 9428          | Centralized logging                      |
-| **fluent-bit**     | Log collection and forwarding             | (internal)   | 2020 (HTTP)   | Log shipping to VictoriaLogs             |
-| **alertmanager**   | Alert routing                             | (via Traefik)| 9093          | Compliance & system alerts               |
+| **n8n-automation** | Document processing & workflow automation | (via Traefik)| 5678          | Workflow automation (manual import)      |
+| **elasticsearch**  | Search & analytics engine                 | 9200         | 9200          | Log storage and search                   |
+| **logstash**       | Log processing pipeline                   | 5044         | 5044          | Log parsing and routing                  |
+| **kibana**         | Log visualization & dashboards            | (via Traefik)| 5601          | Monitoring dashboards and log analysis   |
+| **filebeat**       | Log collection agent                      | (internal)   | (internal)    | Container log collection                 |
+| **metricbeat**     | System metrics collection                 | (internal)   | (internal)    | System and container metrics             |
 
 ### 🔐 Security Features
 
@@ -126,12 +151,14 @@ privategpt/
 - **PII Redaction:** Automatic removal of sensitive data from logs
 - **Encryption:** LUKS disk encryption for all persistent data
 
-### 📊 Monitoring & Compliance
+### 📊 Monitoring & Compliance (ELK Stack)
 
-- **Legal Compliance Metrics:** Authentication, document access, AI usage
-- **Performance Monitoring:** Response times, resource usage, availability
-- **Security Alerts:** Failed logins, unauthorized access, data breaches
-- **Business Intelligence:** Billable hours, client usage, ROI analysis
+- **Elasticsearch:** Centralized log storage and full-text search
+- **Logstash:** Log parsing, transformation, and routing
+- **Kibana:** Interactive dashboards and log visualization
+- **Filebeat:** Automatic container log collection
+- **Metricbeat:** System performance and resource monitoring
+- **Custom Dashboards:** Legal compliance metrics and system health
 
 ### 🔄 Data Flow
 
@@ -140,28 +167,25 @@ flowchart TD
     A[User] --> B(Traefik Gateway)
     B --> C[Streamlit UI]
     C --> D[Auth Service]
-    C --> E[Weaviate]
-    C --> F[Ollama]
+    C --> E[Knowledge Service]
+    E --> F[Weaviate DB]
+    E --> G[Ollama LLM]
     
     subgraph "Background Processing / Alternative Ingestion"
-        G[External File Drop /data/uploads] --> N8N[n8n Workflows]
-        N8N --> E
+        H[External File Drop /data/uploads] --> I[n8n Workflows]
+        I --> E
     end
 
-    E --> H[t2v-transformers BGE Embeddings]
+    F --> J[t2v-transformers BGE Embeddings]
     
-    subgraph "Log Management"
-        AllServices[All Docker Services] --> FB[Fluent Bit]
-        FB --> VL[VictoriaLogs]
+    subgraph "ELK Monitoring Stack"
+        AllServices[All Docker Services] --> K[Filebeat]
+        AllServices --> L[Metricbeat]
+        K --> M[Logstash]
+        L --> M
+        M --> N[Elasticsearch]
+        N --> O[Kibana]
     end
-    
-    subgraph "Metrics & Alerting"
-        AllServices --> P[Prometheus]
-        P --> GR[Grafana]
-        P --> AM[Alertmanager]
-    end
-
-    VL --> GR
 ```
 
 ## 🚀 Deployment Process
@@ -170,8 +194,9 @@ flowchart TD
 2. **Service Deployment:** Run `docker-compose up -d` to start all services
 3. **Model Download:** Ollama pulls LLaMA-3 model (8B for dev, 70B for prod)
 4. **Schema Initialization:** Weaviate creates document schema
-5. **User Creation:** Default admin user created automatically
-6. **Health Verification:** All services checked for proper startup
+5. **ELK Stack Setup:** Automatic index patterns and dashboard creation
+6. **User Creation:** Default admin user created automatically
+7. **Health Verification:** All services checked for proper startup
 
 ## 📈 Scaling Considerations
 
@@ -199,10 +224,11 @@ flowchart TD
 - Volume mounts and persistence
 - Health checks and restart policies
 
-### Monitoring Configuration
-- **Prometheus:** Service discovery and scraping
-- **Grafana:** Legal-specific dashboards
-- **AlertManager:** Compliance violation alerts
+### ELK Stack Configuration
+- **Elasticsearch:** Data storage and indexing
+- **Logstash:** Log processing pipelines
+- **Kibana:** Dashboard definitions and data views
+- **Beats:** Log and metric collection configuration
 
 ## 🛡️ Security Architecture
 
@@ -229,4 +255,4 @@ flowchart TD
 
 ---
 
-This structure provides a complete, production-ready legal AI system with comprehensive compliance monitoring and professional-grade security controls. 
+This structure provides a complete, production-ready legal AI system with comprehensive compliance monitoring and professional-grade security controls using the ELK stack for observability. 

@@ -68,6 +68,8 @@ services:
       - LOG_LEVEL=INFO
       - API_TITLE=Knowledge Service API
       - API_VERSION=1.0.0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
     volumes:
       - ./knowledge-service-data:/app/data
       - ./logs/knowledge-service:/app/logs
@@ -82,6 +84,7 @@ services:
     depends_on:
       - weaviate-db
       - t2v-transformers
+      - redis
     labels:
       - "logging.service=knowledge-service"
 
@@ -333,8 +336,65 @@ services:
     labels:
       - "logging.service=metricbeat"
 
+  # Redis - Message Broker and Progress Storage
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    networks:
+      - private-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Celery Worker - Background Document Processing
+  celery-worker:
+    build:
+      context: ./docker/knowledge-service
+      dockerfile: Dockerfile
+    container_name: celery-worker
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - WEAVIATE_URL=http://weaviate-db:8080
+    volumes:
+      - ./docker/knowledge-service:/app
+    depends_on:
+      - redis
+      - weaviate-db
+    networks:
+      - private-network
+    restart: unless-stopped
+
+  # Celery Flower - Task Monitoring (Optional)
+  celery-flower:
+    build:
+      context: ./docker/knowledge-service
+      dockerfile: Dockerfile
+    container_name: celery-flower
+    command: celery -A app.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - private-network
+
 networks:
   legal-ai-network:
+    driver: bridge
+  private-network:
     driver: bridge
 
 volumes:
@@ -348,3 +408,4 @@ volumes:
 
   # SSL certificates
   traefik-certs:
+  redis_data:

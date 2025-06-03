@@ -111,9 +111,9 @@ OLLAMA_MODEL_PROD=llama3:70b    # Production (requires ~40GB VRAM)
 After setup completion, access your Legal AI system:
 
 - **🌐 Main Application:** http://localhost/
-- **📊 Monitoring Dashboard:** http://localhost/grafana
+- **📊 Monitoring Dashboard:** http://localhost/kibana
 - **🔄 Document Workflows:** http://localhost/n8n
-- **📈 System Metrics:** http://localhost/prometheus
+- **📋 Log Analysis:** http://localhost/kibana/app/discover
 
 **Default Login:** `admin@legal-ai.local` / `admin`
 
@@ -194,11 +194,11 @@ sudo systemctl status docker
 - System performance and availability
 - Compliance violations and investigations
 
-### Grafana Dashboards
+### ELK Stack Dashboards
 
-1. **Executive Dashboard:** Usage, ROI, compliance scores
-2. **Compliance Dashboard:** Audit trails, security events
-3. **Operations Dashboard:** System health, performance
+1. **System Monitor Dashboard:** Container logs, service health, performance metrics
+2. **Log Discovery:** Real-time log analysis and search capabilities
+3. **Compliance Dashboard:** Audit trails, security events, legal-specific metrics
 
 ## 🔧 Configuration
 
@@ -305,6 +305,9 @@ print(hash_password('newpassword123'))
 ```bash
 # System health
 curl http://localhost/health
+
+# ELK Stack health
+curl http://localhost:9200/_cluster/health
 
 # Service status
 docker-compose ps
