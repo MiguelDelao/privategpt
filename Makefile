@@ -77,10 +77,55 @@ setup: init
 	@mkdir -p data/uploads logs/{auth,app,ollama,weaviate,n8n,grafana}
 	@echo "Created directories"
 	@$(MAKE) start
+	@echo "Waiting for Ollama service to be ready..."
+	@$(MAKE) wait-for-ollama
+	@echo "Downloading required models..."
+	@$(MAKE) download-models
 	@echo "Creating custom dashboard..."
 	@chmod +x scripts/setup-dashboard.sh
 	@./scripts/setup-dashboard.sh > /dev/null 2>&1 && echo "✅ Dashboard ready" || echo "⚠️ Dashboard setup had issues"
 	@echo "✅ Setup complete - access dashboard via 'make elk-status'"
+
+# Wait for Ollama service to be ready
+wait-for-ollama:
+	@echo "Waiting for Ollama service to be ready..."
+	@max_attempts=30; \
+	attempt=0; \
+	while [ $$attempt -lt $$max_attempts ]; do \
+		if docker exec ollama-service ollama list >/dev/null 2>&1; then \
+			echo "✅ Ollama service is ready"; \
+			break; \
+		fi; \
+		attempt=$$((attempt + 1)); \
+		echo "Attempt $$attempt/$$max_attempts - Ollama not ready yet, waiting 2 seconds..."; \
+		sleep 2; \
+	done; \
+	if [ $$attempt -eq $$max_attempts ]; then \
+		echo "❌ Ollama service failed to start within 60 seconds"; \
+		exit 1; \
+	fi
+
+download-models:
+	@echo "Downloading models for current mode..."
+	@if docker ps | grep -q ollama-service; then \
+		mode=$$(grep "MODEL_MODE" .env 2>/dev/null | cut -d'=' -f2 || echo "dev"); \
+		if [ "$$mode" = "prod" ]; then \
+			model=$$(grep "OLLAMA_MODEL_PROD" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.1:70b"); \
+		else \
+			model=$$(grep "OLLAMA_MODEL_DEV" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.2:8b"); \
+		fi; \
+		echo "Checking if model $$model is already downloaded..."; \
+		if docker exec ollama-service ollama list | grep -q "$$model"; then \
+			echo "✅ Model $$model already exists"; \
+		else \
+			echo "📥 Downloading model $$model (this may take several minutes)..."; \
+			docker exec ollama-service ollama pull "$$model"; \
+			echo "✅ Model $$model downloaded successfully"; \
+		fi; \
+	else \
+		echo "❌ Ollama service not running. Start with 'make start' first"; \
+		exit 1; \
+	fi
 
 # ELK Stack Setup Commands (Optional)
 
@@ -389,15 +434,6 @@ switch-mode:
 		fi; \
 	else \
 		echo "⚠️  No .env file found. Run 'make init' first"; \
-		exit 1; \
-	fi
-
-download-models:
-	@echo "Downloading models for current mode..."
-	@if docker ps | grep -q ollama-service; then \
-		docker exec ollama-service /scripts/init-ollama.sh; \
-	else \
-		echo "❌ Ollama service not running. Start with 'make start' first"; \
 		exit 1; \
 	fi
 
