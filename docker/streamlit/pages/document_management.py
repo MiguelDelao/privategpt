@@ -1,6 +1,6 @@
 """
 PrivateGPT Legal AI - Document Management Page
-Clean and simple document management interface
+Modern table-style document management interface
 """
 
 import streamlit as st
@@ -35,11 +35,64 @@ require_auth()
 # Knowledge Service Configuration
 KNOWLEDGE_SERVICE_URL = os.getenv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8000")
 
+def fetch_documents_from_api():
+    """Fetch documents from the knowledge service API."""
+    logger = get_logger()
+    try:
+        response = requests.get(f"{KNOWLEDGE_SERVICE_URL}/documents/", timeout=60)
+        if response.status_code == 200:
+            data = response.json()
+            documents = data.get("documents", [])
+            return documents
+        else:
+            logger.log_error(
+                user_email=st.session_state.get("user_email", "system"),
+                error_message=f"Failed to fetch documents: {response.status_code} - {response.text}",
+                error_type="api_fetch_documents"
+            )
+            return []
+    except requests.exceptions.RequestException as e:
+        logger.log_error(
+            user_email=st.session_state.get("user_email", "system"),
+            error_message=f"Network error fetching documents: {str(e)}",
+            error_type="api_fetch_documents_network"
+        )
+        return []
+    except Exception as e:
+        logger.log_error(
+            user_email=st.session_state.get("user_email", "system"),
+            error_message=f"Unexpected error fetching documents: {str(e)}",
+            error_type="api_fetch_documents_unexpected"
+        )
+        return []
+
+def delete_document_from_api(document_id: str):
+    """Delete a document using the knowledge service API."""
+    logger = get_logger()
+    try:
+        response = requests.delete(f"{KNOWLEDGE_SERVICE_URL}/documents/{document_id}", timeout=30)
+        if response.status_code == 200:
+            return True, "Document deleted successfully."
+        elif response.status_code == 404:
+            return False, "Document not found."
+        else:
+            error_detail = response.json().get("detail", response.text)
+            return False, f"Failed to delete: {error_detail}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Network error: {str(e)}"
+    except Exception as e:
+        return False, f"Unexpected error: {str(e)}"
+
 def upload_to_knowledge_service(uploaded_file, metadata=None, progress_callback=None):
     """Upload file to the knowledge service API with progress tracking"""
     try:
-        # Prepare the file data - be more explicit about content type
+        # Prepare the file data
         content_type = uploaded_file.type if uploaded_file.type else "application/octet-stream"
+        
+        # Debug logging
+        print(f"DEBUG: Uploading file: {uploaded_file.name}")
+        print(f"DEBUG: Content type: {content_type}")
+        print(f"DEBUG: File size: {len(uploaded_file.getvalue())} bytes")
         
         # Prepare files dict for multipart upload
         files = {
@@ -50,14 +103,25 @@ def upload_to_knowledge_service(uploaded_file, metadata=None, progress_callback=
             )
         }
         
-        # Prepare form data
-        data = {"metadata": metadata or "{}"}
+        # Prepare form data - ensure metadata is JSON string
+        if metadata:
+            if isinstance(metadata, str):
+                data = {"metadata": metadata}
+            else:
+                import json
+                data = {"metadata": json.dumps(metadata)}
+        else:
+            data = {"metadata": "{}"}
+        
+        print(f"DEBUG: Metadata: {data['metadata']}")
         
         if progress_callback:
             progress_callback("📤 Uploading to knowledge service...", 0.1)
         
-        # Upload to knowledge service with increased timeout for large files
-        timeout = max(120, len(uploaded_file.getvalue()) / 1024 / 1024 * 10)  # 10 seconds per MB, minimum 2 minutes
+        # Upload to knowledge service
+        timeout = max(120, len(uploaded_file.getvalue()) / 1024 / 1024 * 10)
+        
+        print(f"DEBUG: Making request to: {KNOWLEDGE_SERVICE_URL}/documents/upload")
         
         response = requests.post(
             f"{KNOWLEDGE_SERVICE_URL}/documents/upload",
@@ -66,41 +130,75 @@ def upload_to_knowledge_service(uploaded_file, metadata=None, progress_callback=
             timeout=timeout
         )
         
-        if progress_callback:
-            progress_callback("✅ Upload complete, processing response...", 0.9)
+        print(f"DEBUG: Response status: {response.status_code}")
+        print(f"DEBUG: Response headers: {dict(response.headers)}")
+        print(f"DEBUG: Response content: {response.text[:500]}")
         
-        # More detailed error handling
+        if progress_callback:
+            progress_callback("✅ Upload accepted, starting processing...", 0.3)
+        
+        # Handle response
         if response.status_code == 200:
-            return response.json()
+            upload_result = response.json()
+            task_id = upload_result.get("task_id")
+            
+            if not task_id:
+                raise Exception("No task_id returned from upload")
+            
+            # For now, just return success - we'll check progress separately
+            return {
+                "task_id": task_id,
+                "document_id": task_id,  # Use task_id as temp document_id
+                "id": task_id,
+                "filename": uploaded_file.name,
+                "content_type": content_type,
+                "chunk_count": 0,
+                "size": len(uploaded_file.getvalue()),
+                "status": "Processing",
+                "message": "Document uploaded and processing started"
+            }
+            
         elif response.status_code == 400:
-            # Try to get specific error message from response
+            try:
+                error_detail = response.json()
+                error_msg = error_detail.get("detail", "Unknown error")
+                print(f"DEBUG: 400 Error detail: {error_detail}")
+                raise Exception(f"Bad request (400): {error_msg}")
+            except (ValueError, KeyError):
+                error_text = response.text[:500] if response.text else "No error details provided"
+                print(f"DEBUG: 400 Error raw text: {error_text}")
+                raise Exception(f"Bad request (400): {error_text}")
+        else:
             try:
                 error_detail = response.json().get("detail", response.text)
             except:
                 error_detail = response.text
-            raise Exception(f"Bad request (400): {error_detail}")
-        else:
-            raise Exception(f"Knowledge service error: {response.status_code} - {response.text}")
+            raise Exception(f"Knowledge service error ({response.status_code}): {error_detail}")
     
     except requests.exceptions.Timeout:
-        raise Exception(f"Upload timed out after {timeout} seconds. Large documents may take longer to process.")
+        raise Exception(f"Upload timed out after {timeout} seconds.")
+    except requests.exceptions.ConnectionError:
+        raise Exception("Cannot connect to knowledge service. Please check if the service is running.")
     except requests.exceptions.RequestException as e:
+        print(f"DEBUG: RequestException: {str(e)}")
         raise Exception(f"Network error uploading to knowledge service: {str(e)}")
     except Exception as e:
-        raise Exception(f"Failed to upload to knowledge service: {str(e)}")
+        print(f"DEBUG: General exception: {str(e)}")
+        if "Knowledge service error" in str(e) or "Bad request" in str(e):
+            raise
+        else:
+            raise Exception(f"Unexpected error during upload: {str(e)}")
 
 def process_document_wrapper(uploaded_file):
     """Process document using the knowledge-service API with live progress updates"""
     try:
         logger = get_logger()
+        user_email = st.session_state.get("user_email", "unknown@example.com")
         
-        user_info = st.session_state.user_info
-        user_email = user_info.get("user", {}).get("email", "unknown@example.com")
-        
-        # Validate file size (200MB max for better UX)
+        # Validate file size (200MB max)
         max_size = 200 * 1024 * 1024  # 200MB
         if uploaded_file.size > max_size:
-            st.error(f"File too large. Maximum size is {max_size // (1024*1024)}MB for optimal processing")
+            st.error(f"File too large. Maximum size is {max_size // (1024*1024)}MB")
             return False
         
         # Validate file type
@@ -117,26 +215,29 @@ def process_document_wrapper(uploaded_file):
         with progress_container:
             overall_progress = st.progress(0)
             stage_text = st.empty()
-            detail_text = st.empty()
         
         def update_progress(message, progress):
             stage_text.text(message)
             overall_progress.progress(progress)
         
-        # Estimate processing time based on file size
-        estimated_time = max(30, uploaded_file.size / 1024 / 1024 * 15)  # 15 seconds per MB
-        detail_text.info(f"📊 Processing {uploaded_file.name} ({uploaded_file.size / 1024 / 1024:.1f}MB) - Estimated time: {estimated_time:.0f}s")
+        update_progress("🔍 Starting document processing...", 0.05)
         
-        update_progress("🔍 Starting enhanced PDF extraction...", 0.05)
+        # Prepare metadata
+        metadata = {
+            "client_matter": st.session_state.get("current_matter", "General"),
+            "uploaded_by": user_email,
+            "file_size": uploaded_file.size,
+            "upload_timestamp": datetime.now().isoformat()
+        }
         
-        # Upload to knowledge service with progress tracking
+        # Upload to knowledge service
         result = upload_to_knowledge_service(
             uploaded_file, 
-            metadata=f'{{"client_matter": "{st.session_state.get("current_matter", "General")}", "uploaded_by": "{user_email}"}}',
+            metadata=metadata,
             progress_callback=update_progress
         )
         
-        update_progress("✅ Document processing complete!", 1.0)
+        update_progress("✅ Document processing started!", 1.0)
         
         # Log the upload
         logger.log_document_upload(
@@ -145,255 +246,166 @@ def process_document_wrapper(uploaded_file):
             file_size=uploaded_file.size
         )
         
-        # Create document entry for UI
-        doc_entry = {
-            "Name": uploaded_file.name,
-            "Status": "Processed",
-            "Ingested At": datetime.now(),
-            "Size (KB)": f"{uploaded_file.size / 1024:.1f}",
-            "Type": result.get("content_type", "unknown"),
-            "ID": result.get("id", "unknown"),
-            "Client Matter": st.session_state.get("current_matter", "General"),
-            "Uploaded By": user_email,
-            "Chunk Count": result.get("chunk_count", 0)
-        }
-        
-        # Add to session state
-        if "uploaded_documents" not in st.session_state:
-            st.session_state.uploaded_documents = []
-        st.session_state.uploaded_documents.insert(0, doc_entry)
-        
         with status_container:
-            st.success(f"✅ Document '{uploaded_file.name}' processed successfully! "
-                      f"Document ID: {result.get('id', 'unknown')} "
-                      f"({result.get('chunk_count', 0)} chunks created)")
+            st.success(f"✅ Document '{uploaded_file.name}' uploaded successfully! Processing in background...")
         
         return True
     
     except Exception as e:
         logger = get_logger()
-        user_email = st.session_state.get("user_info", {}).get("user", {}).get("email", "unknown")
+        user_email = st.session_state.get("user_email", "unknown")
         error_msg = f"Failed to process document '{uploaded_file.name if uploaded_file else 'Unknown'}': {str(e)}"
         logger.log_error(user_email=user_email, error_message=error_msg, error_type="document_processing")
         
         with status_container:
-            st.error(error_msg)
+            st.error(f"❌ Upload failed: {str(e)}")
         return False
 
 def display_document_management():
-    """Display the clean document management interface"""
+    """Display the modern document management interface"""
     st.markdown(f'<div class="main-header">📂 Document Management</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sub-header">Upload, process, and manage your legal documents.</div>', unsafe_allow_html=True)
     
-    # Add refresh functionality
-    col1, col2 = st.columns([6, 1])
-    with col2:
-        if st.button("🔄 Refresh", key="refresh_docs"):
-            # Clear session state to force refresh from API
-            if "api_documents" in st.session_state:
-                del st.session_state["api_documents"]
+    # Upload Section
+    st.markdown("### ⬆️ Upload New Document")
+    
+    uploaded_file = st.file_uploader(
+        "Choose a file (PDF, DOCX, TXT - Max 200MB)",
+        type=["pdf", "docx", "txt"],
+        key="doc_uploader"
+    )
+    
+    if uploaded_file:
+        if st.button(
+            f"📤 Process Document: {uploaded_file.name}", 
+            type="primary", 
+            use_container_width=True
+        ):
+            with st.spinner(f"Processing {uploaded_file.name}..."):
+                success = process_document_wrapper(uploaded_file)
+                if success:
+                    time.sleep(2)  # Give a moment for processing to start
+                    # Clear the cache to refresh document list
+                    if "documents_cache" in st.session_state:
+                        del st.session_state["documents_cache"]
+                    st.rerun()
+
+    st.markdown("---")
+    
+    # Document Library Section
+    st.markdown("### 📚 Document Library")
+    
+    # Refresh button
+    col1, col2, col3 = st.columns([1, 1, 4])
+    with col1:
+        if st.button("🔄 Refresh", use_container_width=True):
+            if "documents_cache" in st.session_state:
+                del st.session_state["documents_cache"]
             st.rerun()
     
-    # Load documents from API
-    if "api_documents" not in st.session_state:
-        try:
-            response = requests.get(f"{KNOWLEDGE_SERVICE_URL}/documents/", timeout=60)
-            if response.status_code == 200:
-                api_data = response.json()
-                st.session_state.api_documents = api_data.get("documents", [])
+    # Fetch documents with caching
+    if "documents_cache" not in st.session_state or time.time() - st.session_state.get("documents_cache_time", 0) > 30:
+        with st.spinner("Loading documents..."):
+            documents = fetch_documents_from_api()
+            st.session_state["documents_cache"] = documents
+            st.session_state["documents_cache_time"] = time.time()
+    else:
+        documents = st.session_state["documents_cache"]
+    
+    if documents:
+        st.markdown(f"**Found {len(documents)} document(s)**")
+        
+        # Create a proper data table
+        df_data = []
+        for doc in documents:
+            created_at = doc.get("created_at", "")
+            if created_at:
+                try:
+                    # Parse the datetime and format it nicely
+                    dt = pd.to_datetime(created_at)
+                    created_at_formatted = dt.strftime('%Y-%m-%d %H:%M')
+                except:
+                    created_at_formatted = created_at
             else:
-                st.session_state.api_documents = []
-        except Exception as e:
-            st.error(f"Failed to load documents from API: {e}")
-            st.session_state.api_documents = []
-    
-    # Upload section in an expander for a cleaner look
-    with st.expander("📤 Upload New Documents", expanded=True):
-        st.info("💡 **Pro Tip**: Large documents (>5MB) may take several minutes to process. The upload will continue in the background.")
-        
-        uploaded_files = st.file_uploader(
-            "Choose legal documents (PDF, DOCX, TXT)", 
-            type=["pdf", "docx", "txt"], 
-            accept_multiple_files=True,
-            key="doc_uploader_main"
-        )
-        
-        # Show current processing queue status
-        processing_count = len([doc for doc in st.session_state.get("uploaded_documents", []) if doc.get("Status") == "Processing"])
-        if processing_count > 0:
-            st.info(f"📋 {processing_count} document(s) currently processing in background...")
-
-        if uploaded_files:
-            if st.button("🚀 Process Selected Documents", type="primary", use_container_width=True):
-                success_count = 0
-                total_files = len(uploaded_files)
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                created_at_formatted = "N/A"
                 
-                for i, uploaded_file in enumerate(uploaded_files):
-                    # Check for existing files in both session and API
-                    existing_session_names = [
-                        doc.get('Name', doc.get('name', '')) 
-                        for doc in st.session_state.get("uploaded_documents", [])
-                    ]
-                    existing_api_names = [
-                        doc.get('filename', '') 
-                        for doc in st.session_state.get("api_documents", [])
-                    ]
-                    
-                    if uploaded_file.name in existing_session_names or uploaded_file.name in existing_api_names:
-                        st.warning(f"Document '{uploaded_file.name}' appears to already exist. Skipping.")
-                        continue
-                    
-                    status_text.info(f"Processing {uploaded_file.name} ({i+1}/{total_files})...")
-                    
-                    # For large files, show different message
-                    file_size_mb = uploaded_file.size / (1024 * 1024)
-                    if file_size_mb > 5:
-                        st.warning(f"⏳ Large file detected ({file_size_mb:.1f}MB). This may take 5-10 minutes to process.")
-                        st.info("💡 You can continue using the app - processing happens in background!")
-                    
-                    if process_document_wrapper(uploaded_file):
-                        success_count += 1
-                    progress_bar.progress((i + 1) / total_files)
+            df_data.append({
+                "📄 Document": doc.get("filename", "Unknown"),
+                "📅 Uploaded": created_at_formatted,
+                "📊 Size": f"{doc.get('size', 0) / (1024*1024):.1f} MB" if doc.get('size') else "N/A",
+                "🧩 Chunks": doc.get("chunk_count", 0),
+                "📋 Type": doc.get("content_type", "").split('/')[-1].upper() if doc.get("content_type") else "Unknown",
+                "🆔 ID": doc.get("id", "")
+            })
+        
+        if df_data:
+            df = pd.DataFrame(df_data)
+            
+            # Display the table with styling
+            st.markdown("""
+            <style>
+            .stDataFrame {
+                width: 100%;
+            }
+            .stDataFrame > div {
+                width: 100%;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Display table
+            st.dataframe(
+                df.drop(columns=['🆔 ID']),  # Hide ID column from display
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Delete functionality
+            st.markdown("### 🗑️ Delete Documents")
+            
+            if len(df_data) > 0:
+                # Create select box for deletion
+                doc_options = [f"{doc['📄 Document']} (ID: {doc['🆔 ID'][:8]}...)" for doc in df_data]
                 
-                # Refresh API documents after upload
-                if success_count > 0:
-                    status_text.success(f"✅ Successfully processed {success_count} / {total_files} documents!")
-                    time.sleep(2)
-                    # Clear API cache to force refresh
-                    if "api_documents" in st.session_state:
-                        del st.session_state["api_documents"]
-                    st.rerun()
-                elif total_files > 0:
-                    status_text.error("❌ No new documents were processed successfully.")
-                else:
-                    status_text.info("No new files to process.")
-    
-    st.markdown("### 📋 Document Library")
-    
-    # Combine session state and API documents
-    session_docs = st.session_state.get("uploaded_documents", [])
-    api_docs = st.session_state.get("api_documents", [])
-    
-    # Convert API docs to display format
-    converted_api_docs = []
-    for doc in api_docs:
-        converted_doc = {
-            "Name": doc.get("filename", "Unknown"),
-            "Status": "Processed",
-            "Ingested At": doc.get("created_at", "Unknown"),
-            "Size (KB)": f"{doc.get('metadata', {}).get('size', 0) / 1024:.1f}" if doc.get('metadata', {}).get('size') else "Unknown",
-            "Type": doc.get("content_type", "Unknown"),
-            "ID": doc.get("id", "Unknown"),
-            "Client Matter": "API Loaded",
-            "Uploaded By": "System",
-            "Chunk Count": doc.get("chunk_count", 0)
-        }
-        converted_api_docs.append(converted_doc)
-    
-    # Combine and deduplicate
-    all_documents = []
-    seen_names = set()
-    
-    # Add session docs first (these are current session uploads)
-    for doc in session_docs:
-        name = doc.get('Name', doc.get('name', ''))
-        if name not in seen_names:
-            all_documents.append(doc)
-            seen_names.add(name)
-    
-    # Add API docs that aren't already in session
-    for doc in converted_api_docs:
-        name = doc.get('Name', '')
-        if name not in seen_names:
-            all_documents.append(doc)
-            seen_names.add(name)
-    
-    # Search and filter
-    cols = st.columns([3, 2, 1])
-    with cols[0]:
-        search_query = st.text_input("🔍 Search by name or ID", placeholder="Enter filename or document ID...")
-    with cols[1]:
-        # Get unique document types
-        doc_types = sorted(list(set(
-            doc.get("Type", doc.get("type", "Unknown")) 
-            for doc in all_documents
-        )))
-        type_filter = st.selectbox("Filter by type", ["All Types"] + doc_types)
-    with cols[2]:
-        sort_order = st.selectbox("Sort by", ["Ingested At (Newest First)", "Name (A-Z)"])
-
-    documents_to_display = all_documents.copy()
-    
-    # Apply filtering
-    if search_query:
-        documents_to_display = [
-            doc for doc in documents_to_display 
-            if (search_query.lower() in doc.get('Name', doc.get('name', '')).lower() or 
-                search_query.lower() in doc.get('ID', doc.get('document_id', '')).lower())
-        ]
-    if type_filter != "All Types":
-        documents_to_display = [
-            doc for doc in documents_to_display 
-            if doc.get('Type', doc.get('type', 'Unknown')) == type_filter
-        ]
-    
-    # Apply sorting
-    if sort_order == "Name (A-Z)":
-        documents_to_display = sorted(
-            documents_to_display, 
-            key=lambda x: x.get('Name', x.get('name', ''))
-        )
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    selected_doc = st.selectbox(
+                        "Select document to delete:",
+                        options=range(len(doc_options)),
+                        format_func=lambda x: doc_options[x],
+                        key="delete_selector"
+                    )
+                
+                with col2:
+                    if st.button("🗑️ Delete", type="secondary", use_container_width=True):
+                        doc_to_delete = df_data[selected_doc]
+                        doc_id = doc_to_delete['🆔 ID']
+                        
+                        with st.spinner(f"Deleting {doc_to_delete['📄 Document']}..."):
+                            success, message = delete_document_from_api(doc_id)
+                            
+                            if success:
+                                st.success(message)
+                                # Clear cache and refresh
+                                if "documents_cache" in st.session_state:
+                                    del st.session_state["documents_cache"]
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(message)
     else:
-        documents_to_display = sorted(
-            documents_to_display, 
-            key=lambda x: x.get('Ingested At', x.get('ingested_at', datetime.min)), 
-            reverse=True
-        )
-
-    if documents_to_display:
-        st.caption(f"Showing {len(documents_to_display)} of {len(all_documents)} total documents.")
+        st.info("📝 No documents found. Upload some documents to get started!")
         
-        # Display documents table
-        df_display = pd.DataFrame(documents_to_display)
-        display_columns = ['Name', 'Type', 'Status', 'Size (KB)', 'Ingested At', 'Uploaded By', 'Client Matter', 'Chunk Count', 'ID']
-        df_display = df_display[[col for col in display_columns if col in df_display.columns]]
-        
-        # Format datetime column
-        if 'Ingested At' in df_display.columns:
-            df_display['Ingested At'] = pd.to_datetime(df_display['Ingested At'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M')
-
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-        
-    else:
-        st.info("No documents match your current filters, or no documents have been uploaded yet.")
-        if len(all_documents) == 0:
-            st.info("💡 Try uploading a document above or click 'Refresh' to load from the knowledge service.")
-
-    # Show API status
-    api_doc_count = len(st.session_state.get("api_documents", []))
-    session_doc_count = len(st.session_state.get("uploaded_documents", []))
-    
-    st.markdown("---")
-    st.caption(f"📊 Status: {api_doc_count} documents in knowledge base, {session_doc_count} in current session")
-    
-    # Admin section for clearing documents  
-    if st.session_state.user_role == 'admin':
-        with st.expander("⚠️ Admin Actions", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🗑️ Clear Session Documents", key="clear_session_docs"):
-                    st.session_state.uploaded_documents = []
-                    st.success("Session documents cleared.")
-                    st.rerun()
-            with col2:
-                if st.button("🔄 Force Refresh from API", key="force_refresh_api"):
-                    if "api_documents" in st.session_state:
-                        del st.session_state["api_documents"]
-                    st.success("API cache cleared. Refreshing...")
-                    st.rerun()
+        # Show helpful tips
+        st.markdown("""
+        **💡 Tips:**
+        - Supported formats: PDF, DOCX, TXT
+        - Maximum file size: 200MB
+        - Documents are processed automatically after upload
+        - Use the refresh button to check processing status
+        """)
 
 if __name__ == "__main__":
-    display_navigation_sidebar(current_page="Documents")
+    display_navigation_sidebar(current_page="Document Management")
     display_document_management() 

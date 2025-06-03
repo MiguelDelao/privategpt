@@ -2,7 +2,7 @@
 
 # Legal AI Weaviate FastAPI Service Startup Script
 
-echo "🏛️ Starting Legal AI Weaviate FastAPI Service..."
+echo "🏛️ Starting Weaviate Service..."
 
 # Create logs directory if it doesn't exist
 mkdir -p logs
