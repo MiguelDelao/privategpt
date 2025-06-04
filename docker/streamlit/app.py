@@ -38,11 +38,16 @@ initialize_session_state()
 # Hide Streamlit style elements
 hide_streamlit_style = """
 <style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-.stDeployButton {display: none;}
-.css-1d391kg {padding-top: 0rem;}
+#MainMenu {visibility: hidden !important;}
+footer {visibility: hidden !important;}
+header {visibility: hidden !important;}
+.stDeployButton {display: none !important;}
+.stAppDeployButton {display: none !important;}
+#stDecoration {display: none !important;}
+.stDeployButtonContainer {display: none !important;}
+[data-testid="stToolbar"] {display: none !important;}
+[data-testid="stDecoration"] {display: none !important;}
+.css-1d391kg {padding-top: 0rem !important;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
