@@ -19,12 +19,13 @@ class Logger:
         self.activity_log = self.log_dir / "user_activity.log"
         self.error_log = self.log_dir / "errors.log"
     
-    def log_user_login(self, user_email: str, success: bool = True, ip_address: str = None):
+    def log_user_login(self, user_email: str, success: bool = True, ip_address: Optional[str] = None, error_message: Optional[str] = None):
         """Log user login attempts"""
         if success:
             message = f"User {user_email} logged in successfully"
         else:
-            message = f"Failed login attempt for {user_email}"
+            base_message = f"Failed login attempt for {user_email}"
+            message = f"{base_message}: {error_message}" if error_message else base_message
             
         event = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -35,6 +36,8 @@ class Logger:
             "success": success,
             "ip_address": ip_address
         }
+        if error_message and not success:
+            event["error_detail"] = error_message # Adding specific field for error detail
         
         self._write_log(self.activity_log, event)
     

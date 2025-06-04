@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  # Enhanced Auth Service - Database-backed authentication
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: privategpt-auth
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Database Configuration
+      DATABASE_URL: "postgresql://auth_user:${POSTGRES_PASSWORD:-secure_password}@auth-postgres:5432/auth_db"
+      
+      # Redis Configuration
+      REDIS_URL: "redis://redis:6379/3"
+      
+      # JWT Configuration
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-change-this-secret-key-in-production}"
+      JWT_ALGORITHM: "HS256"
+      JWT_EXPIRY_HOURS: "8"
+      
+      # Security Configuration
+      MAX_LOGIN_ATTEMPTS: "5"
+      ACCOUNT_LOCKOUT_MINUTES: "30"
+      RATE_LIMIT_WINDOW_MINUTES: "15"
+      RATE_LIMIT_MAX_REQUESTS: "100"
+      PASSWORD_MIN_LENGTH: "12"
+      PASSWORD_REQUIRE_UPPERCASE: "true"
+      PASSWORD_REQUIRE_LOWERCASE: "true"
+      PASSWORD_REQUIRE_NUMBERS: "true"
+      PASSWORD_REQUIRE_SPECIAL: "true"
+      
+      # Environment & Logging
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      LOG_LEVEL: "INFO"
+      
+      # Default Admin User (Change in production!)
+      DEFAULT_ADMIN_EMAIL: "${ADMIN_EMAIL:-admin@privategpt.com}"
+      DEFAULT_ADMIN_PASSWORD: "${ADMIN_PASSWORD:-ChangeThisPassword123!}"
+      
+    volumes:
+      # Persistent data storage
+      - auth_data:/app/data
+      - auth_logs:/app/logs
+      
+      # Bind mount for development (comment out in production)
+      # - .:/app
+      
+    networks:
+      - privategpt-network
+      
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+        
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`auth.privategpt.local`)"
+      - "traefik.http.routers.auth.tls=true"
+      - "traefik.http.services.auth.loadbalancer.server.port=8000"
+
+  # PostgreSQL Database for Auth Service
+  auth-postgres:
+    image: postgres:15-alpine
+    container_name: privategpt-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secure_password}"
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+      # Initialize database with proper collation for legal text search
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - privategpt-network
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Session Management and Rate Limiting
+  redis:
+    image: redis:7-alpine
+    container_name: privategpt-redis
+    restart: unless-stopped
+    command: >
+      --requirepass ${REDIS_PASSWORD:-redis_secure_password}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    networks:
+      - privategpt-network
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Nginx Reverse Proxy (Optional - for production)
+  nginx-auth:
+    image: nginx:alpine
+    container_name: privategpt-auth-nginx
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - privategpt-network
+    depends_on:
+      - auth-service
+    profiles:
+      - production
+
+volumes:
+  auth_data:
+    driver: local
+    name: privategpt_auth_data
+  auth_logs:
+    driver: local
+    name: privategpt_auth_logs
+  auth_postgres_data:
+    driver: local
+    name: privategpt_auth_postgres_data
+  redis_data:
+    driver: local
+    name: privategpt_redis_data
+
+networks:
+  privategpt-network:
+    external: true
+    name: privategpt_network 

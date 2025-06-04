@@ -28,7 +28,7 @@ class AuthClient:
     def verify_token(self, token: str) -> Optional[Dict]:
         """Verify JWT token and return user info"""
         try:
-            response = self.session.get(
+            response = self.session.post(
                 f"{self.auth_service_url}/auth/verify",
                 headers={"Authorization": f"Bearer {token}"}
             )
@@ -40,17 +40,15 @@ class AuthClient:
         except Exception:
             return None
     
-    def create_user(self, token: str, email: str, password: str, role: str, client_matters: list) -> Dict:
-        """Create new user (admin only)"""
+    def create_user(self, token: str, email: str, password: str, role: str) -> Dict:
+        """Create new user (admin only, uses the public registration endpoint)"""
         response = self.session.post(
-            f"{self.auth_service_url}/auth/create-user",
+            f"{self.auth_service_url}/auth/register",
             json={
                 "email": email,
                 "password": password,
-                "role": role,
-                "client_matters": client_matters
-            },
-            headers={"Authorization": f"Bearer {token}"}
+                "role": role
+            }
         )
         
         if response.status_code == 200:
@@ -61,7 +59,7 @@ class AuthClient:
     def list_users(self, token: str) -> Dict:
         """List all users (admin only)"""
         response = self.session.get(
-            f"{self.auth_service_url}/auth/users",
+            f"{self.auth_service_url}/auth/admin/users",
             headers={"Authorization": f"Bearer {token}"}
         )
         

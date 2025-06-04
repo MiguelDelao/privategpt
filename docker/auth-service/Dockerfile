@@ -1,29 +1,53 @@
+# Auth Service - Database-backed authentication
 FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements first for better Docker layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Create non-root user for security first
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Create necessary directories with proper ownership
+RUN mkdir -p /app/logs /app/data /app/data/migration_backup && \
+    chown -R appuser:appuser /app
 
 # Copy application code
-COPY auth_service.py .
-COPY utils.py .
+COPY . .
 
-# Create directories
-RUN mkdir -p /app/data /app/logs
+# Make migration script executable and set ownership
+RUN chmod +x migrate_data.py && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run the application
-CMD ["python", "auth_service.py"] 
+# Start command - runs migration first, then starts the service
+CMD ["sh", "-c", "python migrate_data.py && python auth_service.py"] 

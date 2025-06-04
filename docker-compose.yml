@@ -1,6 +1,47 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database for Auth Service
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: auth-postgres
+    environment:
+      POSTGRES_DB: privategpt_auth
+      POSTGRES_USER: privategpt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_change_me}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+      - ./docker/auth-service/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - private-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U privategpt -d privategpt_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging.service=auth-postgres"
+
+  # Redis for Auth Service Sessions & Rate Limiting
+  auth-redis:
+    image: redis:7-alpine
+    container_name: auth-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-secure_redis_password}
+    volumes:
+      - auth-redis-data:/data
+    networks:
+      - private-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    labels:
+      - "logging.service=auth-redis"
+
   # Authentication Service
   auth-service:
     build: ./docker/auth-service
@@ -8,10 +49,18 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - DATABASE_URL=sqlite:///./auth.db
-      - SECRET_KEY=${AUTH_SECRET_KEY:-your-secret-key-here}
+      - DATABASE_URL=postgresql://privategpt:${POSTGRES_PASSWORD:-secure_password_change_me}@auth-postgres:5432/privategpt_auth
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@auth-redis:6379/0
+      - SECRET_KEY=${AUTH_SECRET_KEY:-your-secret-key-here-change-in-production}
       - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - REFRESH_TOKEN_EXPIRE_DAYS=30
       - API_VERSION=1.0.0
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=INFO
+      - RATE_LIMIT_REQUESTS=100
+      - RATE_LIMIT_WINDOW=3600
+      - PASSWORD_MIN_LENGTH=12
+      - MFA_ISSUER=PrivateGPT Legal AI
     volumes:
       - auth-data:/app/data
       - ./logs/auth-service:/app/logs
@@ -23,6 +72,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+      auth-redis:
+        condition: service_healthy
     labels:
       - "logging.service=auth-service"
 
@@ -420,3 +474,5 @@ volumes:
   # SSL certificates
   traefik-certs:
   redis_data:
+  auth-postgres-data:
+  auth-redis-data:

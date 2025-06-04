@@ -347,7 +347,7 @@ logs-errors:
 	@echo "Showing error logs..."
 	@docker-compose logs --tail=50 | grep -i "error\|exception\|fail"
 
-# Enhanced ELK logging
+# Advanced ELK logging
 logs-search:
 	@echo "Searching logs for specific pattern..."
 	@read -p "Enter search pattern: " pattern; \

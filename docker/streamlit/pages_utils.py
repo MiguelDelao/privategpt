@@ -200,28 +200,28 @@ def display_navigation_sidebar(current_page="Dashboard"):
 def apply_page_styling():
     """Apply consistent styling across all pages"""
     
-    # More comprehensive professional styling
+    # New friendly dark theme styling
     st.markdown(f"""
         <style>
             /* --- Base & Typography --- */
             body {{
-                font-family: 'Inter', sans-serif; /* Modern sans-serif font */
-                color: #E0E0E0; /* Light grey text for dark themes */
-                background-color: #1A1A2E; /* Dark blue-purple background */
+                font-family: 'Inter', sans-serif;
+                color: #EEEEEE; /* Main text color */
+                background-color: #222831; /* Main background */
             }}
 
             .stApp {{
-                background-color: #1A1A2E;
+                background-color: #222831; /* Main background for Streamlit app container */
             }}
 
             h1, h2, h3, h4, h5, h6 {{
-                color: #FFFFFF; /* White headers */
+                color: #FFFFFF; /* Pure white for headers */
                 font-weight: 600;
             }}
 
             h1 {{
                 font-size: 2.2em;
-                border-bottom: 2px solid #4A4A7F; /* Accent color border */
+                border-bottom: 2px solid #393E46; /* Secondary accent for border */
                 padding-bottom: 0.3em;
                 margin-bottom: 0.7em;
             }}
@@ -239,58 +239,63 @@ def apply_page_styling():
             }}
 
             p, .stMarkdown, .stText {{
-                color: #C0C0C0; /* Lighter grey for paragraph text */
+                color: #EEEEEE; /* Main text color for paragraphs */
                 line-height: 1.6;
             }}
 
             a {{
-                color: #82AAFF; /* Bright blue for links */
+                color: #76ABAE; /* Softer teal for links */
+            }}
+            a:hover {{
+                color: #00ADB5; /* Brighter teal on hover */
             }}
 
             /* --- Streamlit Specific Components --- */
             .stButton>button {{
-                border: 2px solid #4A4A7F;
-                background-color: #2E2E5C; /* Darker accent for buttons */
-                color: #FFFFFF;
+                border: 2px solid #393E46; /* Secondary accent for border */
+                background-color: #393E46; /* Secondary accent for button background */
+                color: #EEEEEE; /* Main text color for button text */
                 padding: 0.5em 1em;
                 border-radius: 8px;
                 font-weight: 500;
                 transition: background-color 0.3s ease, border-color 0.3s ease;
             }}
             .stButton>button:hover {{
-                background-color: #4A4A7F; /* Lighter accent on hover */
-                border-color: #6A6AFF;
+                background-color: #00ADB5; /* Primary accent on hover */
+                border-color: #00ADB5; /* Primary accent border on hover */
+                color: #FFFFFF;
             }}
             .stButton>button:focus {{
                 outline: none;
-                box-shadow: 0 0 0 2px #82AAFF;
+                box-shadow: 0 0 0 3px rgba(0, 173, 181, 0.5); /* Primary accent focus ring */
             }}
             
             /* Primary button style */
             .stButton>button[kind="primary"] {{
-                background-color: #6A6AFF; /* Brighter primary color */
-                border-color: #82AAFF;
+                background-color: #00ADB5; /* Primary accent */
+                border-color: #00ADB5; 
+                color: #FFFFFF;
             }}
             .stButton>button[kind="primary"]:hover {{
-                background-color: #82AAFF;
-                border-color: #A2CAFF;
+                background-color: #007A7F; /* Darker shade of primary accent for hover */
+                border-color: #007A7F;
             }}
             
             .stTextInput>div>div>input, .stTextArea textarea, .stSelectbox>div>div {{
-                background-color: #2E2E5C;
-                color: #E0E0E0;
+                background-color: #3A4049; /* Custom input background */
+                color: #EEEEEE; /* Main text color for input text */
                 border-radius: 8px;
-                border: 1px solid #4A4A7F;
+                border: 1px solid #393E46; /* Secondary accent border */
             }}
             
             .stTextInput>div>div>input:focus, .stTextArea textarea:focus {{
-                 border: 1px solid #82AAFF;
-                 box-shadow: 0 0 0 2px rgba(130, 170, 255, 0.5);
+                 border: 1px solid #00ADB5; /* Primary accent border on focus */
+                 box-shadow: 0 0 0 3px rgba(0, 173, 181, 0.3);
             }}
 
             .stSidebar {{
-                background-color: #24244A; /* Slightly different dark shade for sidebar */
-                border-right: 1px solid #4A4A7F;
+                background-color: #2A3038; /* Slightly different dark shade for sidebar */
+                border-right: 1px solid #393E46; /* Secondary accent border */
             }}
             
             .stSidebar [data-testid="stMarkdownContainer"] h3 {{
@@ -301,17 +306,17 @@ def apply_page_styling():
             }}
             
             .stSidebar [data-testid="stMarkdownContainer"] p, .stSidebar .stCaption {{
-                 color: #B0B0D0;
+                 color: #B0B0D0; /* Keeping a slightly muted color for sidebar secondary text */
             }}
             
             .stMetric {{
-                background-color: #2E2E5C;
+                background-color: #2A3038; /* Card background for metrics */
                 border-radius: 8px;
                 padding: 1em;
-                border: 1px solid #4A4A7F;
+                border: 1px solid #393E46; /* Secondary accent border */
             }}
             .stMetric label {{
-                color: #A0A0C0;
+                color: #A0A0C0; /* Muted label color for metrics */
             }}
             .stMetric .stMetricValue {{
                 color: #FFFFFF;
@@ -328,7 +333,7 @@ def apply_page_styling():
             }}
             .sub-header {{
                 font-size: 1.1em;
-                color: #B0B0D0;
+                color: #B0B0D0; /* Muted sub-header color */
                 margin-bottom: 2em;
                 text-align: left;
             }}
@@ -340,7 +345,7 @@ def apply_page_styling():
 
             /* --- Dataframes --- */
             .stDataFrame {{
-                border: 1px solid #4A4A7F;
+                border: 1px solid #393E46; /* Secondary accent border */
                 border-radius: 8px;
             }}
             
@@ -352,11 +357,11 @@ def apply_page_styling():
             /* For containers to have a slight card look */
             [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stBlock"] > div:has(>[data-testid="stVerticalBlock"]), 
             [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stExpander"] {{
-                background-color: #262650; /* Slightly lighter card background */
+                background-color: #2A3038; /* Card background */
                 padding: 1rem;
                 border-radius: 8px;
                 margin-bottom: 1rem;
-                border: 1px solid #3a3a6f;
+                border: 1px solid #393E46; /* Secondary accent border */
             }}
             
         </style>
@@ -368,6 +373,4 @@ def apply_page_styling():
     """, unsafe_allow_html=True)
 
     # You can add more specific page styling or adjustments here if needed
-    # For example, hide the hamburger menu if desired:
-    # st.markdown("<style>#MainMenu {visibility: hidden;}</style>", unsafe_allow_html=True)
     pass 

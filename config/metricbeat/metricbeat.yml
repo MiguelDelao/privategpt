@@ -33,76 +33,12 @@ metricbeat.modules:
     - network
     - process
     - process_summary
-    # - Dfilesystem # Uncomment if needed
-    # - Dfsstat # Uncomment if needed
+    # - filesystem # Uncomment if needed
+    # - fsstat # Uncomment if needed
   process.include_top_n:
     by_cpu: 5
     by_memory: 5
   processes: ['.*'] # Monitor all processes
-
-# Prometheus scraping - adapt from your prometheus.yml
-# We will configure this in a later step to scrape existing Prometheus endpoints
-# - module: prometheus
-#   period: 15s
-#   hosts: ["prometheus:9090"] # Example, adjust based on actual Prometheus setup
-#   metrics_path: /metrics
-#   # Or configure specific jobs for each service like in your prometheus.yml
-
-# Prometheus scraping - adapt from your prometheus.yml
-- module: prometheus
-  period: 10s # Default period, can be overridden per job
-  hosts: ["localhost:9090"] # This is a placeholder, individual jobs below define actual hosts
-  metricsets: ["collector"]
-  # metrics_path: /metrics # Default, overridden per job if needed
-  # Optional: Add labels to all metrics from this module
-  # fields:
-  #   prometheus_source: self_scrape
-
-  # Scrape individual application endpoints
-  # Auth Service
-- module: prometheus
-  period: 30s
-  hosts: ["auth-service:8000"]
-  metrics_path: /metrics
-  metricsets: ["collector"]
-  fields:
-    service_name: auth-service
-
-  # Streamlit Application
-- module: prometheus
-  period: 30s
-  hosts: ["streamlit-app:8501"]
-  metrics_path: /_stcore/metrics
-  metricsets: ["collector"]
-  fields:
-    service_name: streamlit-app
-
-  # Ollama LLM Service
-- module: prometheus
-  period: 30s
-  hosts: ["ollama:11434"]
-  metrics_path: /metrics
-  metricsets: ["collector"]
-  fields:
-    service_name: ollama
-
-  # Weaviate Vector Database
-- module: prometheus
-  period: 30s
-  hosts: ["weaviate:8080"]
-  metrics_path: /v1/metrics
-  metricsets: ["collector"]
-  fields:
-    service_name: weaviate
-
-  # n8n Automation
-- module: prometheus
-  period: 60s
-  hosts: ["n8n:5678"]
-  metrics_path: /metrics
-  metricsets: ["collector"]
-  fields:
-    service_name: n8n
 
 processors:
   - add_host_metadata: ~
