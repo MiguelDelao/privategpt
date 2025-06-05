@@ -1,24 +1,24 @@
 """
 PrivateGPT Legal AI - Admin Panel
-Clean admin interface for user management and system oversight
+Modern admin interface for user management and system oversight
 """
 
 import streamlit as st
-import pandas as pd # For displaying tables
+import pandas as pd
 import sys
 import os
 import requests
+import time
 from datetime import datetime, timedelta
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, VECTOR_DB_NAME, WORKFLOW_ENGINE, VERSION_INFO,
-    initialize_session_state, require_auth, display_navigation_sidebar, apply_page_styling,
+    initialize_session_state, require_auth, display_navigation_sidebar,
     get_logger, get_auth_client
 )
 
 # Page configuration
 st.set_page_config(
     page_title=f"Admin Panel - {APP_TITLE}", 
-    page_icon="🛠️",
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -27,112 +27,350 @@ st.set_page_config(
 initialize_session_state()
 require_auth(admin_only=True, main_app_file="app.py")
 
-# Apply consistent styling
-apply_page_styling()
+# --- ChatGPT Style CSS ---
+st.markdown("""<style>
+    /* General Styles */
+    body {
+        font-family: 'Söhne', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Ubuntu', 'Cantarell', 'Noto Sans', 'sans-serif', 'Helvetica Neue', 'Arial', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+        color: #ECECF1;
+    }
+    .main .block-container {
+        padding-top: 2rem; padding-bottom: 2rem; padding-left: 3rem; padding-right: 3rem;
+        max-width: 100%;
+    }
+    /* Hide Streamlit default UI elements */
+    footer {visibility: hidden;}
+    button[data-testid="baseButton-headerNoPadding"] { visibility: hidden; }
+    header[data-testid="stHeader"] { display: none !important; visibility: hidden !important; }
+    #stDecoration { display:none; }
+    div[data-testid="stToolbar"] { display:none; }
+    div[data-testid="stStatusWidget"] { display:none; }
+    div[data-testid="stDeployButton"] { display: none; }
+    #MainMenu { visibility: hidden; }
+    /* Page Background */
+    [data-testid="stAppViewContainer"] { background-color: #0D1117; }
+    [data-testid="stSidebar"] { background-color: #161B22; padding-top: 1rem; }
+    
+    /* Button Styling */
+    .stButton>button {
+        background-color: #21262D;
+        color: #C9D1D9;
+        border: 1px solid #30363D;
+        border-radius: 6px;
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 500;
+        transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+    .stButton>button:hover {
+        background-color: #30363D;
+        border-color: #8B949E;
+        color: #ECECF1;
+    }
+    .stButton>button:focus {
+        outline: none !important;
+        box-shadow: none !important;
+        border-color: #58A6FF;
+    }
+    .stButton>button p {
+        text-transform: none;
+        color: inherit;
+        font-weight: inherit;
+    }
+
+    /* Page Title Style */
+    .page-title {
+        font-size: 2.25rem;
+        font-weight: 600;
+        color: #ECECF1;
+        margin-bottom: 0.5rem;
+    }
+    
+    .page-subtitle {
+        font-size: 1rem;
+        color: #7D8590;
+        margin-bottom: 2rem;
+    }
+
+    /* Sidebar Styles */
+    [data-testid="stSidebarNav"] ul { padding-left: 0; }
+    [data-testid="stSidebarNav"] li { list-style-type: none; margin-bottom: 0.5rem; }
+    [data-testid="stSidebarNav"] li a {
+        text-decoration: none; color: #C9D1D9; padding: 0.5rem 1rem;
+        border-radius: 6px; display: block;
+        transition: background-color 0.2s ease, color 0.2s ease;
+        font-size: 0.95rem;
+    }
+    [data-testid="stSidebarNav"] li a:hover { background-color: #21262D; color: #ECECF1; }
+    [data-testid="stSidebarNav"] li a.active {
+        background-color: #0D1117; color: #58A6FF; font-weight: 600;
+    }
+    [data-testid="stSidebarUserContent"] { padding-top: 0rem; }
+    div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+
+    /* Form Styling */
+    .stTextInput > div > div > input, 
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div {
+        background-color: #21262D;
+        border: 1px solid #30363D;
+        color: #C9D1D9;
+        border-radius: 6px;
+    }
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus,
+    .stSelectbox > div > div:focus {
+        border-color: #58A6FF;
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+    }
+
+    /* Table Styling */
+    .stDataFrame {
+        background-color: #161B22;
+        border: 1px solid #30363D;
+        border-radius: 8px;
+    }
+    .stDataFrame table {
+        color: #C9D1D9;
+        background-color: transparent;
+    }
+    .stDataFrame th {
+        background-color: #21262D;
+        color: #ECECF1;
+        font-weight: 600;
+        border-bottom: 1px solid #30363D;
+    }
+    .stDataFrame td {
+        border-bottom: 1px solid #30363D;
+    }
+
+    /* Info boxes */
+    .stInfo {
+        background-color: #161B22;
+        border: 1px solid #30363D;
+        color: #C9D1D9;
+    }
+    .stWarning {
+        background-color: #161B22;
+        border: 1px solid #D29922;
+        color: #F1C232;
+    }
+    .stSuccess {
+        background-color: #161B22;
+        border: 1px solid #2D5A27;
+        color: #4AC26B;
+    }
+    .stError {
+        background-color: #161B22;
+        border: 1px solid #DA3633;
+        color: #F85149;
+    }
+
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: #161B22;
+        color: #C9D1D9;
+        border: 1px solid #30363D;
+        border-radius: 6px;
+    }
+    .streamlit-expanderContent {
+        background-color: #0D1117;
+        border: 1px solid #30363D;
+        border-top: none;
+        border-radius: 0 0 6px 6px;
+    }
+
+
+
+</style>
+""", unsafe_allow_html=True)
 
 # Add parent directory to path to import pages_utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# --- Helper Functions (Placeholders - to be implemented with backend logic) ---
-def get_system_health_status():
-    """Fetch actual system health from knowledge service API."""
-    try:
-        # Check knowledge service health
-        response = requests.get("http://knowledge-service:8000/health", timeout=5)
-        if response.status_code == 200:
-            health_data = response.json()
-            return {
-                "weaviate": health_data.get("components", {}).get("weaviate") == "connected",
-                "embedding": health_data.get("components", {}).get("embedding") == "loaded",
-                "knowledge_service": True
-            }
-        else:
-            return {"weaviate": False, "embedding": False, "knowledge_service": False}
-    except Exception as e:
-        get_logger().log_error("admin", f"System health check failed: {e}", "admin_health_check")
-        return {"weaviate": False, "embedding": False, "knowledge_service": False, "error": str(e)}
-
+# --- Helper Functions ---
 def get_user_accounts():
-    """Placeholder: Fetch user accounts from AuthClient."""
+    """Get user accounts data from auth service."""
     try:
         auth_client = get_auth_client()
-        # This method needs to be implemented in AuthClient
-        # For example: users = auth_client.list_users()
-        # users would be a list of dicts: [{"email": "user@example.com", "role": "user", "last_login": "..."}]
-        # Placeholder data:
-        return pd.DataFrame([
-            {"email": st.session_state.user_email, "role": st.session_state.user_role, "status": "Active", "last_login": "2024-07-21 10:00"},
-            {"email": "lawyer.1@example.com", "role": "user", "status": "Active", "last_login": "2024-07-20 15:30"},
-            {"email": "paralegal.2@example.com", "role": "user", "status": "Inactive", "last_login": "2024-06-15 09:00"},
-        ])
+        user_token = st.session_state.access_token
+        
+        # Try to get real user data from auth service
+        users_data = auth_client.list_users(user_token)
+        
+        if users_data and users_data.get("users"):
+            users = users_data["users"]
+            return pd.DataFrame([
+                {
+                    "email": user.get("email", "Unknown"),
+                    "role": user.get("role", "user"),
+                    "status": "Active" if user.get("is_active", True) else "Inactive",
+                    "created_at": user.get("created_at", "Unknown")[:10] if user.get("created_at") else "Unknown"
+                }
+                for user in users
+            ])
+        else:
+            # Return empty DataFrame if no users or auth service unavailable
+            return pd.DataFrame()
+    
     except Exception as e:
-        # get_logger().log_error("admin", f"Failed to get user accounts: {e}", "admin_user_list")
+        # Log error but return empty DataFrame instead of crashing
+        get_logger().log_error("admin", f"Failed to get user accounts: {e}", "admin_user_list")
         return pd.DataFrame()
 
-def get_system_logs_summary(lines=50):
-    """Placeholder: Fetch recent system log summaries (e.g., from Docker or log files)."""
-    # This is a very basic example. Real log fetching would be more complex.
-    # For instance, reading from mounted log files or using Docker SDK.
-    # log_content = "Example log line 1\nExample error log line 2\nExample info log line 3"
-    # return log_content
-    demo_logs = [
-        "[INFO] 2024-07-21 10:05:30 - Streamlit App: User admin@example.com accessed dashboard.",
-        "[INFO] 2024-07-21 10:02:15 - Auth Service: Login successful for admin@example.com.",
-        "[ERROR] 2024-07-21 09:55:00 - Weaviate DB: Connection timeout during schema check. Retrying...",
-        "[INFO] 2024-07-21 09:50:10 - Ollama Service: Model llama3:8b loaded successfully.",
-        "[WARN] 2024-07-21 09:45:20 - Streamlit App: Document 'old_contract.pdf' failed validation (size limit).",
-    ]* (lines // 5)
-    return "\n".join(demo_logs[:lines])
-
-def display_admin_panel():
-    """Display the clean admin panel content"""
-    st.header("🛠️ Admin Panel")
-    st.markdown("User management and system administration")
-    
-    # System status overview
-    col1, col2, col3, col4 = st.columns(4)
-    
-    try:
-        # Get real health status from APIs
-        health_status = get_system_health_status()
-        
-        with col1:
-            weaviate_status = "🟢 Online" if health_status.get("weaviate") else "🔴 Offline"
-            st.metric("🗃️ Vector DB", weaviate_status)
-        
-        with col2:
-            embedding_status = "🟢 Online" if health_status.get("embedding") else "🔴 Offline"
-            st.metric("🤖 Embedding Service", embedding_status)
-        
-        with col3:
-            knowledge_status = "🟢 Online" if health_status.get("knowledge_service") else "🔴 Offline"
-            st.metric("🔐 Knowledge Service", knowledge_status)
-        
-        with col4:
-            try:
-                # Get document count from API
-                response = requests.get("http://knowledge-service:8000/documents/", timeout=5)
-                if response.status_code == 200:
-                    docs_count = response.json().get("total", 0)
-                else:
-                    docs_count = len(st.session_state.get("uploaded_documents", []))
-            except:
-                docs_count = len(st.session_state.get("uploaded_documents", []))
-            st.metric("📄 Documents", docs_count)
-    
-    except Exception as e:
-        st.error(f"Unable to check system health: {str(e)}")
-        # Fallback to basic info
-        with col1:
-            st.metric("🗃️ Vector DB", "Unknown")
-        with col2:
-            st.metric("🤖 Embedding Service", "Unknown")
-        with col3:
-            st.metric("🔐 Knowledge Service", "Unknown")
-        with col4:
-            st.metric("📄 Documents", len(st.session_state.get("uploaded_documents", [])))
+@st.dialog("🗑️ Delete All Vector Data", width="large")
+def delete_confirmation_modal():
+    """Modal dialog for confirming deletion of all Weaviate data"""
+    st.warning("⚠️ **This action cannot be undone!**")
+    st.markdown("You are about to permanently delete:")
+    st.markdown("• All documents from the vector database")
+    st.markdown("• All embeddings and vector data")
+    st.markdown("• All indexed content")
     
     st.markdown("---")
+    st.markdown("**Are you absolutely sure you want to continue?**")
+    
+    col1, col2, col3 = st.columns([1, 1, 2])
+    
+    with col1:
+        if st.button("✅ Yes, Delete All", type="primary", use_container_width=True):
+            with st.spinner("Deleting all data..."):
+                success, message = perform_delete_all_weaviate_data()
+                if success:
+                    st.success(message)
+                    # Clear cached data
+                    for key in list(st.session_state.keys()):
+                        if key.startswith("documents-") or key.startswith("uploaded_"):
+                            del st.session_state[key]
+                    time.sleep(2)  # Brief pause to show success message
+                else:
+                    st.error(message)
+                    time.sleep(2)  # Brief pause to show error message
+                st.rerun()  # Close modal and refresh main app
+    
+    with col2:
+        if st.button("❌ Cancel", use_container_width=True):
+            st.rerun()  # Close modal without action
+
+def perform_delete_all_weaviate_data():
+    """Delete all data from Weaviate database."""
+    try:
+        # Try multiple endpoint variations to ensure connectivity
+        endpoints = [
+            "http://knowledge-service:8000",
+            "http://localhost:8000", 
+            "http://127.0.0.1:8000"
+        ]
+        
+        working_endpoint = None
+        for endpoint in endpoints:
+            try:
+                test_response = requests.get(f"{endpoint}/health", timeout=5)
+                if test_response.status_code == 200:
+                    working_endpoint = endpoint
+                    break
+            except:
+                continue
+        
+        if not working_endpoint:
+            return False, "Unable to connect to knowledge service on any endpoint"
+        
+        all_documents = []
+        current_page = 1
+        page_size = 100  # Max allowed by the API
+        
+        # Loop to fetch all documents using pagination
+        while True:
+            try:
+                response = requests.get(
+                    f"{working_endpoint}/documents/?page={current_page}&page_size={page_size}", 
+                    timeout=10
+                )
+                response.raise_for_status() # Will raise HTTPError for bad responses (4xx or 5xx)
+                data = response.json()
+                documents_on_page = data.get("documents", [])
+                all_documents.extend(documents_on_page)
+                
+                # Check if this was the last page
+                # (Assuming API might indicate this, or if fewer docs than page_size are returned)
+                if not documents_on_page or len(documents_on_page) < page_size:
+                    break 
+                
+                current_page += 1
+                
+            except requests.exceptions.HTTPError as http_err:
+                error_detail = f"HTTP error fetching page {current_page}: {http_err}, status_code={http_err.response.status_code}"
+                try:
+                    error_json = http_err.response.json()
+                    error_detail += f", response={error_json}"
+                except ValueError:
+                    error_detail += f", response_text='{http_err.response.text[:200]}'"
+                get_logger().log_error("admin", error_detail, "weaviate_get_docs")
+                return False, f"Error fetching documents: {error_detail}"
+            except requests.exceptions.RequestException as req_err:
+                error_detail = f"Request error fetching page {current_page}: {req_err}"
+                get_logger().log_error("admin", error_detail, "weaviate_get_docs")
+                return False, f"Error fetching documents: {error_detail}"
+            except ValueError as json_err: # Includes JSONDecodeError
+                error_detail = f"JSON decode error fetching page {current_page}: {json_err}"
+                get_logger().log_error("admin", error_detail, "weaviate_get_docs")
+                return False, f"Error parsing document data: {error_detail}"
+
+        if not all_documents:
+            return True, "No documents found in Weaviate (database already empty)"
+        
+        # Delete each document individually
+        deleted_count = 0
+        failed_count = 0
+        
+        for doc in all_documents:
+            doc_id = doc.get("id")
+            if doc_id:
+                try:
+                    delete_response = requests.delete(f"{working_endpoint}/documents/{doc_id}", timeout=10)
+                    if delete_response.status_code == 200:
+                        deleted_count += 1
+                    else:
+                        failed_count += 1
+                        # Attempt to get more detailed error information
+                        error_detail = f"status_code={delete_response.status_code}"
+                        try:
+                            error_json = delete_response.json()
+                            error_detail += f", response={error_json}"
+                        except ValueError: # Not a JSON response
+                            error_detail += f", response_text='{delete_response.text[:200]}'" # Show first 200 chars
+                        get_logger().log_error("admin", f"Failed to delete doc_id {doc_id}: {error_detail}", "weaviate_delete")
+                        # The function will return a generic error message later, but this logs specifics
+                except requests.exceptions.RequestException as e_req:
+                    failed_count += 1
+                    get_logger().log_error("admin", f"Request failed for doc_id {doc_id}: {str(e_req)}", "weaviate_delete")
+        
+        if failed_count == 0:
+            return True, f"Successfully deleted all {deleted_count} documents from Weaviate"
+        else:
+            # Make the returned message more informative about the failure
+            return False, f"Attempted to delete {deleted_count + failed_count} documents. Successfully deleted: {deleted_count}. Failed: {failed_count}. Check logs for details on failed deletions."
+    except Exception as e:
+        return False, f"Error deleting Weaviate data: {str(e)}"
+
+def delete_user_account(user_email):
+    """Delete a user account."""
+    try:
+        auth_client = get_auth_client()
+        user_token = st.session_state.access_token
+        
+        # Call auth service to delete user
+        result = auth_client.delete_user(user_token, user_email)
+        return True, f"User {user_email} deleted successfully"
+    
+    except Exception as e:
+        return False, f"Failed to delete user {user_email}: {str(e)}"
+
+def display_admin_panel():
+    """Display the modern admin panel content"""
+    # Page header
+    st.markdown('<h1 class="page-title">🛠️ Admin Panel</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="page-subtitle">User management and data administration</p>', unsafe_allow_html=True)
     
     # User Management Section
     st.subheader("👥 User Management")
@@ -141,48 +379,32 @@ def display_admin_panel():
     with st.expander("➕ Create New User", expanded=False):
         display_create_user_form()
     
-    # List existing users
+    st.markdown("") # Add spacing
+    
+    # User list with delete functionality
     display_user_list()
     
     st.markdown("---")
     
-    # System logs and monitoring
-    st.subheader("📊 System Overview")
+    # Database Management
+    st.subheader("🗄️ Database Management")
     
-    col1, col2 = st.columns(2)
-    
+    col1, col2 = st.columns([3, 1])
     with col1:
-        st.markdown("**System Configuration**")
-        config_info = {
-            "Environment": "Production",
-            "LLM Model": LLM_MODEL_NAME,
-            "Vector DB": VECTOR_DB_NAME,
-            "Workflow Engine": WORKFLOW_ENGINE,
-            "Version": VERSION_INFO
-        }
-        
-        for key, value in config_info.items():
-            st.text(f"{key}: {value}")
-    
+        st.markdown("**Delete All Vector Data**")
+        st.caption("Permanently remove all documents and embeddings from the Weaviate database")
     with col2:
-        st.markdown("**Recent Activity**")
-        # Mock recent admin activities
-        activities = [
-            f"{datetime.now().strftime('%H:%M')} - System health check passed",
-            f"{(datetime.now() - timedelta(minutes=15)).strftime('%H:%M')} - User login: {st.session_state.user_email}",
-            f"{(datetime.now() - timedelta(minutes=30)).strftime('%H:%M')} - Document processed: Alpha Corp Contract.pdf",
-            f"{(datetime.now() - timedelta(hours=1)).strftime('%H:%M')} - System startup completed",
-        ]
-        
-        for activity in activities:
-            st.text(f"• {activity}")
+        if st.button("🗑 Delete All Data", key="delete_all_data", type="secondary"):
+            delete_confirmation_modal()
 
 def display_create_user_form():
-    """Display the create user form"""
+    """Display the create user form with modern styling"""
     auth_client = get_auth_client()
     user_token = st.session_state.access_token
     
     with st.form("create_user_form"):
+        st.markdown("**User Information**")
+        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -200,14 +422,12 @@ def display_create_user_form():
         create_submitted = st.form_submit_button("Create User", type="primary")
         
         if create_submitted:
-            if not new_email or not new_password:
-                st.error("Email and password are required.")
-            else:
+            if new_email and new_password:
                 try:
                     # Parse client matters
                     client_matters = [matter.strip() for matter in client_matters_text.split('\n') if matter.strip()]
                     
-                    # Create user using existing AuthClient
+                    # Create user using AuthClient
                     result = auth_client.create_user(
                         token=user_token,
                         email=new_email,
@@ -217,88 +437,61 @@ def display_create_user_form():
                     )
                     
                     st.success(f"✅ User '{new_email}' created successfully!")
-                    
-                    # Log the admin action using appropriate method
-                    logger = get_logger()
-                    logger.log_page_view(
-                        user_email=st.session_state.user_email,
-                        page_name=f"admin_action_create_user_{new_email}"
-                    )
-                    
-                    st.rerun()  # Refresh to show new user
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"Failed to create user: {str(e)}")
+            else:
+                st.error("Please fill in all required fields (marked with *)")
 
 def display_user_list():
-    """Display list of existing users"""
-    auth_client = get_auth_client()
-    user_token = st.session_state.access_token
+    """Display user list with delete functionality only"""
+    st.markdown("**Current Users**")
     
     try:
-        users_data = auth_client.list_users(user_token)
+        users_df = get_user_accounts()
         
-        if users_data.get("users"):
-            users = users_data["users"]
+        if not users_df.empty:
+            # Display users table
+            st.dataframe(users_df, use_container_width=True, hide_index=True)
             
-            st.markdown(f"**Existing Users ({len(users)} total)**")
+            # User delete action
+            st.markdown("**Delete User**")
             
-            # Display users in a clean format
-            for user in users:
-                with st.container():
-                    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                    
-                    with col1:
-                        email = user.get("email", "Unknown")
-                        role = user.get("role", "user")
-                        st.write(f"👤 **{email}**")
-                        st.caption(f"Role: {role.title()}")
-                    
-                    with col2:
-                        client_matters = user.get("client_matters", [])
-                        st.write(f"📁 {len(client_matters)} matters")
-                    
-                    with col3:
-                        created = user.get("created_at", "Unknown")
-                        if created != "Unknown" and len(created) > 10:
-                            created = created[:10]  # Show just date
-                        st.write(f"📅 {created}")
-                    
-                    with col4:
-                        st.write("✅ Active")
-                    
-                    # Show client matters in expandable section
-                    if client_matters:
-                        with st.expander("Client Matters", expanded=False):
-                            for matter in client_matters:
-                                st.text(f"• {matter}")
-                    
-                    st.markdown("---")
+            # Create user selection dropdown
+            user_options = {
+                f"{row.get('email', 'Unknown')} ({row.get('role', 'user')})": row.get('email')
+                for index, row in users_df.iterrows()
+            }
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                selected_user_display = st.selectbox(
+                    "Select user to delete:",
+                    options=list(user_options.keys()),
+                    key="user_delete_selector"
+                )
+                selected_user_email = user_options.get(selected_user_display)
+            
+            with col2:
+                if st.button("❌ Delete User", key="delete_user_btn", type="secondary"):
+                    if selected_user_email and selected_user_email != st.session_state.user_email:
+                        with st.spinner(f"Deleting user {selected_user_email}..."):
+                            success, message = delete_user_account(selected_user_email)
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+                    elif selected_user_email == st.session_state.user_email:
+                        st.warning("You cannot delete your own account!")
+                    else:
+                        st.warning("Please select a user to delete.")
         else:
-            st.info("No users found or unable to load user list.")
-            show_demo_users()
-            
-    except Exception as e:
-        st.error(f"Failed to load users: {str(e)}")
-        show_demo_users()
-
-def show_demo_users():
-    """Show demo users as fallback"""
-    st.markdown("**Demo Users:**")
-    demo_users = [
-        {"email": "admin@lawfirm.com", "role": "admin", "status": "Active"},
-        {"email": "lawyer1@lawfirm.com", "role": "user", "status": "Active"},
-        {"email": "demo@lawfirm.com", "role": "user", "status": "Active"}
-    ]
+            st.info("No users found in the system.")
     
-    for user in demo_users:
-        col1, col2, col3 = st.columns([2, 1, 1])
-        with col1:
-            st.write(f"👤 {user['email']}")
-        with col2:
-            st.write(user['role'].title())
-        with col3:
-            st.write(user['status'])
+    except Exception as e:
+        st.error(f"Failed to load user data: {e}")
 
 # Display navigation sidebar
 display_navigation_sidebar(current_page="Admin Panel")
