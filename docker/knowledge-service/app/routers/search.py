@@ -10,6 +10,7 @@ import time
 from ..models.schemas import SearchRequest, SearchResponse, SearchResult
 from ..services.weaviate_client import WeaviateService
 from ..services.embedding import EmbeddingService
+from ..dependencies import get_auth_context, AuthContext
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,8 @@ async def get_weaviate_service() -> WeaviateService:
 @router.post("/", response_model=SearchResponse)
 async def search_documents(
     request: SearchRequest,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     """
     Search for similar document chunks using vector similarity
@@ -53,13 +55,39 @@ async def search_documents(
         # Generate embedding for the query
         query_embedding = await embedding_service.embed_text(request.query)
         
-        # Search in Weaviate
+        # Get user's accessible client IDs for filtering
+        accessible_client_ids = await auth_context.auth_client.get_accessible_client_matters(
+            auth_context.user_id, "read_docs"
+        )
+        
+        # Add "all" to accessible clients (documents with no specific client assignment)
+        accessible_client_ids.append("all")
+        
+        # Search in Weaviate with larger limit to filter later
+        search_limit = min(request.limit * 3, 300)  # Get more results to filter from
         results = await weaviate.search_similar(
             query_embedding=query_embedding,
-            limit=request.limit,
+            limit=search_limit,
             threshold=request.threshold,
             filters=request.filters
         )
+        
+        # Filter results by accessible client IDs
+        authorized_results = []
+        for result in results:
+            result_metadata = result.get("metadata", {})
+            result_client_id = result_metadata.get("client_id", "all")
+            
+            # Check if user has access to this result's client
+            if result_client_id in accessible_client_ids:
+                authorized_results.append(result)
+                
+                # Stop when we have enough authorized results
+                if len(authorized_results) >= request.limit:
+                    break
+        
+        # Use filtered results
+        results = authorized_results
         
         # Convert to response format
         search_results = []
@@ -97,7 +125,8 @@ async def find_similar_documents(
     document_id: str,
     limit: int = 10,
     threshold: float = 0.7,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     """
     Find documents similar to a specific document
@@ -124,6 +153,22 @@ async def find_similar_documents(
         if not document_chunks:
             raise HTTPException(status_code=404, detail="Document not found")
         
+        # Check authorization for the source document
+        source_chunk_metadata = document_chunks[0].get("metadata", {})
+        source_client_id = source_chunk_metadata.get("client_id", "all")
+        
+        # Verify user has access to the source document's client
+        has_access = await auth_context.auth_client.verify_access(
+            auth_context.user_id, source_client_id, "read_docs"
+        )
+        
+        # Special case: allow access to "all" documents for any authenticated user
+        if not has_access and source_client_id != "all":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permission to access the source document for client {source_client_id}"
+            )
+        
         # Use the first chunk's content as query
         query_text = document_chunks[0]["content"]
         
@@ -134,26 +179,39 @@ async def find_similar_documents(
         # Generate embedding for the query
         query_embedding = await embedding_service.embed_text(query_text)
         
+        # Get user's accessible client IDs for filtering
+        accessible_client_ids = await auth_context.auth_client.get_accessible_client_matters(
+            auth_context.user_id, "read_docs"
+        )
+        
+        # Add "all" to accessible clients (documents with no specific client assignment)
+        accessible_client_ids.append("all")
+        
         # Search for similar chunks, excluding the original document
         all_results = await weaviate.search_similar(
             query_embedding=query_embedding,
-            limit=limit * 2,  # Get more to filter out same document
+            limit=limit * 4,  # Get more to filter out same document and unauthorized ones
             threshold=threshold,
             filters={}
         )
         
-        # Filter out chunks from the same document
+        # Filter out chunks from the same document and unauthorized clients
         filtered_results = []
         seen_documents = set()
         
         for result in all_results:
             if result["document_id"] != document_id:
-                if result["document_id"] not in seen_documents:
-                    filtered_results.append(result)
-                    seen_documents.add(result["document_id"])
-                    
-                    if len(filtered_results) >= limit:
-                        break
+                # Check authorization for this result
+                result_metadata = result.get("metadata", {})
+                result_client_id = result_metadata.get("client_id", "all")
+                
+                if result_client_id in accessible_client_ids:
+                    if result["document_id"] not in seen_documents:
+                        filtered_results.append(result)
+                        seen_documents.add(result["document_id"])
+                        
+                        if len(filtered_results) >= limit:
+                            break
         
         # Convert to search results
         search_results = []
@@ -188,7 +246,8 @@ async def semantic_search(
     document_ids: Optional[List[str]] = None,
     limit: int = 10,
     threshold: float = 0.7,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     """
     Advanced semantic search with optional document filtering
@@ -211,6 +270,14 @@ async def semantic_search(
         # Generate embedding for the query
         query_embedding = await embedding_service.embed_text(query)
         
+        # Get user's accessible client IDs for filtering
+        accessible_client_ids = await auth_context.auth_client.get_accessible_client_matters(
+            auth_context.user_id, "read_docs"
+        )
+        
+        # Add "all" to accessible clients (documents with no specific client assignment)
+        accessible_client_ids.append("all")
+        
         # Build filters
         filters = {}
         if document_ids:
@@ -219,13 +286,28 @@ async def semantic_search(
                 filters["document_id"] = document_ids[0]
             # TODO: Support multiple document IDs in filters
         
-        # Search in Weaviate
-        results = await weaviate.search_similar(
+        # Search in Weaviate with larger limit to filter later
+        search_limit = min(limit * 3, 300)  # Get more results to filter from
+        all_results = await weaviate.search_similar(
             query_embedding=query_embedding,
-            limit=limit,
+            limit=search_limit,
             threshold=threshold,
             filters=filters
         )
+        
+        # Filter results by accessible client IDs
+        results = []
+        for result in all_results:
+            result_metadata = result.get("metadata", {})
+            result_client_id = result_metadata.get("client_id", "all")
+            
+            # Check if user has access to this result's client
+            if result_client_id in accessible_client_ids:
+                results.append(result)
+                
+                # Stop when we have enough authorized results
+                if len(results) >= limit:
+                    break
         
         # Group results by document for better presentation
         document_groups = {}
@@ -271,7 +353,8 @@ async def semantic_search(
 async def get_search_suggestions(
     query: str,
     limit: int = 5,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     """
     Get search suggestions based on partial query
@@ -292,13 +375,35 @@ async def get_search_suggestions(
         # Generate embedding for partial query
         query_embedding = await embedding_service.embed_text(query)
         
-        # Search for similar content
-        results = await weaviate.search_similar(
+        # Get user's accessible client IDs for filtering
+        accessible_client_ids = await auth_context.auth_client.get_accessible_client_matters(
+            auth_context.user_id, "read_docs"
+        )
+        
+        # Add "all" to accessible clients (documents with no specific client assignment)
+        accessible_client_ids.append("all")
+        
+        # Search for similar content with larger limit to filter later
+        all_results = await weaviate.search_similar(
             query_embedding=query_embedding,
-            limit=limit,
+            limit=limit * 3,
             threshold=0.5,
             filters={}
         )
+        
+        # Filter results by accessible client IDs
+        results = []
+        for result in all_results:
+            result_metadata = result.get("metadata", {})
+            result_client_id = result_metadata.get("client_id", "all")
+            
+            # Check if user has access to this result's client
+            if result_client_id in accessible_client_ids:
+                results.append(result)
+                
+                # Stop when we have enough authorized results
+                if len(results) >= limit:
+                    break
         
         # Extract key phrases from results
         suggestions = []

@@ -4,7 +4,7 @@ Upload, process, and manage legal documents
 """
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
-from typing import Optional
+from typing import Optional, List
 import logging
 import json
 import base64
@@ -12,10 +12,11 @@ from datetime import datetime
 
 from ..models.schemas import (
     DocumentResponse, DocumentListResponse, 
-    DocumentUploadRequest
+    DocumentUploadRequest, DocumentUploadAcceptedResponse, TaskProgressData
 )
 from ..services.weaviate_client import WeaviateService
 from ..tasks.document_tasks import process_document_async, ProgressTracker
+from ..dependencies import get_auth_context, AuthContext
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,14 +31,17 @@ def get_weaviate_service(request: Request) -> WeaviateService:
 # DOCUMENT UPLOAD ENDPOINTS
 # ================================
 
-@router.post("/upload")
+@router.post("/upload", response_model=DocumentUploadAcceptedResponse)
 async def upload_document(
     file: UploadFile = File(...),
     metadata: Optional[str] = Form(default="{}"),
+    client_id: Optional[str] = Form(None),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     """
     Upload document for async processing with real-time progress tracking
     Returns task ID immediately for progress monitoring
+    Optionally accepts client_id for associating the document with a specific client
     """
     try:
         # Basic validation
@@ -54,6 +58,24 @@ async def upload_document(
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid metadata JSON")
         
+        # Handle client_id authorization
+        if client_id:
+            # If a specific client_id is provided, verify the user has access to it
+            has_access = await auth_context.auth_client.verify_access(
+                auth_context.user_id, client_id, "upload_docs"
+            )
+            if not has_access:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access denied: You do not have permission to upload documents for client {client_id}"
+                )
+        else:
+            # If no client_id provided, default to "all" (requires no specific permission for now)
+            client_id = "all"
+        
+        # Add client_id to the metadata
+        doc_metadata['client_id'] = client_id
+        
         # Encode file content for Celery task
         file_content_b64 = base64.b64encode(file_content).decode('utf-8')
         
@@ -65,86 +87,112 @@ async def upload_document(
             metadata=doc_metadata
         )
         
-        logger.info(f"Started async processing for {file.filename}, task_id: {task.id}")
+        logger.info(f"Started async processing for {file.filename} (Client: {client_id or 'all'}), task_id: {task.id}")
         
-        return {
-            "task_id": task.id,
-            "status": "ACCEPTED",
-            "message": "Document upload accepted for processing",
-            "filename": file.filename,
-            "size": len(file_content),
-            "progress_url": f"/documents/progress/{task.id}",
-            "result_url": f"/documents/task-result/{task.id}"
-        }
+        return DocumentUploadAcceptedResponse(
+            message="Document upload accepted for processing.",
+            task_id=task.id,
+            filename=file.filename
+        )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Document upload failed: {e}")
+        logger.error(f"Document upload failed for {file.filename}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # Upload text content directly for async processing
-@router.post("/upload-text")
+@router.post("/upload-text", response_model=DocumentUploadAcceptedResponse)
 async def upload_text_content(
-    request: DocumentUploadRequest,
+    filename: str = Form(...),
+    content: str = Form(...),
+    content_type: str = Form("text/plain"),
+    metadata_json: Optional[str] = Form(default="{}"),
+    client_id: Optional[str] = Form(None),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     try:
-        if not request.content.strip():
+        if not content.strip():
             raise HTTPException(status_code=400, detail="Empty content")
         
-        logger.info(f"Starting async text upload: {request.filename}")
+        logger.info(f"Starting async text upload: {filename} (Client: {client_id or 'all'})")
         
-        # Convert to bytes and encode for Celery task
-        file_content = request.content.encode('utf-8')
-        file_content_b64 = base64.b64encode(file_content).decode('utf-8')
+        try:
+            doc_metadata = json.loads(metadata_json) if metadata_json != "{}" else {}
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid metadata JSON in metadata_json field")
         
-        # Start async processing task
+        # Handle client_id authorization
+        if client_id:
+            # If a specific client_id is provided, verify the user has access to it
+            has_access = await auth_context.auth_client.verify_access(
+                auth_context.user_id, client_id, "upload_docs"
+            )
+            if not has_access:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access denied: You do not have permission to upload documents for client {client_id}"
+                )
+        else:
+            # If no client_id provided, default to "all" (requires no specific permission for now)
+            client_id = "all"
+        
+        # Add client_id to the metadata
+        doc_metadata['client_id'] = client_id
+        
+        file_content_bytes = content.encode('utf-8')
+        file_content_b64 = base64.b64encode(file_content_bytes).decode('utf-8')
+        
         task = process_document_async.delay(
             file_content_b64=file_content_b64,
-            content_type=request.content_type,
-            filename=request.filename,
-            metadata=request.metadata
+            content_type=content_type,
+            filename=filename,
+            metadata=doc_metadata
         )
         
-        logger.info(f"Started async text processing for {request.filename}, task_id: {task.id}")
+        logger.info(f"Started async text processing for {filename}, task_id: {task.id}")
         
-        return {
-            "task_id": task.id,
-            "status": "ACCEPTED",
-            "message": "Text content accepted for processing",
-            "filename": request.filename,
-            "size": len(file_content),
-            "progress_url": f"/documents/progress/{task.id}",
-            "result_url": f"/documents/task-result/{task.id}"
-        }
+        return DocumentUploadAcceptedResponse(
+            message="Text content accepted for processing.",
+            task_id=task.id,
+            filename=filename
+        )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Text upload failed: {e}")
+        logger.error(f"Text upload failed for {filename}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 # ================================
 # PROGRESS TRACKING ENDPOINTS
 # ================================
 
-@router.get("/progress/{task_id}")
-async def get_upload_progress(task_id: str):
+@router.get("/task_progress/{task_id}", response_model=TaskProgressData)
+async def get_task_progress(task_id: str):
     """
-    Get real-time progress for document processing task
+    Get real-time progress for a specific document processing Celery task
     """
     try:
-        # Get progress from Redis
         progress_data = ProgressTracker.get_progress(task_id)
         
-        # Add task ID to response
-        progress_data["task_id"] = task_id
+        # Handle old data format - fix result object if it has document_id instead of id
+        if "result" in progress_data and isinstance(progress_data["result"], dict):
+            result = progress_data["result"]
+            if "document_id" in result and "id" not in result:
+                result["id"] = result.pop("document_id")
         
-        return progress_data
+        return TaskProgressData(**progress_data)
         
     except Exception as e:
-        logger.error(f"Failed to get progress for task {task_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get progress")
+        logger.error(f"Failed to get progress for task {task_id}: {e}", exc_info=True)
+        # Return a safe default response instead of raising error
+        return TaskProgressData(
+            status="UNKNOWN",
+            progress=0.0,
+            stage="Error fetching progress",
+            filename="Unknown"
+        )
 
 @router.get("/task-result/{task_id}", response_model=DocumentResponse)
 async def get_task_result(task_id: str):
@@ -154,16 +202,19 @@ async def get_task_result(task_id: str):
     try:
         from ..celery_app import celery_app
         
-        # Get task result from Celery
         task = celery_app.AsyncResult(task_id)
         
-        if task.state == "PENDING":
-            raise HTTPException(status_code=202, detail="Task is still processing")
+        if task.state == "PENDING" or task.state == "STARTED" or task.state == "RETRY":
+            current_progress = ProgressTracker.get_progress(task_id)
+            raise HTTPException(status_code=202, detail=f"Task is {task.state}. Stage: {current_progress.get('stage', 'N/A')}")
         elif task.state == "SUCCESS":
-            # Convert Celery result to DocumentResponse format
             result = task.result
+            if not isinstance(result, dict):
+                logger.error(f"Task {task_id} Succeeded but result is not a dict: {type(result)} - {result}")
+                raise HTTPException(status_code=500, detail="Task succeeded but result format is unexpected.")
+            
             return DocumentResponse(
-                id=result["document_id"],
+                id=result.get("document_id", task_id),
                 filename=result["filename"],
                 content_type=result["content_type"],
                 size=result["size"],
@@ -172,15 +223,17 @@ async def get_task_result(task_id: str):
                 metadata=result["metadata"]
             )
         elif task.state == "FAILURE":
-            raise HTTPException(status_code=500, detail=f"Processing failed: {str(task.info)}")
+            failure_progress = ProgressTracker.get_progress(task_id)
+            error_info = failure_progress.get('error', str(task.info))
+            raise HTTPException(status_code=500, detail=f"Processing failed: {error_info}")
         else:
             raise HTTPException(status_code=202, detail=f"Task status: {task.state}")
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get task result for {task_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get task result")
+        logger.error(f"Failed to get task result for {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get task result for {task_id}: {str(e)}")
 
 # ================================
 # DOCUMENT MANAGEMENT ENDPOINTS
@@ -190,9 +243,11 @@ async def get_task_result(task_id: str):
 async def list_documents(
     page: int = 1,
     page_size: int = 20,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    client_id: Optional[str] = None,
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
-    """Get paginated list of all uploaded documents"""
+    """Get paginated list of documents from Weaviate filtered by user's authorized clients"""
     try:
         # Validate pagination parameters
         if page < 1:
@@ -200,25 +255,65 @@ async def list_documents(
         if page_size < 1 or page_size > 100:
             raise HTTPException(status_code=400, detail="Page size: 1-100")
         
-        result = await weaviate.list_documents(page=page, page_size=page_size)
+        # Get user's accessible client IDs
+        accessible_client_ids = await auth_context.auth_client.get_accessible_client_matters(
+            auth_context.user_id, "read_docs"
+        )
+        
+        # Check if user is admin (indicated by special marker)
+        is_admin = "__ALL_CLIENTS__" in accessible_client_ids
+        
+        if is_admin:
+            # Admin users see all documents - no filtering needed
+            all_documents_result = await weaviate.list_documents(
+                page=page,
+                page_size=page_size
+            )
+            authorized_documents = all_documents_result.get("documents", [])
+            total_authorized = all_documents_result.get("total", len(authorized_documents))
+        else:
+            # Add "all" to accessible clients (documents with no specific client assignment)
+            accessible_client_ids.append("all")
+            
+            # Fetch all documents first, then filter by client access
+            all_documents_result = await weaviate.list_documents(
+                page=1,
+                page_size=1000  # Get a large number to filter from
+            )
+            
+            # Filter documents by accessible client IDs
+            authorized_documents = []
+            for doc_info in all_documents_result.get("documents", []):
+                doc_metadata = doc_info.get("metadata", {})
+                doc_client_id = doc_metadata.get("client_id", "all")
+                
+                # Check if user has access to this document's client
+                if doc_client_id in accessible_client_ids:
+                    authorized_documents.append(doc_info)
+            
+            # Apply pagination to filtered results
+            total_authorized = len(authorized_documents)
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            authorized_documents = authorized_documents[start_idx:end_idx]
         
         # Convert to API response format
         documents = []
-        for doc_info in result["documents"]:
+        for doc_info in authorized_documents:
             doc_response = DocumentResponse(
-                id=doc_info["id"],
-                filename=doc_info["filename"],
-                content_type=doc_info["content_type"],
-                size=0,  # Size not stored in vector DB
-                chunk_count=doc_info["chunk_count"],
-                created_at=datetime.fromisoformat(doc_info["created_at"].replace("Z", "+00:00")),
-                metadata=doc_info["metadata"]
+                id=doc_info.get("id", "N/A"),
+                filename=doc_info.get("filename", "Unknown"),
+                content_type=doc_info.get("content_type", "N/A"),
+                size=doc_info.get("size", 0),
+                chunk_count=doc_info.get("chunk_count", 0),
+                created_at=datetime.fromisoformat(doc_info["created_at"].replace("Z", "+00:00")) if doc_info.get("created_at") else datetime.utcnow(),
+                metadata=doc_info.get("metadata", {})
             )
             documents.append(doc_response)
         
         response = DocumentListResponse(
             documents=documents,
-            total=result["total"],
+            total=total_authorized,
             page=page,
             page_size=page_size
         )
@@ -229,13 +324,14 @@ async def list_documents(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list documents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to list documents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
 
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: str,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
     """Get information about a specific document"""
     try:
@@ -244,14 +340,30 @@ async def get_document(
         if not doc_info:
             raise HTTPException(status_code=404, detail="Document not found")
         
+        # Check authorization - get client_id from document metadata
+        doc_metadata = doc_info.get("metadata", {})
+        doc_client_id = doc_metadata.get("client_id", "all")
+        
+        # Verify user has access to this document's client
+        has_access = await auth_context.auth_client.verify_access(
+            auth_context.user_id, doc_client_id, "read_docs"
+        )
+        
+        # Special case: allow access to "all" documents for any authenticated user
+        if not has_access and doc_client_id != "all":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permission to access documents for client {doc_client_id}"
+            )
+        
         response = DocumentResponse(
-            id=doc_info["id"],
-            filename=doc_info["filename"],
-            content_type=doc_info["content_type"],
-            size=0,  # Size not available in vector DB
-            chunk_count=0,  # Would need separate query
-            created_at=datetime.fromisoformat(doc_info["created_at"].replace("Z", "+00:00")),
-            metadata=doc_info["metadata"]
+            id=doc_info.get("id", document_id),
+            filename=doc_info.get("filename", "Unknown"),
+            content_type=doc_info.get("content_type", "N/A"),
+            size=doc_info.get("size", 0),
+            chunk_count=doc_info.get("chunk_count", 0),
+            created_at=datetime.fromisoformat(doc_info["created_at"].replace("Z", "+00:00")) if doc_info.get("created_at") else datetime.utcnow(),
+            metadata=doc_info.get("metadata", {})
         )
         
         return response
@@ -259,66 +371,88 @@ async def get_document(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get document {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get document {document_id}: {str(e)}")
 
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
 ):
-    """Delete a document and all its chunks"""
+    """Delete a document and its chunks from Weaviate"""
     try:
-        # Verify document exists
+        # First check if document exists and get its metadata for authorization
         doc_info = await weaviate.get_document_info(document_id)
         if not doc_info:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        # Delete all chunks for this document
-        deleted_count = await weaviate.delete_document(document_id)
+        # Check authorization - get client_id from document metadata
+        doc_metadata = doc_info.get("metadata", {})
+        doc_client_id = doc_metadata.get("client_id", "all")
         
-        logger.info(f"Deleted document {document_id} ({deleted_count} chunks)")
-        
-        return {
-            "message": "Document deleted successfully",
-            "document_id": document_id,
-            "chunks_deleted": deleted_count
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/{document_id}/chunks")
-async def get_document_chunks(
-    document_id: str,
-    weaviate: WeaviateService = Depends(get_weaviate_service)
-):
-    """Get all chunks for a specific document"""
-    try:
-        # Use dummy embedding with document filter to get all chunks
-        dummy_embedding = [0.0] * 384  # BGE-small embedding dimension
-        
-        results = await weaviate.search_similar(
-            query_embedding=dummy_embedding,
-            limit=1000,  # Get all chunks
-            threshold=0.0,  # Accept all results
-            filters={"document_id": document_id}
+        # Verify user has delete permissions for this document's client
+        has_access = await auth_context.auth_client.verify_access(
+            auth_context.user_id, doc_client_id, "delete_docs"
         )
         
-        if not results:
-            raise HTTPException(status_code=404, detail="Document not found or no chunks")
+        # Special case: allow deletion of "all" documents for any authenticated user (or admin only?)
+        if not has_access and doc_client_id != "all":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permission to delete documents for client {doc_client_id}"
+            )
         
-        return {
-            "document_id": document_id,
-            "chunks": results,
-            "total_chunks": len(results)
-        }
+        # Proceed with deletion
+        success = await weaviate.delete_document(document_id)
+        if not success:
+            logger.warning(f"Attempt to delete document {document_id} reported failure or not found by service.")
+            raise HTTPException(status_code=404, detail="Document not found or deletion failed.")
+        
+        logger.info(f"Document {document_id} deleted successfully.")
+        return {"document_id": document_id, "status": "DELETED"}
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get chunks for document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        logger.error(f"Failed to delete document {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete document {document_id}: {str(e)}")
+
+@router.get("/{document_id}/chunks", response_model=List[dict])
+async def get_document_chunks(
+    document_id: str,
+    weaviate: WeaviateService = Depends(get_weaviate_service),
+    auth_context: AuthContext = Depends(get_auth_context),
+):
+    try:
+        # First check if document exists and get its metadata for authorization
+        doc_info = await weaviate.get_document_info(document_id)
+        if not doc_info:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Check authorization - get client_id from document metadata
+        doc_metadata = doc_info.get("metadata", {})
+        doc_client_id = doc_metadata.get("client_id", "all")
+        
+        # Verify user has read permissions for this document's client
+        has_access = await auth_context.auth_client.verify_access(
+            auth_context.user_id, doc_client_id, "read_docs"
+        )
+        
+        # Special case: allow access to "all" documents for any authenticated user
+        if not has_access and doc_client_id != "all":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permission to access documents for client {doc_client_id}"
+            )
+        
+        chunks = await weaviate.get_document_chunks(document_id)
+        if chunks is None:
+            raise HTTPException(status_code=404, detail="Document not found or has no chunks")
+        return chunks
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get chunks for document {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get chunks for document {document_id}: {str(e)}") 

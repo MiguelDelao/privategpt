@@ -271,7 +271,6 @@ class WeaviateService:
         """List all documents with pagination"""
         try:
             # Get sample of chunks to find unique documents
-            # More efficient than aggregation on large datasets
             result = (
                 self.client.query
                 .get(self.collection_name, 

@@ -43,6 +43,30 @@ class DocumentListResponse(BaseModel):
     page: int                         # Current page
     page_size: int                    # Items per page
 
+class DocumentUploadAcceptedResponse(BaseModel):
+    """Response when a document upload is accepted for async processing"""
+    message: str = Field(description="Acknowledgement message")
+    task_id: str = Field(description="Celery task ID for tracking progress")
+    filename: str = Field(description="The name of the uploaded file")
+    # document_id: Optional[str] = Field(None, description="ID of the preliminary document record, if created synchronously")
+
+# ================================
+# TASK PROGRESS MODELS
+# ================================
+
+class TaskProgressData(BaseModel):
+    """Schema for task progress information retrieved from Redis"""
+    status: str = Field(description="Current status of the task (e.g., PENDING, PROCESSING, SUCCESS, FAILURE)")
+    progress: float = Field(description="Overall progress (0.0 to 1.0)")
+    stage: str = Field(description="Current processing stage description")
+    filename: Optional[str] = Field(None, description="Filename being processed")
+    chunks_processed: Optional[int] = Field(None, description="Number of chunks processed so far")
+    chunks_total: Optional[int] = Field(None, description="Total number of chunks to process")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp of the last progress update")
+    error: Optional[str] = Field(None, description="Error message if the task failed")
+    error_type: Optional[str] = Field(None, description="Type of error if the task failed")
+    result: Optional[DocumentResponse] = Field(None, description="Final result of the document processing if status is SUCCESS")
+
 # ================================
 # SEARCH MODELS  
 # ================================
@@ -83,7 +107,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., description="Conversation history")
     max_tokens: Optional[int] = Field(default=1000, le=4000, description="Response limit")
     temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0, description="Creativity (0-2)")
-    search_limit: Optional[int] = Field(default=5, le=20, description="Context documents")
+    search_limit: Optional[int] = Field(default=10, le=50, description="Context documents")
     include_sources: Optional[bool] = Field(default=True, description="Show sources")
 
 class ChatResponse(BaseModel):

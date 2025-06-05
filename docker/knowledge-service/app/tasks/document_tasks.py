@@ -77,6 +77,8 @@ def process_document_async(self, file_content_b64: str, content_type: str,
                 "progress": 0.05,
                 "stage": "Initializing services...",
                 "filename": filename,
+                "chunks_processed": 0,
+                "chunks_total": 0,
                 "total_stages": 5
             })
             
@@ -93,7 +95,9 @@ def process_document_async(self, file_content_b64: str, content_type: str,
                 "status": "PROCESSING", 
                 "progress": 0.20,
                 "stage": f"Extracting text from {filename}...",
-                "filename": filename
+                "filename": filename,
+                "chunks_processed": 0,
+                "chunks_total": 0  # Will be updated once we know the count
             })
             
             # Extract text and create chunks
@@ -106,12 +110,13 @@ def process_document_async(self, file_content_b64: str, content_type: str,
             
             chunk_count = len(doc_result["chunks"])
             
-            # Stage 3: Embedding Generation (40% - 80%)
+            # Stage 3: Embedding Generation (starts at 20%, progresses to 90% based on chunks)
             tracker.update_progress(task_id, {
                 "status": "PROCESSING",
-                "progress": 0.40,
+                "progress": 0.20,
                 "stage": f"Generating embeddings for {chunk_count} chunks...",
                 "filename": filename,
+                "chunks_processed": 0,
                 "chunks_total": chunk_count
             })
             
@@ -127,14 +132,17 @@ def process_document_async(self, file_content_b64: str, content_type: str,
                 batch_end = min(i + batch_size, len(chunk_texts))
                 batch_texts = chunk_texts[i:batch_end]
                 
-                # Update progress for each batch
-                batch_progress = 0.40 + (0.40 * (i + len(batch_texts)) / len(chunk_texts))
+                # Calculate actual progress based on chunks processed
+                chunks_processed = i + len(batch_texts)
+                # Progress: 20% for setup + (chunks_processed / total_chunks) * 70% + 10% for final storage
+                actual_progress = 0.20 + (chunks_processed / chunk_count) * 0.70
+                
                 tracker.update_progress(task_id, {
                     "status": "PROCESSING",
-                    "progress": batch_progress,
+                    "progress": actual_progress,
                     "stage": f"Processing embeddings batch {i//batch_size + 1}/{(len(chunk_texts) + batch_size - 1)//batch_size}...",
                     "filename": filename,
-                    "chunks_processed": i + len(batch_texts),
+                    "chunks_processed": chunks_processed,
                     "chunks_total": chunk_count
                 })
                 
@@ -151,6 +159,7 @@ def process_document_async(self, file_content_b64: str, content_type: str,
                 "progress": 0.90,
                 "stage": "Storing in vector database...",
                 "filename": filename,
+                "chunks_processed": chunk_count,
                 "chunks_total": chunk_count
             })
             
@@ -164,7 +173,7 @@ def process_document_async(self, file_content_b64: str, content_type: str,
             
             # Stage 5: Complete (100%)
             result = {
-                "document_id": doc_result["document_id"],
+                "id": doc_result["document_id"],  # Use 'id' to match DocumentResponse schema
                 "filename": filename,
                 "content_type": content_type,
                 "size": len(file_content),
@@ -178,6 +187,8 @@ def process_document_async(self, file_content_b64: str, content_type: str,
                 "progress": 1.0,
                 "stage": "Document processing complete!",
                 "filename": filename,
+                "chunks_processed": chunk_count,
+                "chunks_total": chunk_count,
                 "result": result
             })
             

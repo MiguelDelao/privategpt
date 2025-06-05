@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 
 # Import our routers and services
-from .routers import documents, search, chat
+from .routers import documents, search, chat, admin
 from .services.weaviate_client import WeaviateService
 from .services.embedding import EmbeddingService
 
@@ -87,6 +87,7 @@ app.add_middleware(
 app.include_router(documents.router, prefix="/documents", tags=["documents"])
 app.include_router(search.router, prefix="/search", tags=["search"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 @app.get("/")
 async def root():

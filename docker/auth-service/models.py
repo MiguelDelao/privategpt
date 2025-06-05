@@ -3,20 +3,47 @@ Database models for authentication service
 SQLAlchemy models with proper indexing and relationships
 """
 
-from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text, Integer, Index
+from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text, Integer, Index, Table, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 from typing import Optional, List
 import json
 import os
+import uuid # Added for client IDs
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./auth.db")
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# Association Table for User-Client Many-to-Many relationship
+user_clients_association = Table(
+    "user_clients_association",
+    Base.metadata,
+    Column("user_email", String(255), ForeignKey("users.email"), primary_key=True),
+    Column("client_id", String(36), ForeignKey("clients.id"), primary_key=True), # Assuming client.id is UUID string
+)
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    created_by_email = Column(String(255), ForeignKey("users.email"), nullable=True) # Optional: track who created client
+    
+    # Relationship to users
+    authorized_users = relationship(
+        "User",
+        secondary=user_clients_association,
+        back_populates="authorized_clients"
+    )
+
+    def __repr__(self):
+        return f"<Client(id='{self.id}', name='{self.name}')>"
 
 class User(Base):
     """User model with legal compliance features"""
@@ -31,7 +58,6 @@ class User(Base):
     active = Column(Boolean, default=True, nullable=False, index=True)
     
     # Legal compliance fields
-    client_matters = Column(Text, nullable=True)  # JSON string
     data_retention_date = Column(DateTime, nullable=True, index=True)
     consent_date = Column(DateTime, nullable=True)
     consent_version = Column(String(10), nullable=True)
@@ -50,25 +76,20 @@ class User(Base):
     mfa_enabled = Column(Boolean, default=False, nullable=False)
     mfa_secret = Column(String(255), nullable=True)
     
+    # Relationship to clients
+    authorized_clients = relationship(
+        "Client",
+        secondary=user_clients_association,
+        back_populates="authorized_users",
+        lazy="selectin" # Eagerly load clients with the user
+    )
+    
     # Indexes for performance
     __table_args__ = (
         Index('idx_user_active_role', 'active', 'role'),
         Index('idx_user_login_attempts', 'failed_login_attempts', 'account_locked_until'),
         Index('idx_user_audit', 'created_at', 'updated_at'),
     )
-    
-    def get_client_matters(self) -> List[str]:
-        """Parse client matters from JSON string"""
-        if self.client_matters:
-            try:
-                return json.loads(self.client_matters)
-            except json.JSONDecodeError:
-                return []
-        return []
-    
-    def set_client_matters(self, matters: List[str]):
-        """Store client matters as JSON string"""
-        self.client_matters = json.dumps(matters) if matters else None
     
     def is_account_locked(self) -> bool:
         """Check if account is currently locked"""
@@ -82,7 +103,7 @@ class User(Base):
             "email": self.email,
             "role": self.role,
             "active": self.active,
-            "client_matters": self.get_client_matters(),
+            "authorized_clients": [{"id": client.id, "name": client.name} for client in self.authorized_clients],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
@@ -95,7 +116,7 @@ class LoginSession(Base):
     __tablename__ = "login_sessions"
     
     session_id = Column(String(255), primary_key=True)
-    user_email = Column(String(255), nullable=False, index=True)
+    user_email = Column(String(255), ForeignKey("users.email"), nullable=False, index=True)
     token_jti = Column(String(255), nullable=False, unique=True, index=True)  # JWT ID
     ip_address = Column(String(45), nullable=True)  # IPv6 compatible
     user_agent = Column(Text, nullable=True)
@@ -123,9 +144,9 @@ class AuditLog(Base):
     """Audit log for legal compliance"""
     __tablename__ = "audit_logs"
     
-    id = Column(String(255), primary_key=True)  # UUID
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     event_type = Column(String(100), nullable=False, index=True)
-    user_email = Column(String(255), nullable=True, index=True)
+    user_email = Column(String(255), ForeignKey("users.email"), nullable=True, index=True)
     
     # Event details
     message = Column(Text, nullable=False)
@@ -151,9 +172,9 @@ class SecurityMetric(Base):
     """Security metrics for monitoring"""
     __tablename__ = "security_metrics"
     
-    id = Column(String(255), primary_key=True)  # UUID
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     metric_type = Column(String(100), nullable=False, index=True)
-    user_email = Column(String(255), nullable=True, index=True)
+    user_email = Column(String(255), ForeignKey("users.email"), nullable=True, index=True)
     
     # Metric data
     count = Column(Integer, default=1, nullable=False)
@@ -189,7 +210,10 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
 
 def create_user(db: Session, user_data: dict) -> User:
     """Create new user"""
-    user = User(**user_data)
+    # If 'authorized_clients' or similar is passed in user_data, it needs special handling
+    # For now, assume client associations are done separately.
+    plain_user_data = {k: v for k, v in user_data.items() if k not in ['authorized_clients']}
+    user = User(**plain_user_data)
     db.add(user)
     db.commit()
     db.refresh(user)

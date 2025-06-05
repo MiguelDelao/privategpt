@@ -114,49 +114,41 @@ def require_auth(admin_only=False, main_app_file="app.py"):
     return True
 
 def display_navigation_sidebar(current_page="Dashboard"):
-    """Display custom navigation sidebar with logout functionality"""
+    """Display clean navigation sidebar"""
     with st.sidebar:
-        st.markdown("### 🏢 PrivateGPT Legal AI")
-        st.markdown("---")
-        
         # User info
-        st.caption(f"**{st.session_state.user_email}**")
-        st.caption(f"Role: {st.session_state.user_role.title()}")
+        st.markdown(f"**{st.session_state.user_email}**")
         
         st.markdown("---")
-        st.markdown("### 📋 Navigation")
         
-        # Dashboard
-        if st.button("🏠 Dashboard", 
+        # Navigation
+        if st.button("Dashboard", 
                     use_container_width=True, 
                     key="nav_dashboard",
                     type="primary" if current_page == "Dashboard" else "secondary"):
             st.switch_page("pages/dashboard.py")
             
-        # RAG Chat
-        if st.button("💬 RAG Chat", 
+        if st.button("RAG Chat", 
                     use_container_width=True, 
                     key="nav_rag_chat",
                     type="primary" if current_page == "RAG Chat" else "secondary"):
             st.switch_page("pages/rag_chat.py")
             
-        # LLM Chat
-        if st.button("🤖 LLM Chat", 
+        if st.button("LLM Chat", 
                     use_container_width=True, 
                     key="nav_llm_chat",
                     type="primary" if current_page == "LLM Chat" else "secondary"):
             st.switch_page("pages/llm_chat.py")
             
-        # Document Management
-        if st.button("📂 Documents", 
+        if st.button("Documents", 
                     use_container_width=True, 
                     key="nav_documents",
                     type="primary" if current_page == "Documents" else "secondary"):
             st.switch_page("pages/document_management.py")
         
-        # Admin Panel (only for admins)
+        # Admin access (only for admins)
         if st.session_state.user_role == "admin":
-            if st.button("🛠️ Admin Panel", 
+            if st.button("Settings", 
                         use_container_width=True, 
                         key="nav_admin",
                         type="primary" if current_page == "Admin Panel" else "secondary"):
@@ -164,17 +156,16 @@ def display_navigation_sidebar(current_page="Dashboard"):
         
         st.markdown("---")
         
-        # Quick Stats
-        st.markdown("### 📊 Quick Stats")
+        # Stats
         docs_count = len(st.session_state.get("uploaded_documents", []))
         chat_count = len(st.session_state.get("chat_history", []))
         st.metric("Documents", docs_count)
-        st.metric("Chat Messages", chat_count)
+        st.metric("Chats", chat_count)
         
         st.markdown("---")
         
         # Logout
-        if st.button("🚪 Logout", key="sidebar_logout", use_container_width=True, type="secondary"):
+        if st.button("Logout", key="sidebar_logout", use_container_width=True, type="secondary"):
             # Log logout with session duration
             logger = get_logger()
             if 'login_time' in st.session_state:
@@ -193,9 +184,6 @@ def display_navigation_sidebar(current_page="Dashboard"):
             
             # Go back to login
             st.switch_page("app.py")
-        
-        st.markdown("---")
-        st.caption(VERSION_INFO)
 
 def apply_page_styling():
     """Apply consistent styling across all pages"""

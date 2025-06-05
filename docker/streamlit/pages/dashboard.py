@@ -28,33 +28,18 @@ st.set_page_config(
 initialize_session_state()
 require_auth(main_app_file="app.py")
 
-# Apply consistent styling
-apply_page_styling()
-
 # Add parent directory to path to import pages_utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- Helper Functions ---
-def get_recent_activities(limit=5):
-    """Mockup for recent activities - replace with actual data source if available"""
-    # Placeholder: In a real app, this would come from a database or logs
-    demo_activities = [
-        {"timestamp": datetime(2024, 7, 20, 10, 30), "user": st.session_state.user_email, "action": "Uploaded 'Alpha Corp MSA.pdf'", "type": "document"},
-        {"timestamp": datetime(2024, 7, 20, 9, 15), "user": st.session_state.user_email, "action": "Started RAG chat on 'Contract Review'", "type": "chat"},
-        {"timestamp": datetime(2024, 7, 19, 16, 45), "user": "legal.team@example.com", "action": "Searched for 'indemnity clauses'", "type": "search"},
-        {"timestamp": datetime(2024, 7, 19, 14, 20), "user": st.session_state.user_email, "action": "Used LLM Chat for quick query", "type": "llm"},
-        {"timestamp": datetime(2024, 7, 18, 11, 0), "user": "paralegal@example.com", "action": "Uploaded 'Case Brief XYZ.docx'", "type": "document"},
+def get_dummy_chat_history():
+    """Generate dummy chat history data."""
+    return [
+        {"id": "chat1", "title": "Contract Analysis Q&A", "timestamp": "2024-07-28 10:30 AM", "preview": "Discussed key clauses in the NDA document..."},
+        {"id": "chat2", "title": "Legal Research - GDPR", "timestamp": "2024-07-27 03:45 PM", "preview": "Explored GDPR compliance requirements for new product..."},
+        {"id": "chat3", "title": "Case Law Summary", "timestamp": "2024-07-26 09:00 AM", "preview": "Summarized findings from recent intellectual property cases..."},
+        {"id": "chat4", "title": "Regulatory Update Brief", "timestamp": "2024-07-25 01:15 PM", "preview": "Reviewed new SEC filings and their implications..."},
     ]
-    # Add some dynamic elements for realism
-    if "uploaded_documents" in st.session_state and st.session_state.uploaded_documents:
-        last_doc = st.session_state.uploaded_documents[0]
-        demo_activities.insert(0, {
-            "timestamp": last_doc.get("Ingested At", last_doc.get("ingested_at", datetime.now())), 
-            "user": last_doc.get("Uploaded By", last_doc.get("uploaded_by", st.session_state.user_email)), 
-            "action": f"Processed '{last_doc.get('Name', last_doc.get('name', 'Unknown Document'))}'",
-            "type": "document"
-        })
-    return sorted(demo_activities, key=lambda x: x["timestamp"], reverse=True)[:limit]
 
 def get_document_statistics():
     """Get document statistics from Knowledge Service API"""
@@ -101,90 +86,288 @@ def get_document_statistics():
         return {"total_documents": total_docs, "document_types": type_counts, "average_doc_size_kb": 0}
 
 def display_dashboard():
-    """Display the main dashboard content"""
+    """Display the clean, professional dashboard content"""
     
-    st.markdown(f'<div class="main-header">🏠 {APP_TITLE} Dashboard</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-header">Welcome, {st.session_state.user_email}! Get an overview of your legal AI workspace.</div>', unsafe_allow_html=True)
+    # Apply ChatGPT-style professional dark theme
+    st.markdown("""
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Söhne', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Ubuntu', 'Cantarell', 'Noto Sans', 'sans-serif', 'Helvetica Neue', 'Arial', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+            color: #ECECF1; /* Lighter text for dark background */
+        }
+        .main .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            padding-left: 3rem;
+            padding-right: 3rem;
+            max-width: 100%; /* Ensure content can go full width if needed */
+        }
 
-    # Key Metrics Section
-    st.markdown("### 📊 Key Metrics")
-    doc_stats = get_document_statistics()
-    total_documents = doc_stats.get("total_documents", 0)
-    document_types_data = doc_stats.get("document_types", {})
-    
-    num_doc_types = len(document_types_data)
-    avg_doc_size = doc_stats.get("average_doc_size_kb", 0)
+        /* Hide Streamlit default UI elements */
+        /* Hide "Made with Streamlit" footer */
+        footer {visibility: hidden;}
+        /* Hide Hamburger Menu */
+        button[data-testid="baseButton-headerNoPadding"] {
+            visibility: hidden;
+        }
+        /* Hide Header */
+        header[data-testid="stHeader"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        /* Hide decoration */
+        #stDecoration {
+            display:none;
+        }
+        /* Hide Streamlit toolbar */
+        div[data-testid="stToolbar"] {
+            display:none;
+        }
+        /* Hide status widget (top right) */
+        div[data-testid="stStatusWidget"] {
+            display:none;
+        }
+        /* Hide deploy button if it reappears */
+        div[data-testid="stDeployButton"] {
+            display: none;
+        }
+        #MainMenu {
+            visibility: hidden;
+        }
 
-    kpi_cols = st.columns(3)
-    with kpi_cols[0]:
-        st.metric(label="Total Documents Indexed", value=total_documents)
-    with kpi_cols[1]:
-        st.metric(label="Document Types Managed", value=num_doc_types)
-    with kpi_cols[2]:
-        st.metric(label="Avg. Document Size", value=f"{avg_doc_size:.1f} KB" if avg_doc_size else "N/A")
+        /* Page Background */
+        [data-testid="stAppViewContainer"] {
+            background-color: #0D1117; /* Dark background */
+        }
+        [data-testid="stSidebar"] {
+            background-color: #161B22; /* Slightly lighter dark for sidebar */
+            padding-top: 1rem;
+        }
 
+        /* Custom Header */
+        .custom-header h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #ECECF1;
+            margin-bottom: 0.25rem;
+        }
+        .custom-header p {
+            font-size: 1.125rem;
+            color: #8B949E; /* GitHub-like secondary text color */
+            margin-bottom: 2rem;
+        }
+
+        /* Quick Action Buttons */
+        .stButton>button {
+            background-color: #21262D; /* GitHub dark button color */
+            color: #C9D1D9; /* GitHub dark button text color */
+            border: 1px solid #30363D; /* GitHub dark button border */
+            border-radius: 6px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            width: 100%;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .stButton>button:hover {
+            background-color: #30363D; /* Darker on hover */
+            border-color: #8B949E;
+            color: #ECECF1;
+        }
+        .stButton>button:focus {
+            outline: none !important;
+            box-shadow: none !important;
+            border-color: #58A6FF; /* Blue border on focus, similar to GitHub */
+        }
+        /* Ensure button text is not uppercase */
+        .stButton>button p {
+            text-transform: none;
+            color: inherit; /* Inherit color from button */
+            font-weight: inherit; /* Inherit font weight */
+        }
+
+
+        /* Chat History Section */
+        .chat-history-header h2 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: #ECECF1;
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #30363D; /* Separator line */
+            padding-bottom: 0.5rem;
+        }
+        .activity-item {
+            background-color: #161B22; /* Slightly lighter dark for items */
+            border: 1px solid #30363D;
+            border-radius: 6px;
+            padding: 0.6rem 0.9rem; /* Further reduced padding */
+            margin-bottom: 0.75rem; /* Increased space between items */
+            cursor: pointer; /* Whole item clickable */
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+            display: flex; /* Use flex for side-by-side content and button */
+            justify-content: space-between;
+            align-items: center;
+        }
+        .activity-item:hover {
+            background-color: #21262D; /* Subtle background change */
+        }
+        .activity-content {
+            flex-grow: 1; /* Allow content to take available space */
+            cursor: pointer; /* Make content area clickable */
+            margin-right: 0.75rem; /* Slightly reduced space before delete button */
+            min-width: 0; /* Allow content to shrink if needed */
+        }
+        .activity-item h3 {
+            font-size: 1.1rem; /* Slightly larger title */
+            font-weight: 500;
+            color: #C9D1D9;
+            margin-top: 0; /* No top margin for the title itself */
+            margin-bottom: 0.05rem; /* Reduced bottom margin for title */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.3; /* Adjust line height for new font size */
+        }
+        .activity-item .timestamp {
+            font-size: 0.75rem; /* Slightly smaller timestamp */
+            color: #8B949E;
+            margin-bottom: 0.2rem; /* Further reduced margin */
+            line-height: 1.2;
+        }
+        .activity-item .preview {
+            font-size: 0.85rem; /* Further reduced preview font size */
+            color: #C9D1D9;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .activity-item .actions {
+            flex-shrink: 0; /* Prevent button container from shrinking */
+        }
+        .delete-button {
+            background-color: transparent; /* Make button background transparent */
+            color: #8B949E; /* Icon color */
+            border: none;
+            padding: 0.2rem; /* Adjusted padding for icon */
+            border-radius: 4px;
+            cursor: pointer;
+            transition: color 0.2s ease, background-color 0.2s ease;
+            display: inline-flex; /* Align icon nicely */
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .delete-button:hover {
+            color: #E6EDF3; /* Lighter icon color on hover */
+            background-color: #30363D; /* Slight background on hover for better visibility */
+        }
+        .delete-button svg {
+            width: 15px; /* Slightly smaller icon */
+            height: 15px;
+            fill: currentColor; /* Use text color for SVG fill */
+        }
+
+
+        /* Styling for sidebar buttons and text */
+        [data-testid="stSidebarNav"] ul {
+            padding-left: 0;
+        }
+        [data-testid="stSidebarNav"] li {
+            list-style-type: none;
+            margin-bottom: 0.5rem;
+        }
+        [data-testid="stSidebarNav"] li a {
+            text-decoration: none;
+            color: #C9D1D9;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            display: block;
+            transition: background-color 0.2s ease, color 0.2s ease;
+            font-size: 0.95rem; /* Slightly smaller font for sidebar items */
+        }
+        [data-testid="stSidebarNav"] li a:hover {
+            background-color: #21262D;
+            color: #ECECF1;
+        }
+        [data-testid="stSidebarNav"] li a.active { /* Style for active page link */
+            background-color: #0D1117; /* Match app background for "selected" effect */
+            color: #58A6FF; /* Blue accent for active link */
+            font-weight: 600;
+        }
+        /* Remove Streamlit's default top padding for sidebar content */
+        [data-testid="stSidebarUserContent"] {
+            padding-top: 0rem;
+        }
+        /* Reduce gap for stVerticalBlock */
+        div[data-testid="stVerticalBlock"] {
+            gap: 0.5rem !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Custom Header
+    st.markdown("""
+        <div class="custom-header">
+            <h1>PrivateGPT</h1>
+            <p>Welcome back! Here's your workspace overview.</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Quick Actions
+    st.markdown("<h2 style='font-size: 1.75rem; font-weight: 600; color: #ECECF1; margin-bottom: 1rem;'>Quick Actions</h2>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💬 Start Chat", key="start_rag_chat_dashboard"): # Changed key to avoid conflict if used elsewhere
+            st.switch_page("pages/chat.py")
+    with col2:
+        if st.button("📂 Upload Documents", key="upload_documents_dashboard", use_container_width=True):
+            st.switch_page("pages/document_management.py")
+            
     st.markdown("<br>", unsafe_allow_html=True) # Spacer
 
-    # Charts Section
-    row2_cols = st.columns([2, 3]) # Adjusted column proportions
+    # Chat History Section
+    st.markdown("<div class='chat-history-header'><h2>Chat History</h2></div>", unsafe_allow_html=True)
+    chat_history = get_dummy_chat_history()
 
-    with row2_cols[0]:
-        st.markdown("#### 📁 Document Types Distribution")
-        if document_types_data:
-            doc_type_df = pd.DataFrame(list(document_types_data.items()), columns=['Document Type', 'Count']).sort_values("Count", ascending=False)
-            fig_doc_types = px.bar(
-                doc_type_df, 
-                x='Document Type', 
-                y='Count', 
-                color='Document Type',
-                labels={'Count': 'Number of Documents'},
-                height=350,
-                template="plotly_dark" # Using a dark theme for plotly
-            )
-            fig_doc_types.update_layout(
-                margin=dict(l=20, r=20, t=30, b=20),
-                paper_bgcolor='rgba(0,0,0,0)', 
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend_title_text='',
-                xaxis_tickangle=-45
-            )
-            st.plotly_chart(fig_doc_types, use_container_width=True)
-        else:
-            st.info("No document type data available to display chart.")
+    if not chat_history:
+        st.markdown("<p style='color: #8B949E;'>No chat history yet.</p>", unsafe_allow_html=True)
+    else:
+        for item in chat_history:
+            item_id = item['id']
+            item_title = item['title']
+            item_timestamp = item['timestamp']
+            item_preview = item['preview']
+            
+            # Sanitize title for console.log, if necessary, though for this example it's direct.
+            js_title = item_title.replace("'", "\\'") # Basic sanitization for JS string
 
-    with row2_cols[1]:
-        st.markdown("#### 📜 Recent Activity Feed")
-        recent_activities = get_recent_activities()
-        if recent_activities:
-            for activity in recent_activities:
-                col1, col2 = st.columns([1,4])
-                with col1:
-                    st.caption(activity["timestamp"].strftime("%b %d, %H:%M"))
-                with col2:
-                    icon = "📄" if activity["type"] == "document" else "💬" if activity["type"] == "chat" else "🔍" if activity["type"] == "search" else "🤖"
-                    st.markdown(f"**{icon} {activity['action']}** <span style='color: #888'>by {activity['user']}</span>", unsafe_allow_html=True)
-                st.markdown("<hr style='margin: 0.3rem 0; border-color: #4A4A7F;'>", unsafe_allow_html=True) # Subtle separator
-        else:
-            st.info("No recent activities to display.")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # Quick Actions / Links Section
-    st.markdown("### ⚡ Quick Actions")
-    action_cols = st.columns(3)
-    with action_cols[0]:
-        if st.button("💬 Start New RAG Chat", use_container_width=True, type="primary"):
-            st.switch_page("pages/rag_chat.py")
-    with action_cols[1]:
-        if st.button("📂 Upload Documents", use_container_width=True):
-            st.switch_page("pages/document_management.py")
-    with action_cols[2]:
-        if st.button("🤖 Quick LLM Query", use_container_width=True):
-            st.switch_page("pages/llm_chat.py")
+            item_html = f"""
+            <div class="activity-item">
+                <div class="activity-content" onclick="console.log('Clicked chat: {js_title}');">
+                    <h3>{item_title}</h3>
+                    <div class="timestamp">{item_timestamp}</div>
+                    <div class="preview">{item_preview}</div>
+                </div>
+                <div class="actions">
+                    <button class="delete-button" title="Delete chat" onclick="console.log('Delete clicked for chat ID: {item_id}'); event.stopPropagation();">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    </button>
+                </div>
+            </div>
+            """
+            st.markdown(item_html, unsafe_allow_html=True)
 
 # Display navigation sidebar
 display_navigation_sidebar(current_page="Dashboard")
 
 # Main script logic
 if __name__ == "__main__":
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = True 
+        st.session_state.user_role = "admin"
+        st.session_state.username = "test_dashboard_user"
+    
     display_dashboard() 

@@ -9,6 +9,7 @@ import sys
 import os
 import requests
 import time
+import json
 from datetime import datetime, timedelta
 from pages_utils import (
     APP_TITLE, LLM_MODEL_NAME, VECTOR_DB_NAME, WORKFLOW_ENGINE, VERSION_INFO,
@@ -180,13 +181,61 @@ st.markdown("""<style>
         border-radius: 0 0 6px 6px;
     }
 
-
-
 </style>
 """, unsafe_allow_html=True)
 
 # Add parent directory to path to import pages_utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# --- Client Data Management ---
+DATA_DIR = "data" # Relative to project root where streamlit runs
+CLIENTS_FILE = os.path.join(DATA_DIR, "clients.json")
+
+def _ensure_data_dir_and_clients_file():
+    """Ensures the data directory and clients.json file exist."""
+    if not os.path.exists(DATA_DIR):
+        try:
+            os.makedirs(DATA_DIR)
+        except OSError as e:
+            st.error(f"Failed to create data directory {DATA_DIR}: {e}")
+            return False # Critical error
+    if not os.path.isfile(CLIENTS_FILE):
+        try:
+            with open(CLIENTS_FILE, 'w') as f:
+                json.dump([], f)
+        except IOError as e:
+            st.error(f"Failed to create clients file {CLIENTS_FILE}: {e}")
+            return False # Critical error
+    return True
+
+def load_clients() -> list[str]:
+    """Loads client names from the JSON file."""
+    if not _ensure_data_dir_and_clients_file():
+        return [] # Return empty if directory/file creation failed
+    try:
+        with open(CLIENTS_FILE, 'r') as f:
+            clients = json.load(f)
+            if isinstance(clients, list) and all(isinstance(c, str) for c in clients):
+                return sorted(list(set(clients))) # Ensure unique and sorted
+            st.warning(f"Clients file {CLIENTS_FILE} is corrupted or has an unexpected format. Resetting.")
+            return [] 
+    except (IOError, json.JSONDecodeError) as e:
+        st.warning(f"Error reading clients file {CLIENTS_FILE}: {e}. Resetting.")
+        return []
+
+def save_clients(clients_list: list[str]) -> bool:
+    """Saves client names to the JSON file."""
+    if not _ensure_data_dir_and_clients_file():
+        return False # Bail if directory/file setup failed
+    try:
+        # Ensure unique and sorted before saving, remove empty strings
+        unique_sorted_clients = sorted(list(set(client.strip() for client in clients_list if client.strip())))
+        with open(CLIENTS_FILE, 'w') as f:
+            json.dump(unique_sorted_clients, f, indent=4)
+        return True
+    except IOError as e:
+        st.error(f"Failed to save clients to {CLIENTS_FILE}: {e}")
+        return False
 
 # --- Helper Functions ---
 def get_user_accounts():
@@ -366,11 +415,242 @@ def delete_user_account(user_email):
     except Exception as e:
         return False, f"Failed to delete user {user_email}: {str(e)}"
 
+# --- LLM Settings Display ---
+def display_llm_settings():
+    """Display LLM configuration settings"""
+    st.markdown("**Configure Large Language Model Parameters**")
+    st.caption("These settings control how the AI responds to questions and processes documents.")
+    
+    # Get current environment-based defaults
+    knowledge_service_url = os.getenv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8000")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Context Settings
+        st.markdown("**Context & Token Limits**")
+        
+        max_context_tokens = st.number_input(
+            "Maximum Context Tokens",
+            min_value=1000,
+            max_value=8000,
+            value=3000,
+            step=500,
+            help="Maximum number of tokens from documents to include in prompts. Lower values = faster responses but less context."
+        )
+        
+        default_search_limit = st.number_input(
+            "Default Search Results",
+            min_value=1,
+            max_value=20,
+            value=5,
+            step=1,
+            help="Number of document chunks to retrieve for each question. Lower values = faster responses."
+        )
+        
+        timeout_seconds = st.number_input(
+            "LLM Timeout (seconds)",
+            min_value=30,
+            max_value=300,
+            value=120,
+            step=30,
+            help="How long to wait for the AI to respond before timing out."
+        )
+    
+    with col2:
+        # Response Settings
+        st.markdown("**Response Parameters**")
+        
+        default_max_tokens = st.number_input(
+            "Max Response Tokens",
+            min_value=100,
+            max_value=4000,
+            value=1000,
+            step=100,
+            help="Maximum length of AI responses. Higher values allow longer responses."
+        )
+        
+        default_temperature = st.slider(
+            "Response Creativity",
+            min_value=0.0,
+            max_value=2.0,
+            value=0.7,
+            step=0.1,
+            help="0.0 = Very focused and consistent, 2.0 = Very creative and varied"
+        )
+        
+        st.markdown("")  # Spacing
+        st.markdown("**Model Selection**")
+        
+        # Fetch available models
+        try:
+            user_token = st.session_state.get("access_token")
+            headers = {"Authorization": f"Bearer {user_token}"} if user_token else {}
+            
+            models_response = requests.get(
+                f"{knowledge_service_url}/admin/models/available",
+                headers=headers,
+                timeout=10
+            )
+            
+            if models_response.status_code == 200:
+                models_data = models_response.json()
+                available_models = models_data.get("models", [])
+                current_selected = models_data.get("selected_model", "llama3:8b")
+                
+                if available_models:
+                    model_names = [model["name"] for model in available_models]
+                    
+                    # Find current selection index
+                    try:
+                        current_index = model_names.index(current_selected)
+                    except ValueError:
+                        current_index = 0
+                    
+                    selected_model = st.selectbox(
+                        "Available Models",
+                        options=model_names,
+                        index=current_index,
+                        help="Select the AI model to use for responses"
+                    )
+                    
+                    # Show model info
+                    selected_model_info = next((m for m in available_models if m["name"] == selected_model), None)
+                    if selected_model_info:
+                        size_gb = selected_model_info.get("size", 0) / (1024**3)
+                        st.caption(f"Size: {size_gb:.1f} GB")
+                else:
+                    st.warning("No models available in Ollama")
+                    selected_model = current_selected
+                    
+            else:
+                st.warning("Could not fetch available models")
+                selected_model = "llama3:8b"
+                
+        except Exception as e:
+            st.error(f"Error fetching models: {str(e)}")
+            selected_model = "llama3:8b"
+        
+        # Refresh models button
+        col_refresh1, col_refresh2 = st.columns([1, 1])
+        with col_refresh2:
+            if st.button("🔄 Refresh Models", key="refresh_models_btn", help="Check for newly installed models"):
+                st.rerun()
+    
+    # Apply Settings Button
+    if st.button("💾 Apply Settings", type="primary", key="apply_llm_settings"):
+        settings_data = {
+            "MAX_CONTEXT_TOKENS": str(max_context_tokens),
+            "DEFAULT_SEARCH_LIMIT": str(default_search_limit),
+            "LLM_TIMEOUT_SECONDS": str(timeout_seconds),
+            "DEFAULT_MAX_TOKENS": str(default_max_tokens),
+            "DEFAULT_TEMPERATURE": str(default_temperature),
+            "SELECTED_MODEL": selected_model
+        }
+        
+        try:
+            # Update settings via knowledge service API
+            user_token = st.session_state.get("access_token")
+            headers = {"Authorization": f"Bearer {user_token}"} if user_token else {}
+            
+            response = requests.post(
+                f"{knowledge_service_url}/admin/settings",
+                json=settings_data,
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                st.success("✅ LLM settings updated successfully! Changes will take effect for new conversations.")
+            else:
+                st.error(f"❌ Failed to update settings: {response.text}")
+                
+        except Exception as e:
+            st.error(f"❌ Error updating settings: {str(e)}")
+    
+    # Display current effective settings
+    with st.expander("📊 Current Settings", expanded=False):
+        try:
+            user_token = st.session_state.get("access_token")
+            headers = {"Authorization": f"Bearer {user_token}"} if user_token else {}
+            
+            response = requests.get(
+                f"{knowledge_service_url}/admin/settings",
+                headers=headers,
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                current_settings = response.json()
+                st.json(current_settings)
+            else:
+                st.warning("Could not fetch current settings")
+                
+        except Exception as e:
+            st.info("Settings API not available")
+
+
+# --- Admin Panel Display ---
 def display_admin_panel():
     """Display the modern admin panel content"""
+    auth_client = get_auth_client() # Get AuthClient instance
+    user_token = st.session_state.get("access_token")
+
+    if not user_token:
+        st.error("User token not found. Please log in again.")
+        return
+    if not auth_client:
+        st.error("AuthClient not available.")
+        return
+
     # Page header
     st.markdown('<h1 class="page-title">🛠️ Admin Panel</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="page-subtitle">User management and data administration</p>', unsafe_allow_html=True)
+    st.markdown('<p class="page-subtitle">User management, data administration, and client configuration</p>', unsafe_allow_html=True)
+    
+    # Global Client Selection Dropdown (Top Level)
+    st.markdown("---")
+    st.subheader("🔍 Client Context Filter")
+    
+    try:
+        # Load available clients for global filtering
+        clients_data = auth_client.list_clients(user_token)
+        client_options = ["All Clients"] + [f"{client.get('name', 'Unknown')} ({client.get('id', 'No ID')[:8]}...)" 
+                                           for client in clients_data]
+        
+        # Initialize session state for client filter if not exists
+        if "admin_selected_client_filter" not in st.session_state:
+            st.session_state.admin_selected_client_filter = "All Clients"
+            
+        # Global client filter dropdown
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            selected_global_client = st.selectbox(
+                "Select Client Context:",
+                options=client_options,
+                index=client_options.index(st.session_state.admin_selected_client_filter) 
+                      if st.session_state.admin_selected_client_filter in client_options else 0,
+                help="Filter all admin operations by client. 'All Clients' shows everything. Specific clients show only data for that client.",
+                key="global_client_filter"
+            )
+            st.session_state.admin_selected_client_filter = selected_global_client
+            
+        with col2:
+            if st.button("🔄 Refresh Clients", key="refresh_clients_filter", help="Reload client list"):
+                st.rerun()
+                
+        # Show current context
+        if selected_global_client == "All Clients":
+            st.info("🌐 **Current Context:** All Clients - Viewing system-wide data")
+        else:
+            # Extract client name from display format
+            client_name = selected_global_client.split(" (")[0] if "(" in selected_global_client else selected_global_client
+            st.info(f"🎯 **Current Context:** {client_name} - Viewing client-specific data")
+            
+    except Exception as e:
+        st.error(f"Failed to load clients for filtering: {e}")
+        st.session_state.admin_selected_client_filter = "All Clients"
+        
+    st.markdown("---")
     
     # User Management Section
     st.subheader("👥 User Management")
@@ -386,6 +666,12 @@ def display_admin_panel():
     
     st.markdown("---")
     
+    # LLM Settings
+    st.subheader("🤖 LLM Settings")
+    display_llm_settings()
+    
+    st.markdown("---")
+    
     # Database Management
     st.subheader("🗄️ Database Management")
     
@@ -396,6 +682,145 @@ def display_admin_panel():
     with col2:
         if st.button("🗑 Delete All Data", key="delete_all_data", type="secondary"):
             delete_confirmation_modal()
+
+    st.markdown("---")
+
+    # Client Management Section
+    st.subheader("🗂️ Client Configuration")
+    
+    try:
+        clients_data = auth_client.list_clients(user_token)
+        # clients_data is expected to be a list of dicts, e.g., [{"id": "uuid", "name": "Client A"}, ...]
+    except Exception as e:
+        st.error(f"Failed to load clients: {e}")
+        clients_data = [] # Default to empty list on error
+
+    # Input for new client
+    new_client_name_input = st.text_input("New Client Name", key="new_client_name_admin_input")
+    if st.button("Add Client", key="add_client_button_admin"):
+        if new_client_name_input and new_client_name_input.strip():
+            cleaned_name = new_client_name_input.strip()
+            # Check for duplicates client-side before API call to save a request
+            if any(client['name'] == cleaned_name for client in clients_data):
+                st.warning(f"Client '{cleaned_name}' already exists.")
+            else:
+                try:
+                    auth_client.create_client(user_token, cleaned_name)
+                    st.success(f"Client '{cleaned_name}' added successfully.")
+                    st.rerun() 
+                except Exception as e:
+                    st.error(f"Failed to add client '{cleaned_name}': {e}")
+        else:
+            st.warning("Client name cannot be empty.")
+
+    # Display current clients with delete option
+    if clients_data:
+        st.markdown("**Current Clients:**")
+        for client in clients_data: # client is a dict like {"id": "...". "name": "..."}
+            client_id = client.get("id")
+            client_name = client.get("name", "Unnamed Client")
+            col_client1, col_client2 = st.columns([0.85, 0.15])
+            with col_client1:
+                st.markdown(f"• {client_name} (ID: {client_id})")
+            with col_client2:
+                delete_button_key = f"delete_client_{client_id}" # Ensure key is unique
+                if st.button(f"Delete", key=delete_button_key, help=f"Delete client {client_name}", type="secondary"):
+                    try:
+                        auth_client.delete_client(user_token, client_id)
+                        st.success(f"Client '{client_name}' deleted.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to delete client '{client_name}': {e}")
+                    # No need to break here as rerun will handle loop re-evaluation
+        st.caption(f"Total clients: {len(clients_data)}")
+    else:
+        st.info("No clients configured yet. Add one above.")
+    
+    st.markdown("---")
+
+    # --- User-Client Authorization Section ---
+    st.subheader("👤 User Client Authorizations")
+
+    try:
+        # Fetch all users for the selection dropdown
+        # Ensure get_user_accounts() or auth_client.list_users() returns data in a usable format
+        # Assuming list_users returns a list of dicts with at least 'email' and 'role'
+        all_users_data = auth_client.list_users(user_token) 
+        # Filter out system users or roles if necessary, e.g., if there are service accounts
+        # For now, assume all users returned are relevant for client authorization management.
+        user_email_options = sorted([user['email'] for user in all_users_data if user.get('email')])
+        
+        if not user_email_options:
+            st.info("No users found to manage client authorizations.")
+            return # Stop if no users to manage
+
+    except Exception as e:
+        st.error(f"Failed to load users for authorization management: {e}")
+        user_email_options = []
+        all_users_data = [] # Ensure it's defined for later use if needed
+
+    if not user_email_options:
+        # This check is after the try-except to handle cases where loading users failed
+        # and st.info was not sufficient or if we want to halt further rendering for this section.
+        st.warning("User list is empty. Cannot manage client authorizations.")
+    else:
+        # User selection dropdown
+        selected_user_email_for_auth = st.selectbox(
+            "Select User to Manage Client Authorizations:",
+            options=user_email_options,
+            key="selected_user_for_client_auth",
+            index=0 # Default to the first user or handle no selection if preferred
+        )
+
+        if selected_user_email_for_auth:
+            try:
+                # Fetch currently authorized clients for the selected user
+                user_current_clients_data = auth_client.get_user_authorized_clients(user_token, selected_user_email_for_auth)
+                user_current_client_ids = {client['id'] for client in user_current_clients_data}
+
+                # Fetch all available global clients for the multiselect options
+                # clients_data should already be loaded from the Client Configuration section above.
+                # If not, or if there's a chance of staleness, refetch:
+                # all_global_clients_data = auth_client.list_clients(user_token)
+                # For now, assume clients_data from above is sufficient and current.
+                if not clients_data: # clients_data is from the Client Configuration section
+                    st.warning("Client list not available. Please configure clients first or refresh.")
+                else:
+                    client_options_for_multiselect = {client['name']: client['id'] for client in clients_data}
+                    client_names_for_multiselect = sorted(client_options_for_multiselect.keys())
+                    
+                    # Pre-select clients that the user is already authorized for
+                    pre_selected_client_names = [
+                        name for name, cid in client_options_for_multiselect.items() if cid in user_current_client_ids
+                    ]
+
+                    st.markdown(f"**Manage Client Access for:** `{selected_user_email_for_auth}`")
+                    if user_current_clients_data:
+                        st.markdown("Currently Authorized Clients: " + ", ".join(f"`{c['name']}`" for c in user_current_clients_data))
+                    else:
+                        st.info("This user is currently not authorized for any specific clients.")
+
+                    selected_client_names_for_update = st.multiselect(
+                        "Authorize for Clients:",
+                        options=client_names_for_multiselect,
+                        default=pre_selected_client_names,
+                        key=f"multiselect_clients_for_{selected_user_email_for_auth.replace('.', '_')}" # Ensure unique key
+                    )
+
+                    if st.button("Update Client Authorizations", key=f"update_auth_btn_{selected_user_email_for_auth.replace('.', '_')}"):
+                        selected_client_ids_for_update = [
+                            client_options_for_multiselect[name] for name in selected_client_names_for_update
+                        ]
+                        try:
+                            auth_client.update_user_authorized_clients(user_token, selected_user_email_for_auth, selected_client_ids_for_update)
+                            st.success(f"Client authorizations updated for {selected_user_email_for_auth}.")
+                            # Consider a targeted rerun or partial refresh if possible, for now, full rerun.
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update client authorizations: {e}")
+            
+            except Exception as e:
+                st.error(f"Error loading client authorization details for {selected_user_email_for_auth}: {e}")
 
 def display_create_user_form():
     """Display the create user form with modern styling"""
@@ -493,9 +918,15 @@ def display_user_list():
     except Exception as e:
         st.error(f"Failed to load user data: {e}")
 
-# Display navigation sidebar
-display_navigation_sidebar(current_page="Admin Panel")
-
 # Main script logic
 if __name__ == "__main__":
-    display_admin_panel() 
+    # Ensure navigation and auth check are done before displaying panel
+    # This might be handled by require_auth() if called at the top of the script
+    display_navigation_sidebar(current_page="Admin Panel") 
+    if st.session_state.get("authenticated") and st.session_state.get("user_role") == "admin":
+        display_admin_panel()
+    elif not st.session_state.get("authenticated"):
+        st.warning("Please log in to access the admin panel.")
+        # Optionally redirect to login or show login form
+    else:
+        st.error("You do not have permission to access this page.") 

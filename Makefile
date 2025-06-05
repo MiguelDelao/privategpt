@@ -1,7 +1,7 @@
 # PrivateGPT Legal AI - Makefile
 # Simple commands for development and deployment
 
-.PHONY: help install setup start stop restart build clean reset nuke logs status shell setup-elk elk-status logs-elk kibana kibana-tunnel logs-search logs-errors-elk verify-elk restart-elk setup-dashboard discover
+.PHONY: help install setup start stop restart build clean reset nuke logs status shell setup-elk elk-status logs-elk kibana kibana-tunnel logs-search logs-errors-elk verify-elk restart-elk setup-dashboard discover install-model show-model switch-mode download-models
 
 # Default target
 help:
@@ -47,6 +47,7 @@ help:
 	@echo "  make show-model    - Show current model configuration"
 	@echo "  make switch-mode   - Switch between dev/prod models"
 	@echo "  make download-models - Download models for current mode"
+	@echo "  make install-model MODEL=<name> - Install specific model (e.g., make install-model MODEL=llama3:8b)"
 
 # Installation commands
 install:
@@ -74,7 +75,7 @@ init:
 	fi
 
 setup: init
-	@echo "Setting up PrivateGPT..."
+	@echo "Setting up PrivateGPT...
 	@mkdir -p data/uploads logs/{auth,app,ollama,weaviate,n8n,grafana}
 	@echo "Created directories"
 	@$(MAKE) start
@@ -401,6 +402,44 @@ n8n-access:
 	@echo "  - config/n8n/llama-test-workflow.json"
 
 # Model Management Commands
+install-model:
+	@if [ -z "$(MODEL)" ]; then \
+		echo "❌ Error: MODEL parameter is required"; \
+		echo "Usage: make install-model MODEL=<model_name>"; \
+		echo "Examples:"; \
+		echo "  make install-model MODEL=llama3:8b"; \
+		echo "  make install-model MODEL=llama3.1:70b"; \
+		echo "  make install-model MODEL=codellama:7b"; \
+		echo "  make install-model MODEL=mistral:7b"; \
+		echo "  make install-model MODEL=qwen2.5:7b"; \
+		exit 1; \
+	fi
+	@echo "Installing model: $(MODEL)"
+	@echo "=========================="
+	@if docker ps | grep -q ollama-service; then \
+		echo "🔍 Checking if model $(MODEL) already exists..."; \
+		if docker exec ollama-service ollama list | grep -q "$(MODEL)"; then \
+			echo "✅ Model $(MODEL) is already installed"; \
+		else \
+			echo "📥 Downloading model $(MODEL) (this may take several minutes)..."; \
+			echo "⏳ Please wait while Ollama downloads the model..."; \
+			if docker exec ollama-service ollama pull "$(MODEL)"; then \
+				echo "✅ Model $(MODEL) downloaded successfully"; \
+				echo "📋 Updated model list:"; \
+				docker exec ollama-service ollama list; \
+			else \
+				echo "❌ Failed to download model $(MODEL)"; \
+				echo "💡 Make sure the model name is correct and available"; \
+				echo "🔗 Check available models at: https://ollama.com/library"; \
+				exit 1; \
+			fi; \
+		fi; \
+	else \
+		echo "❌ Ollama service is not running"; \
+		echo "💡 Start services first with: make start"; \
+		exit 1; \
+	fi
+
 show-model:
 	@echo "Current Model Configuration:"
 	@echo "============================"
