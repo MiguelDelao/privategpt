@@ -19,6 +19,10 @@ from pages_utils import (
     get_logger, display_navigation_sidebar
 )
 
+# Add project root to path for config loader
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from config_loader import get_config_loader
+
 # Page configuration
 st.set_page_config(
     page_title=f"LLM Chat - {APP_TITLE}", 
@@ -40,107 +44,144 @@ if "llm_chat_history" not in st.session_state:
 if "current_llm_query" not in st.session_state:
     st.session_state.current_llm_query = ""
 
-def get_selected_model_from_settings() -> str:
-    """Get the currently selected model from admin settings"""
+def get_selected_model() -> str:
+    """Get the currently selected model from centralized Redis-backed config"""
+    config_loader = get_config_loader()
+    return config_loader.get("model.name", "llama3.2:1b")
+
+def get_llm_settings() -> dict:
+    """Get LLM settings from centralized Redis-backed config"""
+    config_loader = get_config_loader()
+    return {
+        "max_tokens": config_loader.get("models.llm.default_max_tokens", 1000),
+        "temperature": config_loader.get("models.llm.default_temperature", 0.7),
+        "timeout_seconds": config_loader.get("models.llm.timeout_seconds", 120)
+    }
+
+def send_llm_query(prompt: str, system_prompt: str = None) -> dict:
+    """Send query directly to Ollama LLM service"""
     try:
-        response = requests.get(f"{KNOWLEDGE_SERVICE_URL}/admin/settings", timeout=10)
+        model = get_selected_model()
+        settings = get_llm_settings()
+        
+        # Default system prompt for LLM chat
+        if not system_prompt:
+            system_prompt = "You are a helpful AI assistant. Provide clear, accurate, and helpful responses."
+        
+        # Prepare request
+        request_data = {
+            "model": model,
+            "prompt": f"System: {system_prompt}\n\nUser: {prompt}\n\nAssistant:",
+            "stream": False,
+            "options": {
+                "temperature": settings["temperature"],
+                "num_predict": settings["max_tokens"]
+            }
+        }
+        
+        # Send request to Ollama
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json=request_data,
+            timeout=settings["timeout_seconds"]
+        )
+        
         if response.status_code == 200:
-            settings = response.json()
-            return settings.get("SELECTED_MODEL", "llama3:8b")
+            result = response.json()
+            return {
+                "success": True,
+                "answer": result.get("response", "No response generated"),
+                "model_used": model,
+                "settings_used": settings,
+                "timestamp": datetime.now().isoformat()
+            }
         else:
-            return "llama3:8b"  # Fallback
-    except Exception:
-        return "llama3:8b"  # Fallback
-
-def call_ollama_direct_stream(prompt: str, model: str = None):
-    """Direct call to Ollama API with streaming support - generator function"""
-    if model is None:
-        model = get_selected_model_from_settings()
-    
-    try:
-        url = f"{OLLAMA_URL}/api/generate"
-        
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": True  # Enable streaming
-        }
-        
-        response = requests.post(url, json=payload, timeout=60, stream=True)
-        response.raise_for_status()
-        
-        # Handle streaming response
-        full_response = ""
-        for line in response.iter_lines():
-            if line:
-                try:
-                    chunk = json.loads(line.decode('utf-8'))
-                    if 'response' in chunk:
-                        full_response += chunk['response']
-                        # Yield each chunk for real-time display
-                        yield {
-                            "partial_response": full_response,
-                            "done": chunk.get('done', False),
-                            "model": model,
-                            "success": True
-                        }
-                    if chunk.get('done', False):
-                        break
-                except json.JSONDecodeError:
-                    continue
-        
-    except requests.exceptions.RequestException as e:
-        yield {
-            "partial_response": f"Error connecting to Ollama: {str(e)}",
-            "done": True,
-            "model": model,
-            "success": False
-        }
-    except Exception as e:
-        yield {
-            "partial_response": f"Unexpected error: {str(e)}",
-            "done": True,
-            "model": model,
-            "success": False
-        }
-
-def call_ollama_direct(prompt: str, model: str = None) -> dict:
-    """Direct call to Ollama API - non-streaming for compatibility"""
-    if model is None:
-        model = get_selected_model_from_settings()
-    try:
-        url = f"{OLLAMA_URL}/api/generate"
-        
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False
-        }
-        
-        response = requests.post(url, json=payload, timeout=60)
-        response.raise_for_status()
-        
-        result = response.json()
+            return {
+                "success": False,
+                "error": f"HTTP {response.status_code}: {response.text}",
+                "model_used": model,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except requests.exceptions.Timeout:
         return {
-            "answer": result.get("response", "No response generated"),
-            "model": model,
-            "tokens": len(result.get("response", "").split()),
-            "success": True
-        }
-        
-    except requests.exceptions.RequestException as e:
-        return {
-            "answer": f"Error connecting to Ollama: {str(e)}",
-            "model": model,
-            "tokens": 0,
-            "success": False
+            "success": False,
+            "error": "Request timed out. The model may be taking too long to respond.",
+            "model_used": model,
+            "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
         return {
-            "answer": f"Unexpected error: {str(e)}",
+            "success": False,
+            "error": f"Error: {str(e)}",
+            "model_used": get_selected_model(),
+            "timestamp": datetime.now().isoformat()
+        }
+
+def send_llm_query_stream(prompt: str, system_prompt: str = None):
+    """Send streaming query to Ollama LLM service"""
+    try:
+        model = get_selected_model()
+        settings = get_llm_settings()
+        
+        # Default system prompt for LLM chat
+        if not system_prompt:
+            system_prompt = "You are a helpful AI assistant. Provide clear, accurate, and helpful responses."
+        
+        # Prepare request
+        request_data = {
             "model": model,
-            "tokens": 0,
-            "success": False
+            "prompt": f"System: {system_prompt}\n\nUser: {prompt}\n\nAssistant:",
+            "stream": True,
+            "options": {
+                "temperature": settings["temperature"],
+                "num_predict": settings["max_tokens"]
+            }
+        }
+        
+        # Send streaming request to Ollama
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json=request_data,
+            timeout=settings["timeout_seconds"],
+            stream=True
+        )
+        
+        if response.status_code == 200:
+            full_response = ""
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line.decode('utf-8'))
+                        if 'response' in chunk:
+                            token = chunk['response']
+                            full_response += token
+                            yield token
+                        if chunk.get('done', False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            
+            # Return final response info
+            yield {
+                "done": True,
+                "full_response": full_response,
+                "model_used": model,
+                "settings_used": settings,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            yield {
+                "error": f"HTTP {response.status_code}: {response.text}",
+                "model_used": model,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        yield {
+            "error": f"Error: {str(e)}",
+            "model_used": get_selected_model(),
+            "timestamp": datetime.now().isoformat()
         }
 
 def get_available_models() -> list:
@@ -152,129 +193,193 @@ def get_available_models() -> list:
         
         result = response.json()
         models = [model["name"] for model in result.get("models", [])]
-        return models if models else ["llama3:8b"]  # Default fallback
+        return models if models else ["llama3.2:1b"]  # Default fallback
         
     except Exception:
-        return ["llama3:8b", "llama3:70b"]  # Default fallback
+        return ["llama3.2:1b", "llama3:8b"]  # Default fallback
 
-def display_llm_chat():
-    """Display the direct LLM chat interface"""
-    st.markdown(f'<div class="main-header">🤖 Direct LLM Chat</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sub-header">Interact directly with the Large Language Model. No document context is used here.</div>', unsafe_allow_html=True)
+# --- Main Page Layout ---
 
-    logger = get_logger()
-    user_email = st.session_state.user_email
-
-    # Sidebar for LLM settings and controls (can be expanded later)
-    with st.sidebar:
-        st.markdown("### ⚙️ LLM Settings")
-        # Example: temperature slider, model selection if multiple LLMs are available
-        # temperature = st.slider("Temperature:", 0.0, 1.0, 0.7, 0.05, help="Controls randomness. Lower is more deterministic.")
-        st.info("Settings like temperature or model choice can be added here if your LLM service supports them.")
-
-        if st.button("🗑️ Clear Chat History", use_container_width=True, key="clear_llm_chat"):
-            st.session_state.llm_chat_history = []
-            st.session_state.current_llm_query = ""
-            st.rerun()
-        
-        st.markdown("---")
-        st.markdown("### 💡 Note")
-        st.caption("This chat bypasses document retrieval. For questions about specific documents, please use the 'Document Q&A (RAG)' page.")
-
-    # Main chat area
-    chat_container = st.container(border=False)
-    
-    # Check if there's a pending response to generate
-    has_pending_response = (len(st.session_state.llm_chat_history) > 0 and 
-                           st.session_state.llm_chat_history[-1][1]["answer"] == "")
-    
-    if has_pending_response:
-        # Handle streaming response for the last message
-        last_query = st.session_state.llm_chat_history[-1][0]
-        
-        with chat_container:
-            # Display all previous completed messages
-            for query, response_data in st.session_state.llm_chat_history[:-1]:
-                with st.chat_message("user"):
-                    st.markdown(query)
-                with st.chat_message("assistant"):
-                    st.markdown(response_data["answer"])
-                    if response_data.get("error"):
-                        st.error(f"Error: {response_data['error']}")
-            
-            # Display the current user message
-            with st.chat_message("user"):
-                st.markdown(last_query)
-            
-            # Stream the assistant response
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                
-                try:
-                    full_response = ""
-                    response_generator = call_ollama_direct_stream(last_query)
-                    
-                    for chunk in response_generator:
-                        if chunk.get("success") and "partial_response" in chunk:
-                            full_response = chunk["partial_response"]
-                            message_placeholder.markdown(full_response + "▌")
-                            
-                            if chunk.get("done"):
-                                break
-                    
-                    # Final update without cursor
-                    message_placeholder.markdown(full_response)
-                    
-                    # Update session state with final response
-                    st.session_state.llm_chat_history[-1] = (last_query, {
-                        "answer": full_response,
-                        "model_used": get_selected_model_from_settings(),
-                        "error": None
-                    })
-                    
-                    logger.log_ai_query(
-                        user_email=user_email, 
-                        query=last_query, 
-                        response_tokens=len(full_response.split())
-                    )
-
-                except Exception as e:
-                    error_message = f"An error occurred: {str(e)}"
-                    message_placeholder.markdown(error_message)
-                    
-                    # Update session state with error
-                    st.session_state.llm_chat_history[-1] = (last_query, {
-                        "answer": error_message,
-                        "model_used": get_selected_model_from_settings(),
-                        "error": str(e)
-                    })
-                    
-                    logger.log_error(user_email, f"LLM Chat Error: {str(e)}", "llm_chat_error")
-    
-    else:
-        # Display regular chat history
-        with chat_container:
-            for query, response_data in st.session_state.llm_chat_history:
-                with st.chat_message("user"):
-                    st.markdown(query)
-                with st.chat_message("assistant"):
-                    st.markdown(response_data["answer"])
-                    if response_data.get("error"):
-                        st.error(f"Error: {response_data['error']}")
-
-    # Chat input
-    prompt = st.chat_input("Ask the LLM anything...", key="llm_prompt")
-
-    if prompt:
-        # Add user message to chat history immediately
-        st.session_state.llm_chat_history.append((prompt, {"answer": "", "model_used": get_selected_model_from_settings()}))
-        
-        # Force refresh to show user message in the container
-        st.rerun()
+# Header
+st.title("🤖 Direct LLM Chat")
+st.markdown("Chat directly with the language model without document context")
 
 # Display navigation sidebar
-display_navigation_sidebar(current_page="LLM Chat")
+display_navigation_sidebar("LLM Chat")
 
-# Main script logic
-if __name__ == "__main__":
-    display_llm_chat() 
+# Current model info
+col1, col2, col3 = st.columns([2, 1, 1])
+with col1:
+    current_model = get_selected_model()
+    settings = get_llm_settings()
+    st.info(f"**Current Model:** {current_model} | **Max Tokens:** {settings['max_tokens']} | **Temperature:** {settings['temperature']}")
+
+with col2:
+    if st.button("🔄 Refresh Models", help="Check for newly available models"):
+        st.rerun()
+
+with col3:
+    # Model selection (for quick switching)
+    available_models = get_available_models()
+    if len(available_models) > 1:
+        selected_model = st.selectbox(
+            "Quick Switch Model",
+            available_models,
+            index=available_models.index(current_model) if current_model in available_models else 0,
+            key="model_selector",
+            help="Note: This is temporary. Use Admin Panel for permanent changes."
+        )
+        if selected_model != current_model:
+            st.warning(f"⚠️ Model switched to {selected_model} for this session only. Use Admin Panel to make permanent changes.")
+
+# Chat interface
+st.markdown("---")
+
+# Chat history display
+if st.session_state.llm_chat_history:
+    st.markdown("### Chat History")
+    
+    for i, (query, response_dict) in enumerate(reversed(st.session_state.llm_chat_history[-10:])):  # Show last 10
+        with st.container():
+            # User message
+            st.markdown(f"**You:** {query}")
+            
+            # Assistant response
+            if response_dict.get("success", True):
+                st.markdown(f"**Assistant:** {response_dict.get('answer', 'No response')}")
+                
+                # Show metadata in expander
+                with st.expander("Response Details", expanded=False):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.text(f"Model: {response_dict.get('model_used', 'Unknown')}")
+                        st.text(f"Timestamp: {response_dict.get('timestamp', 'Unknown')}")
+                    with col2:
+                        if 'settings_used' in response_dict:
+                            settings_used = response_dict['settings_used']
+                            st.text(f"Max Tokens: {settings_used.get('max_tokens', 'Unknown')}")
+                            st.text(f"Temperature: {settings_used.get('temperature', 'Unknown')}")
+            else:
+                st.error(f"**Error:** {response_dict.get('error', 'Unknown error')}")
+            
+            st.markdown("---")
+
+# New query input
+st.markdown("### Ask a Question")
+
+# System prompt customization
+with st.expander("🎛️ Advanced Options", expanded=False):
+    custom_system_prompt = st.text_area(
+        "Custom System Prompt (Optional)",
+        placeholder="You are a helpful AI assistant specialized in...",
+        help="Override the default system prompt to customize the AI's behavior"
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        use_streaming = st.checkbox("Enable Streaming Response", value=True, help="Show response as it's generated")
+    with col2:
+        if st.button("🗑️ Clear Chat History"):
+            st.session_state.llm_chat_history = []
+            st.rerun()
+
+# Query input
+query = st.text_area(
+    "Your Question:",
+    value=st.session_state.current_llm_query,
+    height=100,
+    placeholder="Ask me anything! I can help with general questions, explanations, analysis, and more...",
+    key="llm_query_input"
+)
+
+# Send button
+col1, col2 = st.columns([1, 4])
+with col1:
+    send_button = st.button("🚀 Send", type="primary", disabled=not query.strip())
+
+if send_button and query.strip():
+    # Use selected model if different from current
+    temp_model = None
+    if 'model_selector' in st.session_state and st.session_state.model_selector != current_model:
+        temp_model = st.session_state.model_selector
+    
+    # Add query to history immediately
+    st.session_state.llm_chat_history.append((query, {"answer": "", "model_used": temp_model or current_model}))
+    
+    # Clear input
+    st.session_state.current_llm_query = ""
+    
+    if use_streaming:
+        # Streaming response
+        with st.container():
+            st.markdown(f"**You:** {query}")
+            response_placeholder = st.empty()
+            
+            full_response = ""
+            response_info = {}
+            
+            # Temporarily override model if selected
+            if temp_model:
+                original_model = get_config_loader().get("model.name")
+                get_config_loader().set_setting("model.name", temp_model)
+            
+            try:
+                for chunk in send_llm_query_stream(query, custom_system_prompt):
+                    if isinstance(chunk, dict):
+                        if "error" in chunk:
+                            response_placeholder.error(f"**Error:** {chunk['error']}")
+                            response_info = chunk
+                            break
+                        elif chunk.get("done"):
+                            response_info = chunk
+                            break
+                    else:
+                        full_response += chunk
+                        response_placeholder.markdown(f"**Assistant:** {full_response}▌")
+                
+                # Final response without cursor
+                if full_response and not response_info.get("error"):
+                    response_placeholder.markdown(f"**Assistant:** {full_response}")
+                    
+                    # Update history with complete response
+                    st.session_state.llm_chat_history[-1] = (query, {
+                        "success": True,
+                        "answer": full_response,
+                        "model_used": response_info.get("model_used", temp_model or current_model),
+                        "settings_used": response_info.get("settings_used", {}),
+                        "timestamp": response_info.get("timestamp", datetime.now().isoformat())
+                    })
+                else:
+                    # Update history with error
+                    st.session_state.llm_chat_history[-1] = (query, response_info)
+                    
+            finally:
+                # Restore original model if temporarily changed
+                if temp_model:
+                    get_config_loader().set_setting("model.name", original_model)
+            
+    else:
+        # Non-streaming response
+        with st.spinner("Generating response..."):
+            # Temporarily override model if selected
+            if temp_model:
+                original_model = get_config_loader().get("model.name")
+                get_config_loader().set_setting("model.name", temp_model)
+            
+            try:
+                response_dict = send_llm_query(query, custom_system_prompt)
+                
+                # Update history with response
+                st.session_state.llm_chat_history[-1] = (query, response_dict)
+                
+            finally:
+                # Restore original model if temporarily changed
+                if temp_model:
+                    get_config_loader().set_setting("model.name", original_model)
+    
+    # Rerun to show updated history
+    st.rerun()
+
+# Footer
+st.markdown("---")
+st.markdown(f"**PrivateGPT Legal AI** - Direct LLM Chat | Model: {current_model}") 
