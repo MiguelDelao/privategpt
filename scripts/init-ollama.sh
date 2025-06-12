@@ -1,31 +1,24 @@
 #!/bin/bash
 
 # PrivateGPT Legal AI - Ollama Model Initialization
-# Automatically downloads and configures LLM models based on MODEL_MODE
+# Downloads and configures LLM models using centralized configuration
 
 set -e
 
-echo "🤖 Initializing Ollama with configured models..."
+echo "🤖 Initializing Ollama with configured model..."
 
-# Get configuration from environment
-MODE=${MODEL_MODE:-"dev"}
-DEV_MODEL=${OLLAMA_MODEL_DEV:-"llama3:8b"}
-PROD_MODEL=${OLLAMA_MODEL_PROD:-"llama3:70b"}
-
-# Select model based on MODE
-if [ "$MODE" = "prod" ]; then
-    MODEL="$PROD_MODEL"
-    echo "🏭 Production mode selected"
+# Get model from centralized config (with fallback)
+if [ -f "../config.json" ]; then
+    MODEL=$(python3 -c "import json; print(json.load(open('../config.json'))['model']['name'])" 2>/dev/null || echo "llama3.2:1b")
+elif [ -f "config.json" ]; then
+    MODEL=$(python3 -c "import json; print(json.load(open('config.json'))['model']['name'])" 2>/dev/null || echo "llama3.2:1b")
 else
-    MODEL="$DEV_MODEL"
-    echo "🔧 Development mode selected"
+    MODEL="llama3.2:1b"  # Final fallback
 fi
 
 echo "📋 Model Configuration:"
-echo "  Mode: $MODE"
-echo "  Development Model: $DEV_MODEL"
-echo "  Production Model: $PROD_MODEL"
 echo "  Selected Model: $MODEL"
+echo "  Source: Centralized config.json"
 
 # Wait for Ollama service to be ready using ollama commands
 echo "⏳ Waiting for Ollama service..."
@@ -44,7 +37,7 @@ if ! ollama list > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if model aLready exists
+# Check if model already exists
 if ollama list | grep -q "$MODEL"; then
     echo "✅ Model $MODEL already exists"
 else

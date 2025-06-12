@@ -51,6 +51,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://privategpt:${POSTGRES_PASSWORD:-secure_password_change_me}@auth-postgres:5432/privategpt_auth
       - REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@auth-redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - SECRET_KEY=${AUTH_SECRET_KEY:-your-secret-key-here-change-in-production}
       - ACCESS_TOKEN_EXPIRE_MINUTES=1440
       - REFRESH_TOKEN_EXPIRE_DAYS=30
@@ -64,6 +66,8 @@ services:
     volumes:
       - auth-data:/app/data
       - ./logs/auth-service:/app/logs
+      - ./config_loader.py:/app/config_loader.py:ro
+      - ./config.json:/app/config.json:ro
     networks:
       - private-network
     restart: unless-stopped
@@ -76,6 +80,8 @@ services:
       auth-postgres:
         condition: service_healthy
       auth-redis:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     labels:
       - "logging.service=auth-service"

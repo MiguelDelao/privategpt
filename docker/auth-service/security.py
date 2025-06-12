@@ -1,305 +1,293 @@
 """
-Security service for authentication
-Advanced password policies, JWT tokens, rate limiting, MFA, and session management
+PrivateGPT Legal AI - Security Service
+Advanced password policies, JWT tokens, rate limiting, and session management
 """
 
+import os
 import hashlib
 import secrets
-import time
-import re
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Tuple, List
-from collections import defaultdict
-import redis
-import pyotp
-from passlib.context import CryptContext
-from jose import jwt, JWTError
-import uuid
-import os
-from sqlalchemy.orm import Session
 import bcrypt
-import qrcode
-import io
-import base64
+import jwt
+import redis
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
+from sqlalchemy.orm import Session
+from models import User, LoginSession, SecurityMetric
 
-# Configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/3")
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
+# Security configuration
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "admin123456789abcdef")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "8"))
+JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
+BCRYPT_ROUNDS = int(os.getenv("BCRYPT_ROUNDS", "12"))
 
 # Rate limiting configuration
-MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
-LOCKOUT_DURATION_MINUTES = int(os.getenv("LOCKOUT_DURATION_MINUTES", "30"))
-RATE_LIMIT_WINDOW_MINUTES = int(os.getenv("RATE_LIMIT_WINDOW_MINUTES", "15"))
+RATE_LIMIT_WINDOW_MINUTES = 15
+MAX_LOGIN_ATTEMPTS = 10
+LOCKOUT_DURATION_MINUTES = 30
 
-# Password policy
-MIN_PASSWORD_LENGTH = int(os.getenv("MIN_PASSWORD_LENGTH", "12"))
-REQUIRE_SPECIAL_CHARS = os.getenv("REQUIRE_SPECIAL_CHARS", "true").lower() == "true"
-REQUIRE_NUMBERS = os.getenv("REQUIRE_NUMBERS", "true").lower() == "true"
-REQUIRE_UPPERCASE = os.getenv("REQUIRE_UPPERCASE", "true").lower() == "true"
-REQUIRE_LOWERCASE = os.getenv("REQUIRE_LOWERCASE", "true").lower() == "true"
-
-# Assuming models.py is in the same directory or accessible
-from models import User, LoginSession, get_db # Changed from .models
+# Redis configuration for rate limiting and sessions
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/3")
 
 class SecurityService:
-    """Comprehensive security service"""
+    """Comprehensive security service for authentication and authorization"""
     
     def __init__(self):
-        self.redis_client = redis.from_url(REDIS_URL)
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        self.login_attempts = defaultdict(int)
-        self.lockout_times = {}
-        
+        """Initialize security service with Redis connection"""
+        try:
+            self.redis_client = redis.from_url(REDIS_URL)
+            # Test connection
+            self.redis_client.ping()
+        except Exception as e:
+            print(f"Warning: Redis connection failed: {e}")
+            self.redis_client = None
+    
+    # Password Management
     def hash_password(self, password: str) -> str:
-        """Hash password with bcrypt"""
-        return self.pwd_context.hash(password)
+        """Hash password using bcrypt with configurable rounds"""
+        salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
     
-    def verify_password(self, plain_password: str, hashed_password: str) -> bool:
+    def verify_password(self, password: str, hashed_password: str) -> bool:
         """Verify password against hash"""
-        return self.pwd_context.verify(plain_password, hashed_password)
-    
-    def validate_password_policy(self, password: str, skip_requirements: bool = False) -> Tuple[bool, list]:
-        """Validate password against security policy"""
-        errors = []
-        
-        # If skip_requirements is True, only do basic validation
-        if skip_requirements:
-            if len(password) < 1:  # Just ensure password is not empty
-                errors.append("Password cannot be empty")
-            return len(errors) == 0, errors
-        
-        if len(password) < MIN_PASSWORD_LENGTH:
-            errors.append(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
-        
-        if REQUIRE_UPPERCASE and not re.search(r'[A-Z]', password):
-            errors.append("Password must contain at least one uppercase letter")
-        
-        if REQUIRE_LOWERCASE and not re.search(r'[a-z]', password):
-            errors.append("Password must contain at least one lowercase letter")
-        
-        if REQUIRE_NUMBERS and not re.search(r'\d', password):
-            errors.append("Password must contain at least one number")
-        
-        if REQUIRE_SPECIAL_CHARS and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            errors.append("Password must contain at least one special character")
-        
-        # Check against common passwords (only if not skipping requirements)
-        if password.lower() in self._get_common_passwords():
-            errors.append("Password is too common, please choose a more secure password")
-        
-        return len(errors) == 0, errors
-    
-    def _get_common_passwords(self) -> set:
-        """Return set of common passwords to avoid"""
-        return {
-            "password", "123456", "123456789", "qwerty", "abc123", 
-            "password123", "admin", "letmein", "welcome", "monkey",
-            "1234567890", "password1", "123123", "admin123"
-        }
-    
-    def check_rate_limit(self, identifier: str, max_requests: int = 10, window_minutes: int = 15) -> Tuple[bool, int]:
-        """Check if request is within rate limits"""
-        key = f"rate_limit:{identifier}"
-        window_start = int(time.time()) // (window_minutes * 60)
-        
         try:
-            current_count = self.redis_client.incr(f"{key}:{window_start}")
-            if current_count == 1:
-                self.redis_client.expire(f"{key}:{window_start}", window_minutes * 60)
-            
-            if current_count > max_requests:
-                return False, current_count
-            
-            return True, current_count
+            return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
         except Exception:
-            # If Redis is down, allow request but log warning
-            return True, 0
-    
-    def record_failed_login(self, email: str, ip_address: str) -> bool:
-        """Record failed login attempt and check if account should be locked"""
-        # Track by email
-        email_key = f"failed_login:email:{email}"
-        email_attempts = self.redis_client.incr(email_key)
-        if email_attempts == 1:
-            self.redis_client.expire(email_key, RATE_LIMIT_WINDOW_MINUTES * 60)
-        
-        # Track by IP
-        ip_key = f"failed_login:ip:{ip_address}"
-        ip_attempts = self.redis_client.incr(ip_key)
-        if ip_attempts == 1:
-            self.redis_client.expire(ip_key, RATE_LIMIT_WINDOW_MINUTES * 60)
-        
-        # Check if account should be locked
-        if email_attempts >= MAX_LOGIN_ATTEMPTS:
-            self._lock_account(email)
-            return True
-        
-        return False
-    
-    def _lock_account(self, email: str):
-        """Lock account for specified duration"""
-        lockout_key = f"account_locked:{email}"
-        self.redis_client.setex(lockout_key, LOCKOUT_DURATION_MINUTES * 60, "locked")
-    
-    def is_account_locked(self, email: str) -> bool:
-        """Check if account is currently locked"""
-        lockout_key = f"account_locked:{email}"
-        return self.redis_client.exists(lockout_key)
-    
-    def clear_failed_attempts(self, email: str):
-        """Clear failed login attempts after successful login"""
-        email_key = f"failed_login:email:{email}"
-        self.redis_client.delete(email_key)
-    
-    def create_access_token(self, user_data: dict, ip_address: str = None, user_agent: str = None) -> dict:
-        """Create JWT access token with session tracking"""
-        jti = str(uuid.uuid4())  # JWT ID for session tracking
-        session_id = str(uuid.uuid4())
-        
-        # Token payload
-        payload = {
-            "sub": user_data["email"],
-            "role": user_data["role"],
-            "client_matters": user_data.get("client_matters", []),
-            "jti": jti,
-            "session_id": session_id,
-            "iat": int(time.time()),
-            "exp": int(time.time()) + (JWT_EXPIRY_HOURS * 3600)
-        }
-        
-        # Create JWT token
-        token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-        
-        # Store session information
-        session_data = {
-            "user_email": user_data["email"],
-            "ip_address": ip_address,
-            "user_agent": user_agent,
-            "created_at": datetime.utcnow().isoformat(),
-            "expires_at": (datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS)).isoformat()
-        }
-        
-        session_key = f"session:{session_id}"
-        token_key = f"token:{jti}"
-        
-        # Store with expiration
-        self.redis_client.setex(session_key, JWT_EXPIRY_HOURS * 3600, str(session_data))
-        self.redis_client.setex(token_key, JWT_EXPIRY_HOURS * 3600, "active")
-        
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "expires_in": JWT_EXPIRY_HOURS * 3600,
-            "session_id": session_id,
-            "user_role": user_data["role"]
-        }
-    
-    def verify_token(self, token: str) -> Optional[dict]:
-        """Verify JWT token and check if session is active"""
-        try:
-            payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-            
-            # Check if token is revoked
-            jti = payload.get("jti")
-            if jti and not self.redis_client.exists(f"token:{jti}"):
-                return None
-            
-            return payload
-        except JWTError:
-            return None
-    
-    def revoke_token(self, jti: str, session_id: str = None):
-        """Revoke specific token and session"""
-        if jti:
-            self.redis_client.delete(f"token:{jti}")
-        if session_id:
-            self.redis_client.delete(f"session:{session_id}")
-    
-    def revoke_all_user_sessions(self, email: str):
-        """Revoke all active sessions for a user"""
-        pattern = f"session:*"
-        for key in self.redis_client.scan_iter(match=pattern):
-            session_data = self.redis_client.get(key)
-            if session_data and email in str(session_data):
-                self.redis_client.delete(key)
-        
-        # Also revoke all tokens for this user
-        pattern = f"token:*"
-        for key in self.redis_client.scan_iter(match=pattern):
-            # This is a simplified approach - in production, you'd want to
-            # store token-to-user mapping for more efficient revocation
-            self.redis_client.delete(key)
-    
-    def generate_mfa_secret(self) -> str:
-        """Generate MFA secret for TOTP"""
-        return pyotp.random_base32()
-    
-    def verify_mfa_token(self, secret: str, token: str, window: int = 1) -> bool:
-        """Verify MFA TOTP token"""
-        totp = pyotp.TOTP(secret)
-        return totp.verify(token, valid_window=window)
-    
-    def get_mfa_qr_code_url(self, secret: str, email: str, issuer: str = "PrivateGPT Legal AI") -> str:
-        """Generate QR code URL for MFA setup"""
-        totp = pyotp.TOTP(secret)
-        return totp.provisioning_uri(
-            name=email,
-            issuer_name=issuer
-        )
+            return False
     
     def generate_secure_token(self, length: int = 32) -> str:
         """Generate cryptographically secure random token"""
         return secrets.token_urlsafe(length)
     
-    def hash_api_key(self, api_key: str) -> str:
-        """Hash API key for storage"""
-        return hashlib.sha256(api_key.encode()).hexdigest()
-    
-    def get_session_info(self, session_id: str) -> Optional[dict]:
-        """Get session information"""
-        session_key = f"session:{session_id}"
-        session_data = self.redis_client.get(session_key)
-        if session_data:
-            try:
-                return eval(session_data)  # In production, use json.loads
-            except:
-                return None
-        return None
-    
-    def extend_session(self, session_id: str, jti: str, additional_hours: int = 8):
-        """Extend session duration"""
-        session_key = f"session:{session_id}"
-        token_key = f"token:{jti}"
+    # JWT Token Management
+    def create_jwt_token(self, user_data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+        """Create JWT token with user data"""
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS)
         
-        new_expiry = additional_hours * 3600
-        self.redis_client.expire(session_key, new_expiry)
-        self.redis_client.expire(token_key, new_expiry)
-    
-    def get_security_metrics(self) -> dict:
-        """Get current security metrics"""
-        metrics = {
-            "active_sessions": 0,
-            "locked_accounts": 0,
-            "failed_login_attempts_last_hour": 0,
-            "rate_limited_requests": 0
+        # Include standard JWT claims
+        payload = {
+            "sub": user_data.get("email"),  # Subject
+            "exp": expire,  # Expiration
+            "iat": datetime.utcnow(),  # Issued at
+            "jti": self.generate_secure_token(16),  # JWT ID for revocation
+            **user_data  # User data
         }
         
-        # Count active sessions
-        pattern = "session:*"
-        metrics["active_sessions"] = len(list(self.redis_client.scan_iter(match=pattern)))
-        
-        # Count locked accounts
-        pattern = "account_locked:*"
-        metrics["locked_accounts"] = len(list(self.redis_client.scan_iter(match=pattern)))
-        
-        return metrics
-
-    async def get_all_users(self, db: Session) -> List[User]:
-        """Retrieve all users from the database."""
+        return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    
+    def verify_jwt_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Verify and decode JWT token"""
         try:
-            return db.query(User).all()
-        except Exception as e:
-            raise e
+            payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+            return payload
+        except jwt.ExpiredSignatureError:
+            return None
+        except jwt.InvalidTokenError:
+            return None
+    
+    # Rate Limiting
+    def check_rate_limit(self, identifier: str, max_attempts: int = MAX_LOGIN_ATTEMPTS, 
+                        window_minutes: int = RATE_LIMIT_WINDOW_MINUTES) -> bool:
+        """Check if identifier is within rate limits"""
+        if not self.redis_client:
+            return True  # Allow if Redis is down
+        
+        try:
+            # Use sliding window rate limiting
+            now = datetime.utcnow()
+            window_start = int((now.timestamp() // (window_minutes * 60)) * (window_minutes * 60))
+            key = f"rate_limit:{identifier}:{window_start}"
+            
+            current_count = self.redis_client.incr(key)
+            if current_count == 1:
+                self.redis_client.expire(key, window_minutes * 60)
+            
+            return current_count <= max_attempts
+        except Exception:
+            # If Redis is down, allow request but log warning
+            return True
+    
+    def record_failed_login(self, email: str, ip_address: str) -> bool:
+        """Record failed login attempt and check for lockout"""
+        if not self.redis_client:
+            return False
+        
+        try:
+            # Track by email and IP separately
+            email_key = f"failed_login:email:{email}"
+            ip_key = f"failed_login:ip:{ip_address}"
+            
+            email_attempts = self.redis_client.incr(email_key)
+            if email_attempts == 1:
+                self.redis_client.expire(email_key, RATE_LIMIT_WINDOW_MINUTES * 60)
+            
+            ip_attempts = self.redis_client.incr(ip_key)
+            if ip_attempts == 1:
+                self.redis_client.expire(ip_key, RATE_LIMIT_WINDOW_MINUTES * 60)
+            
+            # Lock account if too many attempts
+            if email_attempts >= MAX_LOGIN_ATTEMPTS:
+                lockout_key = f"lockout:{email}"
+                self.redis_client.setex(lockout_key, LOCKOUT_DURATION_MINUTES * 60, "locked")
+                return True
+            
+            return False
+        except Exception:
+            return False
+    
+    def is_account_locked(self, email: str) -> bool:
+        """Check if account is currently locked"""
+        if not self.redis_client:
+            return False
+        
+        lockout_key = f"lockout:{email}"
+        return self.redis_client.exists(lockout_key)
+    
+    def clear_failed_attempts(self, email: str) -> None:
+        """Clear failed login attempts for user"""
+        if not self.redis_client:
+            return
+        
+        email_key = f"failed_login:email:{email}"
+        self.redis_client.delete(email_key)
+    
+    # Session Management
+    def create_session(self, user_data: Dict[str, Any], ip_address: str, user_agent: str) -> str:
+        """Create new login session"""
+        if not self.redis_client:
+            return None
+        
+        session_id = self.generate_secure_token(32)
+        session_data = {
+            "user_email": user_data.get("email"),
+            "user_role": user_data.get("role"),
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "created_at": datetime.utcnow().isoformat(),
+            "last_activity": datetime.utcnow().isoformat()
+        }
+        
+        try:
+            # Store session data
+            session_key = f"session:{session_id}"
+            token_key = f"token:{user_data.get('jti', '')}"
+            
+            self.redis_client.setex(session_key, JWT_EXPIRY_HOURS * 3600, str(session_data))
+            self.redis_client.setex(token_key, JWT_EXPIRY_HOURS * 3600, "active")
+            
+            return session_id
+        except Exception:
+            return None
+    
+    def validate_session(self, session_id: str, jti: str) -> bool:
+        """Validate active session"""
+        if not self.redis_client:
+            return True  # Allow if Redis is down
+        
+        try:
+            session_key = f"session:{session_id}"
+            token_key = f"token:{jti}"
+            
+            # Check if both session and token exist
+            if jti and not self.redis_client.exists(token_key):
+                return False
+            
+            return self.redis_client.exists(session_key)
+        except Exception:
+            return True
+    
+    def revoke_session(self, session_id: str, jti: str) -> None:
+        """Revoke/logout session"""
+        if not self.redis_client:
+            return
+        
+        try:
+            self.redis_client.delete(f"token:{jti}")
+            if session_id:
+                self.redis_client.delete(f"session:{session_id}")
+        except Exception:
+            pass
+    
+    def cleanup_expired_sessions(self) -> int:
+        """Clean up expired sessions and return count"""
+        if not self.redis_client:
+            return 0
+        
+        try:
+            count = 0
+            # Clean up expired session keys
+            pattern = "session:*"
+            for key in self.redis_client.scan_iter(match=pattern):
+                session_data = self.redis_client.get(key)
+                if not session_data:
+                    self.redis_client.delete(key)
+                    count += 1
+            
+            # Clean up expired token keys
+            pattern = "token:*"
+            for key in self.redis_client.scan_iter(match=pattern):
+                if not self.redis_client.exists(key):
+                    self.redis_client.delete(key)
+                    count += 1
+            
+            return count
+        except Exception:
+            return 0
+    
+    def get_session_info(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get session information"""
+        if not self.redis_client:
+            return None
+        
+        try:
+            session_key = f"session:{session_id}"
+            session_data = self.redis_client.get(session_key)
+            if session_data:
+                return eval(session_data)  # Convert string back to dict
+            return None
+        except Exception:
+            return None
+    
+    def extend_session(self, session_id: str, jti: str) -> bool:
+        """Extend session expiry"""
+        if not self.redis_client:
+            return True
+        
+        try:
+            session_key = f"session:{session_id}"
+            token_key = f"token:{jti}"
+            
+            new_expiry = JWT_EXPIRY_HOURS * 3600
+            self.redis_client.expire(session_key, new_expiry)
+            self.redis_client.expire(token_key, new_expiry)
+            
+            return True
+        except Exception:
+            return False
+    
+    # Security Metrics
+    def get_security_metrics(self) -> Dict[str, Any]:
+        """Get current security metrics"""
+        if not self.redis_client:
+            return {}
+        
+        try:
+            metrics = {}
+            
+            # Count active sessions
+            pattern = "session:*"
+            metrics["active_sessions"] = len(list(self.redis_client.scan_iter(match=pattern)))
+            
+            # Count locked accounts
+            pattern = "lockout:*"
+            metrics["locked_accounts"] = len(list(self.redis_client.scan_iter(match=pattern)))
+            
+            return metrics
+        except Exception:
+            return {}
+
+# Global security service instance
+security_service = SecurityService()
 

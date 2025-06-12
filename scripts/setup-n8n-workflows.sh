@@ -1,19 +1,20 @@
 #!/bin/bash
 
 # PrivateGPT - n8n Workflow Setup Script
-# Sets up testing workflows for Llama LLM integration
+# Sets up testing workflows for Llama LLM integration using centralized config
 
 echo "🚀 Setting up n8n workflows for PrivateGPT..."
 
-# Get configured model based on MODE
-MODE=$(grep "MODEL_MODE" .env 2>/dev/null | cut -d'=' -f2 || echo "dev")
-if [ "$MODE" = "prod" ]; then
-    MODEL=$(grep "OLLAMA_MODEL_PROD" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.1:70b")
+# Get model from centralized config (with fallback)
+if [ -f "../config.json" ]; then
+    MODEL=$(python3 -c "import json; print(json.load(open('../config.json'))['model']['name'])" 2>/dev/null || echo "llama3.2:1b")
+elif [ -f "config.json" ]; then
+    MODEL=$(python3 -c "import json; print(json.load(open('config.json'))['model']['name'])" 2>/dev/null || echo "llama3.2:1b")
 else
-    MODEL=$(grep "OLLAMA_MODEL_DEV" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.2:8b")
+    MODEL="llama3.2:1b"  # Final fallback
 fi
 
-echo "📋 Using $MODE mode with model: $MODEL"
+echo "📋 Using model from centralized config: $MODEL"
 
 # Create directories
 mkdir -p config/n8n

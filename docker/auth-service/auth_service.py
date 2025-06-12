@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 # Import our modules
-from models import User, LoginSession, AuditLog, SecurityMetric, get_db, Client, user_clients_association
+from models import User, LoginSession, SecurityMetric, get_db, Client, user_clients_association
 from security import SecurityService
 from utils import get_logger, log_security_event, log_audit_event
 
@@ -51,7 +51,6 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
-    totp_code: Optional[str] = None
 
 class ClientResponse(BaseModel):
     id: str # UUID string
@@ -67,7 +66,6 @@ class UserResponse(BaseModel):
     active: bool
     created_at: datetime
     last_login: Optional[datetime]
-    mfa_enabled: bool
     authorized_clients: List[ClientResponse] = []
 
     class Config:
@@ -86,13 +84,7 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=12)
 
-class MFASetupResponse(BaseModel):
-    secret: str
-    qr_code_url: str
-    backup_codes: List[str]
-
-class MFAVerify(BaseModel):
-    totp_code: str
+# MFA models removed - feature not implemented
 
 # Application lifespan
 @asynccontextmanager
@@ -115,7 +107,7 @@ async def lifespan(app: FastAPI):
 async def create_default_admin():
     """Create default admin user from config if it doesn't exist"""
     try:
-        # Import config loader (now in same directory)
+        # Import config loader (mounted from main directory)
         from config_loader import get_admin_email, get_admin_password
         
         admin_email = get_admin_email()
@@ -492,130 +484,7 @@ async def change_password(
             detail="Password change service error"
         )
 
-# MFA endpoints
-@app.post("/auth/mfa/setup", response_model=MFASetupResponse)
-async def setup_mfa(
-    current_user: User = Depends(get_current_user),
-    db = Depends(get_db_session)
-):
-    """Setup MFA for user"""
-    try:
-        if current_user.mfa_enabled:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="MFA is already enabled"
-            )
-        
-        # Generate TOTP secret and QR code
-        secret = security_service.generate_mfa_secret()
-        qr_code_url = security_service.get_mfa_qr_code_url(
-            secret,
-            current_user.email,
-            "PrivateGPT Legal AI"
-        )
-        
-        # Generate backup codes (placeholder since method doesn't exist)
-        backup_codes = [secrets.token_hex(8) for _ in range(10)]
-        
-        # Store secret temporarily (user needs to verify before enabling)
-        await security_service.store_temp_mfa_secret(
-            current_user.id,
-            secret,
-            backup_codes,
-            db
-        )
-        
-        return MFASetupResponse(
-            secret=secret,
-            qr_code_url=qr_code_url,
-            backup_codes=backup_codes
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"MFA setup error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="MFA setup service error"
-        )
-
-@app.post("/auth/mfa/verify")
-async def verify_mfa_setup(
-    mfa_verify: MFAVerify,
-    request: Request,
-    current_user: User = Depends(get_current_user),
-    db = Depends(get_db_session)
-):
-    """Verify and enable MFA"""
-    try:
-        # Verify TOTP code with temporary secret
-        success = await security_service.verify_and_enable_mfa(
-            current_user.id,
-            mfa_verify.totp_code,
-            db
-        )
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid TOTP code"
-            )
-        
-        await log_audit_event(
-            current_user.id,
-            "mfa_enabled",
-            {"ip": request.client.host},
-            db
-        )
-        
-        return {"message": "MFA enabled successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"MFA verification error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="MFA verification service error"
-        )
-
-@app.post("/auth/mfa/disable")
-async def disable_mfa(
-    password_verify: str,
-    request: Request,
-    current_user: User = Depends(get_current_user),
-    db = Depends(get_db_session)
-):
-    """Disable MFA (requires password confirmation)"""
-    try:
-        # Verify password
-        if not security_service.verify_password(password_verify, current_user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password verification failed"
-            )
-        
-        # Disable MFA
-        await security_service.disable_user_mfa(current_user.id, db)
-        
-        await log_audit_event(
-            current_user.id,
-            "mfa_disabled",
-            {"ip": request.client.host},
-            db
-        )
-        
-        return {"message": "MFA disabled successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"MFA disable error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="MFA disable service error"
-        )
+# MFA endpoints removed - feature not implemented
 
 # Admin endpoints
 @app.get("/auth/admin/users", response_model=List[UserResponse])
