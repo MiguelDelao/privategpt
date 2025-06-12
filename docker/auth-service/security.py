@@ -60,9 +60,15 @@ class SecurityService:
         """Verify password against hash"""
         return self.pwd_context.verify(plain_password, hashed_password)
     
-    def validate_password_policy(self, password: str) -> Tuple[bool, list]:
+    def validate_password_policy(self, password: str, skip_requirements: bool = False) -> Tuple[bool, list]:
         """Validate password against security policy"""
         errors = []
+        
+        # If skip_requirements is True, only do basic validation
+        if skip_requirements:
+            if len(password) < 1:  # Just ensure password is not empty
+                errors.append("Password cannot be empty")
+            return len(errors) == 0, errors
         
         if len(password) < MIN_PASSWORD_LENGTH:
             errors.append(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
@@ -79,7 +85,7 @@ class SecurityService:
         if REQUIRE_SPECIAL_CHARS and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
             errors.append("Password must contain at least one special character")
         
-        # Check against common passwords
+        # Check against common passwords (only if not skipping requirements)
         if password.lower() in self._get_common_passwords():
             errors.append("Password is too common, please choose a more secure password")
         

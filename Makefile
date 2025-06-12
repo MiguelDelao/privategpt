@@ -1,12 +1,26 @@
 # PrivateGPT Legal AI - Makefile
 # Simple commands for development and deployment
 
-.PHONY: help install setup start stop restart build clean reset nuke logs status shell setup-elk elk-status logs-elk kibana kibana-tunnel logs-search logs-errors-elk verify-elk restart-elk setup-dashboard discover install-model show-model switch-mode download-models
+.PHONY: help install setup start stop restart build clean reset nuke logs status shell setup-elk elk-status logs-elk kibana kibana-tunnel logs-search logs-errors-elk verify-elk restart-elk setup-dashboard discover install-model show-model switch-mode download-models env-info
+
+# Auto-detect environment and set appropriate Docker Compose file
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+	COMPOSE_FILE = docker-compose-mac.yml
+	ENV_TYPE = Mac M1
+else
+	COMPOSE_FILE = docker-compose.yml
+	ENV_TYPE = Linux
+endif
+
+# Docker Compose command with auto-detected file
+DOCKER_COMPOSE = docker-compose -f $(COMPOSE_FILE)
 
 # Default target
 help:
 	@echo "PrivateGPT Legal AI - Development Commands"
 	@echo "==========================================="
+	@echo "Environment: $(ENV_TYPE) (using $(COMPOSE_FILE))"
 	@echo ""
 	@echo "Setup Commands:"
 	@echo "  make install       - Install Docker & Docker Compose (Ubuntu/Debian)"
@@ -45,9 +59,12 @@ help:
 	@echo ""
 	@echo "Model Management:"
 	@echo "  make show-model    - Show current model configuration"
-	@echo "  make switch-mode   - Switch between dev/prod models"
+
 	@echo "  make download-models - Download models for current mode"
 	@echo "  make install-model MODEL=<name> - Install specific model (e.g., make install-model MODEL=llama3:8b)"
+	@echo ""
+	@echo "Environment Commands:"
+	@echo "  make env-info      - Show detected environment and compose file"
 
 # Installation commands
 install:
@@ -107,27 +124,7 @@ wait-for-ollama:
 		exit 1; \
 	fi
 
-download-models:
-	@echo "Downloading models for current mode..."
-	@if docker ps | grep -q ollama-service; then \
-		mode=$$(grep "MODEL_MODE" .env 2>/dev/null | cut -d'=' -f2 || echo "dev"); \
-		if [ "$$mode" = "prod" ]; then \
-			model=$$(grep "OLLAMA_MODEL_PROD" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.1:70b"); \
-		else \
-			model=$$(grep "OLLAMA_MODEL_DEV" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.2:8b"); \
-		fi; \
-		echo "Checking if model $$model is already downloaded..."; \
-		if docker exec ollama-service ollama list | grep -q "$$model"; then \
-			echo "✅ Model $$model already exists"; \
-		else \
-			echo "📥 Downloading model $$model (this may take several minutes)..."; \
-			docker exec ollama-service ollama pull "$$model"; \
-			echo "✅ Model $$model downloaded successfully"; \
-		fi; \
-	else \
-		echo "❌ Ollama service not running. Start with 'make start' first"; \
-		exit 1; \
-	fi
+# Removed duplicate download-models target (see below for clean version)
 
 # ELK Stack Setup Commands (Optional)
 
@@ -153,23 +150,23 @@ setup-dashboard:
 
 # Development commands
 start:
-	@echo "Starting all services..."
-	@docker-compose up -d
+	@echo "Starting all services on $(ENV_TYPE)..."
+	@$(DOCKER_COMPOSE) up -d
 	@echo "✅ Services started"
 	@echo "Access at: http://localhost/"
 	@echo "Login: admin / admin"
 
 stop:
 	@echo "Stopping all services..."
-	@docker-compose down
+	@$(DOCKER_COMPOSE) down
 	@echo "✅ Services stopped"
 
 restart: stop start
 	@echo "restarting..."
 
 build:
-	@echo "Building and starting services..."
-	@docker-compose up -d --build
+	@echo "Building and starting services on $(ENV_TYPE)..."
+	@$(DOCKER_COMPOSE) up -d --build
 	@echo "Creating custom dashboard..."
 	@chmod +x scripts/setup-dashboard.sh
 	@./scripts/setup-dashboard.sh > /dev/null 2>&1 && echo "✅ Dashboard ready" || echo "⚠️ Dashboard setup had issues"
@@ -181,13 +178,13 @@ go: reset clean build
 # Cleanup commands
 clean:
 	@echo "Cleaning up containers..."
-	@docker-compose down
+	@$(DOCKER_COMPOSE) down
 	@docker container prune -f
 	@echo "✅ Containers cleaned"
 
 reset:
 	@echo "Resetting environment..."
-	@docker-compose down -v
+	@$(DOCKER_COMPOSE) down -v
 	@docker container prune -f
 	@docker volume prune -f
 	@docker network prune -f
@@ -374,14 +371,9 @@ setup-n8n:
 
 test-llm:
 	@echo "Testing Llama LLM directly..."
-	@MODE=$$(grep "MODEL_MODE" .env 2>/dev/null | cut -d'=' -f2 || echo "dev"); \
-	if [ "$$MODE" = "prod" ]; then \
-		MODEL=$$(grep "OLLAMA_MODEL_PROD" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.1:70b"); \
-	else \
-		MODEL=$$(grep "OLLAMA_MODEL_DEV" .env 2>/dev/null | cut -d'=' -f2 || echo "llama3.2:8b"); \
-	fi; \
-	echo "Using $$MODE mode with model: $$MODEL"; \
-	curl -X POST http://localhost:8081/ollama/api/generate \
+	@MODEL="llama3.2:1b"; \
+	echo "Using model: $$MODEL"; \
+	curl -X POST http://localhost:11434/api/generate \
 		-H 'Content-Type: application/json' \
 		-d "{\"model\": \"$$MODEL\", \"prompt\": \"Hello! Please respond in one sentence.\", \"stream\": false}" \
 		2>/dev/null | jq '.response' || echo "❌ LLM test failed"
@@ -443,39 +435,25 @@ install-model:
 show-model:
 	@echo "Current Model Configuration:"
 	@echo "============================"
-	@if [ -f .env ]; then \
-		echo "From .env file:"; \
-		grep "MODEL_MODE\|OLLAMA_MODEL" .env | sed 's/^/  /'; \
-	else \
-		echo "From env.example (no .env file found):"; \
-		grep "MODEL_MODE\|OLLAMA_MODEL" env.example | sed 's/^/  /'; \
-	fi
+	@echo "Default model: llama3:8b"
 	@echo ""
-	@echo "Active model in Ollama:"
-	@docker exec ollama-service ollama list 2>/dev/null | head -5 || echo "  ❌ Ollama not running"
+	@echo "Available models in Ollama:"
+	@docker exec ollama-service ollama list 2>/dev/null || echo "  ❌ Ollama not running"
+	@echo ""
+	@echo "To download models manually:"
+	@echo "  make install-model MODEL=<model_name>"
 
-switch-mode:
-	@echo "Model Mode Switch Tool"
-	@echo "======================"
-	@if [ -f .env ]; then \
-		current_mode=$$(grep "MODEL_MODE" .env | cut -d'=' -f2); \
-		echo "Current mode: $$current_mode"; \
-		echo "Available modes:"; \
-		echo "  dev  - Development (llama3.2:8b)"; \
-		echo "  prod - Production (llama3.1:70b)"; \
-		echo ""; \
-		read -p "Enter new mode (dev/prod): " new_mode; \
-		if [ "$$new_mode" = "dev" ] || [ "$$new_mode" = "prod" ]; then \
-			sed -i.bak "s/MODEL_MODE=.*/MODEL_MODE=$$new_mode/" .env; \
-			echo "✅ Switched to $$new_mode mode"; \
-			echo "🔄 Restart services with 'make restart' to apply changes"; \
-		else \
-			echo "❌ Invalid mode. Use 'dev' or 'prod'"; \
-		fi; \
-	else \
-		echo "⚠️  No .env file found. Run 'make init' first"; \
-		exit 1; \
-	fi
+download-models:
+	@echo "Available Models to Download:"
+	@echo "============================"
+	@echo "Popular models you can install:"
+	@echo "  make install-model MODEL=llama3:8b      # Recommended default"
+	@echo "  make install-model MODEL=llama3:70b     # Larger, more capable"
+	@echo "  make install-model MODEL=codellama:7b   # Code-focused"
+	@echo "  make install-model MODEL=mistral:7b     # Alternative LLM"
+	@echo "  make install-model MODEL=qwen2.5:7b     # Multilingual"
+	@echo ""
+	@echo "To see all available models: https://ollama.com/library"
 
 # Complete ELK setup verification
 verify-elk:
@@ -506,4 +484,30 @@ discover: ## 📊 Open Kibana Discover for log analysis
 dashboard: ## 📊 Open PrivateGPT System Monitor Dashboard
 	@echo "📊 Opening PrivateGPT System Monitor Dashboard..."
 	@echo "🚀 Dashboard URL: http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0"
-	@command -v xdg-open >/dev/null && xdg-open "http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0" || echo "Manually open: http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0" 
+	@command -v xdg-open >/dev/null && xdg-open "http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0" || echo "Manually open: http://localhost/kibana/app/dashboards#/view/53c5b260-3f89-11f0-b185-c1d217685ac0"
+
+# Environment Information
+env-info:
+	@echo "PrivateGPT Environment Information"
+	@echo "=================================="
+	@echo "Detected OS: $(UNAME_S)"
+	@echo "Environment Type: $(ENV_TYPE)"
+	@echo "Docker Compose File: $(COMPOSE_FILE)"
+	@echo "Docker Compose Command: $(DOCKER_COMPOSE)"
+	@echo ""
+	@echo "File Status:"
+	@if [ -f $(COMPOSE_FILE) ]; then \
+		echo "✅ $(COMPOSE_FILE) exists"; \
+	else \
+		echo "❌ $(COMPOSE_FILE) not found"; \
+	fi
+	@if [ -f docker-compose.yml ]; then \
+		echo "✅ docker-compose.yml exists (for Linux)"; \
+	else \
+		echo "❌ docker-compose.yml not found"; \
+	fi
+	@echo ""
+	@echo "Usage on different environments:"
+	@echo "📱 Mac M1: All commands use docker-compose-mac.yml automatically"
+	@echo "🐧 Linux: All commands use docker-compose.yml automatically"
+	@echo "🚀 No need to remember different commands!" 

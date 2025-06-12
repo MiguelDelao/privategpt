@@ -103,11 +103,56 @@ async def lifespan(app: FastAPI):
     from models import create_tables
     create_tables()
     
+    # Create default admin user if it doesn't exist
+    await create_default_admin()
+    
     logger.info("Auth Service startup complete")
     yield
     
     logger.info("Shutting down Auth Service...")
     logger.info("Auth Service shutdown complete")
+
+async def create_default_admin():
+    """Create default admin user from config if it doesn't exist"""
+    try:
+        # Import config loader (now in same directory)
+        from config_loader import get_admin_email, get_admin_password
+        
+        admin_email = get_admin_email()
+        admin_password = get_admin_password()
+        
+        with next(get_db()) as db:
+            from models import get_user_by_email, User
+            
+            # Check if admin user already exists
+            existing_admin = get_user_by_email(db, admin_email)
+            if existing_admin:
+                logger.info(f"Default admin user already exists: {admin_email}")
+                return
+            
+            # Create admin user
+            password_hash = security_service.hash_password(admin_password)
+            
+            admin_user = User(
+                email=admin_email,
+                password_hash=password_hash,
+                role="admin",
+                active=True,
+                created_by="system",
+                failed_login_attempts=0,
+                mfa_enabled=False
+            )
+            
+            db.add(admin_user)
+            db.commit()
+            
+            logger.info(f"✅ Default admin user created: {admin_email}")
+            logger.info(f"✅ Default admin password: {admin_password}")
+            
+    except Exception as e:
+        logger.error(f"Failed to create default admin user: {e}")
+        # Don't fail startup, just log the error
+        pass
 
 # FastAPI app
 app = FastAPI(

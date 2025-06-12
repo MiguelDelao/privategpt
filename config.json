@@ -1,0 +1,116 @@
+{
+  "app": {
+    "name": "PrivateGPT Legal AI",
+    "version": "2.5.0",
+    "environment": "production",
+    "debug": false
+  },
+  
+  "admin": {
+    "email": "admin@admin.com",
+    "password": "admin",
+    "role": "admin"
+  },
+  
+  "security": {
+    "jwt": {
+      "secret_key": "admin123456789abcdef",
+      "algorithm": "HS256",
+      "expiry_hours": 24,
+      "refresh_token_expiry_days": 30
+    },
+    "password_policy": {
+      "min_length": 8,
+      "require_uppercase": false,
+      "require_lowercase": false,
+      "require_numbers": false,
+      "require_special_chars": false
+    },
+    "rate_limiting": {
+      "enabled": true,
+      "login_attempts": 10,
+      "lockout_duration_minutes": 15,
+      "api_requests_per_minute": 100
+    },
+    "auth": {
+      "bcrypt_rounds": 12,
+      "session_timeout_hours": 8
+    }
+  },
+  
+  "database": {
+    "auth": {
+      "url": "postgresql://privategpt:secure_password_change_me@auth-postgres:5432/privategpt_auth",
+      "pool_size": 20,
+      "max_overflow": 30
+    },
+    "redis": {
+      "url": "redis://:secure_redis_password@auth-redis:6379/0",
+      "session_db": 0,
+      "cache_db": 1,
+      "celery_broker_db": 2
+    }
+  },
+  
+  "services": {
+    "auth_service": "http://auth-service:8000",
+    "knowledge_service": "http://knowledge-service:8000",
+    "weaviate": "http://weaviate-db:8080",
+    "ollama": "http://ollama-service:11434",
+    "elasticsearch": "http://elasticsearch:9200",
+    "redis": "http://redis:6379"
+  },
+  
+  "model": {
+    "name": "llama3.2:1b"
+  },
+  
+  "models": {
+    "embedding_model": "bge-base-en-v1.5",
+    "llm": {
+      "max_context_tokens": 3000,
+      "default_search_limit": 5,
+      "default_max_tokens": 1000,
+      "default_temperature": 0.7,
+      "timeout_seconds": 120
+    }
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "elk": {
+      "enabled": true,
+      "elasticsearch_url": "http://elasticsearch:9200",
+      "kibana_url": "http://kibana:5601"
+    },
+    "audit": {
+      "enabled": true,
+      "retention_days": 2555
+    },
+    "services": {
+      "auth_service": "INFO",
+      "knowledge_service": "INFO",
+      "streamlit": "INFO"
+    }
+  },
+  
+  "resources": {
+    "max_upload_size_mb": 200,
+    "max_concurrent_uploads": 5,
+    "weaviate_query_limit": 25,
+    "max_search_results": 50
+  },
+  
+  "integrations": {
+    "weaviate": {
+      "api_key": "admin",
+      "timeout_seconds": 30
+    },
+    "n8n": {
+      "username": "admin",
+      "password": "admin",
+      "webhook_url": "http://n8n:5678"
+    }
+  }
+} 

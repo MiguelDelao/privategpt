@@ -49,5 +49,5 @@ ENV PYTHONUNBUFFERED=1
 # Expose port
 EXPOSE 8000
 
-# Start command - runs migration first, then starts the service
-CMD ["sh", "-c", "python migrate_data.py && python auth_service.py"] 
+# Start command - directly start the service (no migration needed)
+CMD ["python", "auth_service.py"] 

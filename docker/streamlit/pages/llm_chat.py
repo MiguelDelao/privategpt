@@ -14,7 +14,7 @@ import os
 # Add parent directory to path to import pages_utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pages_utils import (
-    APP_TITLE, LLM_MODEL_NAME, OLLAMA_URL,
+    APP_TITLE, LLM_MODEL_NAME, OLLAMA_URL, KNOWLEDGE_SERVICE_URL,
     initialize_session_state, require_auth, apply_page_styling,
     get_logger, display_navigation_sidebar
 )
@@ -40,8 +40,23 @@ if "llm_chat_history" not in st.session_state:
 if "current_llm_query" not in st.session_state:
     st.session_state.current_llm_query = ""
 
-def call_ollama_direct_stream(prompt: str, model: str = "llama3:8b"):
+def get_selected_model_from_settings() -> str:
+    """Get the currently selected model from admin settings"""
+    try:
+        response = requests.get(f"{KNOWLEDGE_SERVICE_URL}/admin/settings", timeout=10)
+        if response.status_code == 200:
+            settings = response.json()
+            return settings.get("SELECTED_MODEL", "llama3:8b")
+        else:
+            return "llama3:8b"  # Fallback
+    except Exception:
+        return "llama3:8b"  # Fallback
+
+def call_ollama_direct_stream(prompt: str, model: str = None):
     """Direct call to Ollama API with streaming support - generator function"""
+    if model is None:
+        model = get_selected_model_from_settings()
+    
     try:
         url = f"{OLLAMA_URL}/api/generate"
         
@@ -89,8 +104,10 @@ def call_ollama_direct_stream(prompt: str, model: str = "llama3:8b"):
             "success": False
         }
 
-def call_ollama_direct(prompt: str, model: str = "llama3:8b") -> dict:
+def call_ollama_direct(prompt: str, model: str = None) -> dict:
     """Direct call to Ollama API - non-streaming for compatibility"""
+    if model is None:
+        model = get_selected_model_from_settings()
     try:
         url = f"{OLLAMA_URL}/api/generate"
         
@@ -195,7 +212,7 @@ def display_llm_chat():
                 
                 try:
                     full_response = ""
-                    response_generator = call_ollama_direct_stream(last_query, "llama3:8b")
+                    response_generator = call_ollama_direct_stream(last_query)
                     
                     for chunk in response_generator:
                         if chunk.get("success") and "partial_response" in chunk:
@@ -211,7 +228,7 @@ def display_llm_chat():
                     # Update session state with final response
                     st.session_state.llm_chat_history[-1] = (last_query, {
                         "answer": full_response,
-                        "model_used": "llama3:8b",
+                        "model_used": get_selected_model_from_settings(),
                         "error": None
                     })
                     
@@ -228,7 +245,7 @@ def display_llm_chat():
                     # Update session state with error
                     st.session_state.llm_chat_history[-1] = (last_query, {
                         "answer": error_message,
-                        "model_used": "llama3:8b",
+                        "model_used": get_selected_model_from_settings(),
                         "error": str(e)
                     })
                     
@@ -250,7 +267,7 @@ def display_llm_chat():
 
     if prompt:
         # Add user message to chat history immediately
-        st.session_state.llm_chat_history.append((prompt, {"answer": "", "model_used": "llama3:8b"}))
+        st.session_state.llm_chat_history.append((prompt, {"answer": "", "model_used": get_selected_model_from_settings()}))
         
         # Force refresh to show user message in the container
         st.rerun()

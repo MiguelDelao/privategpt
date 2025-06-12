@@ -20,6 +20,7 @@ VERSION_INFO = "Version 2.5 - Polished Interface"
 
 # Configuration
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
+KNOWLEDGE_SERVICE_URL = os.getenv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8000")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://weaviate:8080")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
