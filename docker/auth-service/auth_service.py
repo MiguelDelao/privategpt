@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 # Import our modules
-from models import User, LoginSession, SecurityMetric, get_db, Client, user_clients_association
+from models import User, LoginSession, SecurityMetric, get_db, Client, user_clients_association, create_tables, get_user_by_email
 from security import SecurityService
 from utils import get_logger, log_security_event, log_audit_event
 
@@ -63,10 +63,10 @@ class ClientResponse(BaseModel):
 class UserResponse(BaseModel):
     email: EmailStr
     role: str
-    active: bool
+    is_active: bool
     created_at: datetime
     last_login: Optional[datetime]
-    authorized_clients: List[ClientResponse] = []
+    clients: List[ClientResponse] = []
 
     class Config:
         from_attributes = True
@@ -92,7 +92,6 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Auth Service...")
     
     # Initialize database tables
-    from models import create_tables
     create_tables()
     
     # Create default admin user if it doesn't exist
@@ -114,8 +113,6 @@ async def create_default_admin():
         admin_password = get_admin_password()
         
         with next(get_db()) as db:
-            from models import get_user_by_email, User
-            
             # Check if admin user already exists
             existing_admin = get_user_by_email(db, admin_email)
             if existing_admin:
@@ -127,12 +124,10 @@ async def create_default_admin():
             
             admin_user = User(
                 email=admin_email,
-                password_hash=password_hash,
+                hashed_password=password_hash,
                 role="admin",
-                active=True,
-                created_by="system",
-                failed_login_attempts=0,
-                mfa_enabled=False
+                is_active=True,
+                is_verified=True
             )
             
             db.add(admin_user)
@@ -169,31 +164,29 @@ security = HTTPBearer()
 # Dependency to get current user with security
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db = Depends(get_db_session)
+    db: Session = Depends(get_db_session)
 ) -> User:
     """Token validation with session tracking"""
     token = credentials.credentials
     
     try:
         # Verify token
-        payload = security_service.verify_token(token)
+        payload = security_service.verify_jwt_token(token)
         if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token"
             )
         
-        # Get user from database
-        with next(get_db()) as db:
-            from models import get_user_by_email
-            user = get_user_by_email(db, payload["sub"])
-            if not user:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found"
-                )
-            
-            return user
+        # Get user from database with clients relationship loaded
+        user = db.query(User).options(joinedload(User.clients)).filter(User.email == payload["sub"]).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+        
+        return user
     except Exception as e:
         logger.warning(f"Token validation failed: {e}")
         raise HTTPException(
@@ -204,7 +197,7 @@ async def get_current_user(
 # Optional user dependency (for public endpoints that can benefit from user context)
 async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
-    db = Depends(get_db_session)
+    db: Session = Depends(get_db_session)
 ) -> Optional[User]:
     """Optional user authentication"""
     if not credentials:
@@ -253,7 +246,7 @@ async def login(
     client_ip = request.client.host
     
     # Rate limiting
-    rate_check, _ = security_service.check_rate_limit(f"login:{client_ip}", 20, 5)  # 20 attempts per 5 minutes
+    rate_check = security_service.check_rate_limit(f"login:{client_ip}", 20, 5)  # 20 attempts per 5 minutes
     if not rate_check:
         await log_security_event(
             "rate_limit_exceeded",
@@ -268,10 +261,9 @@ async def login(
     try:
         # Get user from database
         with next(get_db()) as db:
-            from models import get_user_by_email
             user = get_user_by_email(db, user_login.email)
             
-            if not user or not security_service.verify_password(user_login.password, user.password_hash):
+            if not user or not security_service.verify_password(user_login.password, user.hashed_password):
                 await log_security_event(
                     "login_failed",
                     {"email": user_login.email, "ip": client_ip},
@@ -283,7 +275,7 @@ async def login(
                 )
             
             # Check if account is locked
-            if user.is_account_locked():
+            if security_service.is_account_locked(user.email):
                 raise HTTPException(
                     status_code=status.HTTP_423_LOCKED,
                     detail="Account is temporarily locked"
@@ -293,11 +285,11 @@ async def login(
             user.last_login = datetime.utcnow()
             db.commit()
             
-            # Ensure authorized_clients are loaded if lazy='selectin' wasn't enough or for explicit refresh
+            # Ensure clients are loaded if lazy='selectin' wasn't enough or for explicit refresh
             # This might not be strictly necessary with lazy='selectin' but can ensure data freshness
-            # db.refresh(user, attribute_names=['authorized_clients']) # Optional: refresh if needed
+            # db.refresh(user, attribute_names=['clients']) # Optional: refresh if needed
 
-            client_ids_for_token = [client.id for client in user.authorized_clients]
+            client_ids_for_token = [client.id for client in user.clients]
             
             token_data = security_service.create_access_token(
                 {"email": user.email, "role": user.role, "authorized_client_ids": client_ids_for_token},
@@ -341,7 +333,7 @@ async def register(
     client_ip = request.client.host
     
     # Rate limiting for registration
-    rate_check, _ = security_service.check_rate_limit(f"register:{client_ip}", 3, 60)  # 3 per hour
+    rate_check = security_service.check_rate_limit(f"register:{client_ip}", 3, 60)  # 3 per hour
     if not rate_check:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -432,8 +424,8 @@ async def logout(
 @app.get("/auth/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Get current user information"""
-    # Eager load/refresh authorized_clients if necessary for the response model
-    # db.refresh(current_user, attribute_names=['authorized_clients']) # This might be redundant with lazy='selectin'
+    # Eager load/refresh clients if necessary for the response model
+    # db.refresh(current_user, attribute_names=['clients']) # This might be redundant with lazy='selectin'
     return UserResponse.model_validate(current_user) # Uses from_attributes and relationship loading
 
 @app.post("/auth/change-password")
@@ -446,7 +438,7 @@ async def change_password(
     """Change user password"""
     try:
         # Verify current password
-        if not security_service.verify_password(password_change.current_password, current_user.password_hash):
+        if not security_service.verify_password(password_change.current_password, current_user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Current password is incorrect"
@@ -500,7 +492,7 @@ async def list_users(
         )
     
     try:
-        users = db.query(User).options(joinedload(User.authorized_clients)).all() # Eager load clients
+        users = db.query(User).options(joinedload(User.clients)).all() # Eager load clients
         return [UserResponse.model_validate(user) for user in users]
     except Exception as e:
         logger.error(f"List users error: {e}")
@@ -530,126 +522,6 @@ async def get_security_metrics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Security metrics service error"
         )
-
-# --- New Pydantic Models for Client Management ---
-class ClientBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-
-class ClientCreate(ClientBase):
-    pass
-
-class UserClientAssociationRequest(BaseModel):
-    client_ids: List[str] # List of Client UUID strings
-
-# --- NEW: Global Client Management Endpoints (Admin Only) ---
-
-@app.post("/admin/clients/", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)
-async def create_global_client(
-    client_create: ClientCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_session)
-):
-    """Create a new global client"""
-    ensure_admin(current_user)
-    existing_client = db.query(Client).filter(Client.name == client_create.name).first()
-    if existing_client:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Client name already exists")
-    
-    new_client = Client(name=client_create.name, created_by_email=current_user.email)
-    db.add(new_client)
-    try:
-        db.commit()
-        db.refresh(new_client)
-    except IntegrityError: # Catch potential race conditions or other DB errors
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create client due to a database error")
-    return ClientResponse.model_validate(new_client)
-
-@app.get("/admin/clients/", response_model=List[ClientResponse])
-async def list_global_clients(
-    current_user: User = Depends(get_current_user), # Still require auth, but admin check is not strictly needed for list
-    db: Session = Depends(get_db_session)
-):
-    """List all global clients"""
-    # ensure_admin(current_user) # Optional: make listing clients admin-only too
-    clients = db.query(Client).order_by(Client.name).all()
-    return [ClientResponse.model_validate(client) for client in clients]
-
-@app.delete("/admin/clients/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_global_client(
-    client_id: str, # Should be UUID string
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_session)
-):
-    """Delete a global client"""
-    ensure_admin(current_user)
-    client = db.query(Client).filter(Client.id == client_id).first()
-    if not client:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
-    
-    # Optional: Check if client is associated with any users before deleting, or handle cascade if DB supports it.
-    # For now, direct delete. If user_clients_association has FK constraints, this might fail if client is in use.
-    # Consider adding a check: if client.authorized_users: raise HTTPException(detail="Client is in use")
-
-    db.delete(client)
-    try:
-        db.commit()
-    except IntegrityError: # e.g. if FK constraint prevents deletion because it's linked
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Client {client.name} cannot be deleted, possibly in use or other database constraint.")
-    return Response(status_code=status.HTTP_204_NO_CONTENT) # FastAPI expects Response for 204
-
-# --- NEW: User-Client Association Endpoints (Admin Only) ---
-
-@app.get("/admin/users/{user_email}/clients", response_model=List[ClientResponse])
-async def get_clients_for_user(
-    user_email: EmailStr,
-    current_admin_user: User = Depends(get_current_user), # current_user is admin
-    db: Session = Depends(get_db_session)
-):
-    """Get clients for a specific user"""
-    ensure_admin(current_admin_user)
-    target_user = db.query(User).options(joinedload(User.authorized_clients)).filter(User.email == user_email).first()
-    if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target user not found")
-    return [ClientResponse.model_validate(client) for client in target_user.authorized_clients]
-
-@app.put("/admin/users/{user_email}/clients", response_model=UserResponse) # Returns the updated user
-async def update_clients_for_user(
-    user_email: EmailStr,
-    association_request: UserClientAssociationRequest,
-    current_admin_user: User = Depends(get_current_user), # current_user is admin
-    db: Session = Depends(get_db_session)
-):
-    """Update clients for a specific user"""
-    ensure_admin(current_admin_user)
-    target_user = db.query(User).filter(User.email == user_email).first()
-    if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target user not found")
-
-    # Validate all incoming client_ids exist
-    clients_to_associate = []
-    if association_request.client_ids:
-        clients_to_associate = db.query(Client).filter(Client.id.in_(association_request.client_ids)).all()
-        if len(clients_to_associate) != len(set(association_request.client_ids)):
-            # Find which IDs were not found for a more detailed error (optional)
-            found_ids = {client.id for client in clients_to_associate}
-            missing_ids = [cid for cid in association_request.client_ids if cid not in found_ids]
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"One or more client IDs not found: {missing_ids}")
-
-    target_user.authorized_clients = clients_to_associate # Replace existing associations
-    
-    db.add(target_user) # Add user to session to track changes to relationship
-    try:
-        db.commit()
-        db.refresh(target_user) # Refresh to get updated state, especially relationships
-        # Ensure relationships are loaded for the response model
-        # db.refresh(target_user, attribute_names=['authorized_clients']) # Re-evaluate if needed based on lazy loading config
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not update client associations due to a database error")
-
-    return UserResponse.model_validate(target_user)
 
 # --- Helper function for admin check ---
 def ensure_admin(current_user: User):
