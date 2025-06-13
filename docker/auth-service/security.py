@@ -7,7 +7,7 @@ import os
 import hashlib
 import secrets
 import bcrypt
-import jwt
+from jose import jwt
 import redis
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
@@ -77,6 +77,17 @@ class SecurityService:
         
         return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     
+    def create_access_token(self, user_data: Dict[str, Any], client_ip: str) -> Dict[str, Any]:
+        """Create access token with user data"""
+        expires_delta = timedelta(hours=JWT_EXPIRY_HOURS)
+        token = self.create_jwt_token(user_data, expires_delta)
+        
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_in": JWT_EXPIRY_HOURS * 3600
+        }
+    
     def verify_jwt_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify and decode JWT token"""
         try:
@@ -84,7 +95,7 @@ class SecurityService:
             return payload
         except jwt.ExpiredSignatureError:
             return None
-        except jwt.InvalidTokenError:
+        except jwt.JWTError:
             return None
     
     # Rate Limiting

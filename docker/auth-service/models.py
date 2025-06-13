@@ -200,4 +200,8 @@ def get_db():
 
 def create_tables():
     """Create all tables"""
-    Base.metadata.create_all(bind=engine) 
+    Base.metadata.create_all(bind=engine)
+
+def get_user_by_email(db, email: str):
+    """Get user by email address"""
+    return db.query(User).filter(User.email == email).first() 

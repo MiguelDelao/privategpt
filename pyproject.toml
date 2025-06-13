@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privategpt"
+version = "0.1.0"
+description = "PrivateGPT – monorepo refactor"
+readme = "README.md"
+authors = [{name = "PrivateGPT Team"}]
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"] 
