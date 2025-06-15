@@ -1,4 +1,4 @@
-.PHONY: help start stop build clean test
+.PHONY: help start stop build clean test test-unit
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -11,6 +11,7 @@ help:
 	@echo "make build   - Build images and start containers"
 	@echo "make clean   - Remove containers and dangling images"
 	@echo "make test    - Run unit + integration tests inside host environment"
+	@echo "make test-unit - Run unit tests"
 
 start:
 	$(DC) up -d
@@ -30,4 +31,7 @@ clean:
 # Developers may also run `make test DOCKER=true` to execute inside a container later.
 
 test:
-	pytest -q v2/tests || true 
+	pytest -q v2/tests || true
+
+test-unit:
+	pytest -q v2/tests/unit 
