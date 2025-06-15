@@ -5,7 +5,7 @@ WORKDIR /app
 COPY ./v2 /app/v2
 
 # Install project (prod extras) and testing deps
-RUN pip install --no-cache-dir -e /app/v2[prod] pytest httpx
+RUN pip install --no-cache-dir -e /app/v2 pytest httpx
 
 # Copy remaining repository (tests etc.)
 COPY . /app

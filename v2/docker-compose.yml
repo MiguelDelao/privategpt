@@ -61,7 +61,7 @@ services:
       dockerfile: v2/docker/tests/Dockerfile
     depends_on:
       - auth-service
-    command: pytest -q v2/tests/unit
+    command: pytest -q v2/tests
 
 volumes:
   db-data:
