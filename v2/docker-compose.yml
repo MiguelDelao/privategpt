@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  auth-service:
+    build: ./docker/auth
+    ports:
+      - "8000:8000"
+  knowledge-service:
+    build: ./docker/knowledge
+    ports:
+      - "8002:8000"
+  ui-service:
+    build: ./docker/ui
+    ports:
+      - "8501:8501"
