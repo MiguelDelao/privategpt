@@ -55,5 +55,13 @@ services:
     ports:
       - "8501:8501"
 
+  tests:
+    build:
+      context: ..
+      dockerfile: v2/docker/tests/Dockerfile
+    depends_on:
+      - auth-service
+    command: pytest -q v2/tests/unit
+
 volumes:
   db-data:
