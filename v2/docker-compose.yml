@@ -23,7 +23,7 @@ services:
       DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
       REDIS_URL: redis://redis:6379/0
     ports:
-      - "8000:8000"
+      - "8001:8000"
 
   knowledge-service:
     build: ./docker/knowledge
