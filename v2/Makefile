@@ -32,7 +32,7 @@ clean:
 # Developers may also run `make test DOCKER=true` to execute inside a container later.
 
 test:
-	pytest -q v2/tests || true
+	docker compose run --rm tests
 
 test-unit:
 	pytest -q v2/tests/unit 
