@@ -10,8 +10,17 @@ from functools import lru_cache
 
 try:
     from config_loader import ConfigLoader, get_config_loader  # type: ignore
-except ModuleNotFoundError as exc:
-    raise ImportError("config_loader module missing; run from project root during migration") from exc
+except ModuleNotFoundError:
+    # Graceful fallback when running from a sub-directory where `config_loader.py` is not importable
+    class _FallbackConfigLoader:  # noqa: D101
+        def get(self, key: str, default=None):  # noqa: D401
+            # Simply return provided default; environment variable lookup could be added here later
+            return default
+
+    ConfigLoader = _FallbackConfigLoader  # type: ignore[assignment]
+
+    def get_config_loader():  # type: ignore[return-type]
+        return _FallbackConfigLoader()
 
 
 class _LazySettings:
