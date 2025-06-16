@@ -1,5 +1,12 @@
 version: "3.9"
 services:
+  base:
+    image: privategpt/base:latest
+    build:
+      context: ..
+      dockerfile: v2/docker/base/Dockerfile
+    profiles: ["build"]
+
   db:
     image: postgres:16
     restart: unless-stopped
@@ -15,7 +22,9 @@ services:
     restart: unless-stopped
 
   auth-service:
-    build: ./docker/auth
+    build:
+      context: ..
+      dockerfile: v2/docker/auth/Dockerfile
     depends_on:
       - db
       - redis
@@ -25,8 +34,10 @@ services:
     ports:
       - "8001:8000"
 
-  knowledge-service:
-    build: ./docker/knowledge
+  rag-service:
+    build:
+      context: ..
+      dockerfile: v2/docker/rag/Dockerfile
     depends_on:
       - db
       - redis
@@ -48,10 +59,12 @@ services:
       - "8080:8080"
 
   ui-service:
-    build: ./docker/ui
+    build:
+      context: ..
+      dockerfile: v2/docker/ui/Dockerfile
     depends_on:
       - auth-service
-      - knowledge-service
+      - rag-service
     ports:
       - "8501:8501"
 

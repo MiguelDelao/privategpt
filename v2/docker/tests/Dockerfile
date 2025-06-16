@@ -1,13 +1,10 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.4
+FROM privategpt/base:latest
 WORKDIR /app
 
-# Copy project source first for editable install
-COPY ./v2 /app/v2
+# install only test deps (project already in image)
+RUN --mount=type=cache,target=/root/.cache/pip pip install pytest httpx
 
-# Install project (prod extras) and testing deps
-RUN pip install --no-cache-dir -e /app/v2 pytest httpx
-
-# Copy remaining repository (tests etc.)
-COPY . /app
+COPY ./v2/tests /app/v2/tests
 
 CMD ["pytest", "-q", "v2/tests"] 

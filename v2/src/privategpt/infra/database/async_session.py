@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -15,6 +15,13 @@ engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+@asynccontextmanager
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:  # type: ignore[override]
+    """Yield an `AsyncSession` inside an *async with* block."""
+
     async with AsyncSessionLocal() as session:
-        yield session 
+        yield session
+
+# async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+#     async with AsyncSessionLocal() as session:
+#         yield session 

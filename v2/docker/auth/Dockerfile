@@ -1,5 +1,7 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.4
+FROM privategpt/base:latest
 WORKDIR /app
-COPY ../../.. /app
-RUN pip install --no-cache-dir -e /app/v2
+COPY ./v2 /app/v2
+
+# Expose the Auth service
 CMD ["uvicorn", "privategpt.services.auth.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -22,10 +22,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
-# Import our modules
-from models import User, LoginSession, SecurityMetric, get_db, Client, user_clients_association, create_tables, get_user_by_email
+# Local modules
+from models import (
+    User,
+    LoginSession,
+    SecurityMetric,
+    get_db,
+    Client,
+    user_clients_association,
+    create_tables,
+    get_user_by_email,
+)
 from security import SecurityService
 from utils import get_logger, log_security_event, log_audit_event
+
+# New shared settings (replaces legacy config_loader)
+try:
+    from privategpt.shared.settings import settings  # type: ignore
+except ModuleNotFoundError:  # Fallback when running outside mono-repo build context
+    settings = None  # type: ignore
 
 # Configure logging
 logger = get_logger(__name__)
@@ -84,7 +99,6 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=12)
 
-# MFA models removed - feature not implemented
 
 # Application lifespan
 @asynccontextmanager
@@ -106,11 +120,13 @@ async def lifespan(app: FastAPI):
 async def create_default_admin():
     """Create default admin user from config if it doesn't exist"""
     try:
-        # Import config loader (mounted from main directory)
-        from config_loader import get_admin_email, get_admin_password
-        
-        admin_email = get_admin_email()
-        admin_password = get_admin_password()
+        # Prefer new settings if available; fall back to env vars for standalone runs
+        if settings is not None:
+            admin_email: str = settings.get("admin.email", "admin@admin.com")
+            admin_password: str = settings.get("admin.password", "admin")
+        else:
+            admin_email = os.getenv("ADMIN_EMAIL", "admin@admin.com")
+            admin_password = os.getenv("ADMIN_PASSWORD", "admin")
         
         with next(get_db()) as db:
             # Check if admin user already exists
