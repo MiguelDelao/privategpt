@@ -61,9 +61,13 @@ services:
       - RATE_LIMIT_WINDOW=3600
       - PASSWORD_MIN_LENGTH=12
       - MFA_ISSUER=PrivateGPT Legal AI
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - auth-data:/app/data
       - ./logs/auth-service:/app/logs
+      - ./config_loader.py:/app/config_loader.py:ro
+      - ./config.json:/app/config.json:ro
     networks:
       - private-network
     restart: unless-stopped
@@ -136,9 +140,13 @@ services:
       - DEFAULT_MAX_TOKENS=${DEFAULT_MAX_TOKENS:-1000}
       - DEFAULT_TEMPERATURE=${DEFAULT_TEMPERATURE:-0.7}
       - SELECTED_MODEL=${SELECTED_MODEL:-llama3:8b}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - ./knowledge-service-data:/app/data
       - ./logs/knowledge-service:/app/logs
+      - ./config_loader.py:/app/config_loader.py:ro
+      - ./config.json:/app/config.json:ro
     networks:
       - private-network
     restart: unless-stopped
@@ -167,10 +175,14 @@ services:
       - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
       - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll  # Enable file watching
       - STREAMLIT_SERVER_HEADLESS=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - ./docker/streamlit:/app  # Mount source code for live reload
       - ./data/uploads:/app/uploads
       - ./logs/app:/app/logs
+      - ./config_loader.py:/app/config_loader.py:ro
+      - ./config.json:/app/config.json:ro
     networks:
       - private-network
     restart: unless-stopped

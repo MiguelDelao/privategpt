@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean test test-unit test-api
+.PHONY: help start stop build build-base clean test test-unit test-api stack-logs import-dashboard status ensure-dashboard
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -14,6 +14,10 @@ help:
 	@echo "make test    - Run unit + integration tests inside host environment"
 	@echo "make test-unit - Run unit tests"
 	@echo "make test-api - Run API tests"
+	@echo "make stack-logs - Start Elasticsearch, Kibana, and Filebeat"
+	@echo "make import-dashboard - Import a Kibana dashboard"
+	@echo "make status - Show the status of all containers"
+	@echo "make ensure-dashboard - Import dashboard and verify"
 
 start:
 	$(DC) up -d
@@ -22,7 +26,7 @@ stop:
 	$(DC) down
 
 build-base:
-	docker build -t privategpt/base:latest -f docker/base/Dockerfile ..
+	docker build -f docker/base/Dockerfile -t privategpt-base .
 
 build: build-base
 	$(DC) up -d --build
@@ -47,3 +51,29 @@ test-unit:
 
 test-api:
 	docker compose run --rm tests
+
+# -------------------------------------------------------------------
+# Observability helpers
+# -------------------------------------------------------------------
+
+stack-logs:   ## Start ES+Kibana+Filebeat and import dashboard automatically
+	docker-compose up -d elasticsearch kibana filebeat
+	bash scripts/wait_for_kibana.sh
+	bash scripts/import_dashboard.sh
+
+# Retained for manual re-imports if needed
+import-dashboard:
+	bash scripts/wait_for_kibana.sh
+	curl -s -H "kbn-xsrf: true" \
+	     -F "file=@docs/observability/kibana_dashboard.ndjson;type=application/ndjson" \
+	     http://localhost:5601/api/saved_objects/_import?overwrite=true | cat
+
+# -------------------------------------------------------------------
+# Utility targets
+# -------------------------------------------------------------------
+
+status:
+	docker-compose ps
+
+ensure-dashboard:
+	bash scripts/import_dashboard.sh

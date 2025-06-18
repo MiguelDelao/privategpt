@@ -9,8 +9,8 @@ WORKDIR /app
 # Copy only dependency descriptors to leverage cache
 COPY pyproject.toml README.md /app/
 
-# Copy v2 directory and install from there
-COPY v2 /app/v2
+# Copy full source tree (current context) into /app/v2
+COPY . /app/v2
 
 # Install v2 project with BuildKit wheel cache
 RUN --mount=type=cache,target=/root/.cache/pip pip install -e /app/v2

@@ -1,0 +1,35 @@
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      templates:
+        - condition:
+            has_fields: ["docker.container.labels.logging.service"]
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+              json.keys_under_root: true
+              json.add_error_key: true
+
+processors:
+  - add_docker_metadata: ~
+  - rename:
+      fields:
+        - from: service
+          to: service_name
+      ignore_missing: true
+  - copy_fields:
+      fields:
+        - from: docker.container.labels.logging.service
+          to: service_name
+      ignore_missing: true
+      fail_on_error: false
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "privategpt-%{[service_name]:-generic}-%{+yyyy.MM.dd}"
+
+# Create matching template so Filebeat doesn't exit with validation error
+setup.template.name: "privategpt"
+setup.template.pattern: "privategpt-*"
+setup.ilm.enabled: false 

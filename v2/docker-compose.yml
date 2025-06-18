@@ -10,6 +10,11 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     environment:
       POSTGRES_USER: privategpt
       POSTGRES_PASSWORD: secret
@@ -26,13 +31,18 @@ services:
       context: ..
       dockerfile: v2/docker/auth/Dockerfile
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
       REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: auth
     ports:
       - "8001:8000"
+    labels:
+      - logging.service=auth
 
   rag-service:
     build:
@@ -45,8 +55,11 @@ services:
     environment:
       DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
       REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: rag
     ports:
       - "8002:8000"
+    labels:
+      - logging.service=rag
 
   weaviate:
     image: semitechnologies/weaviate:1.22.0
@@ -63,8 +76,10 @@ services:
       context: ..
       dockerfile: v2/docker/ui/Dockerfile
     depends_on:
-      - auth-service
-      - rag-service
+      auth-service:
+        condition: service_started
+    environment:
+      AUTH_URL: http://auth-service:8000/auth
     ports:
       - "8501:8501"
 
@@ -75,6 +90,33 @@ services:
     depends_on:
       - auth-service
     command: pytest -q v2/tests
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.14.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.14.0
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - elasticsearch
 
 volumes:
   db-data:

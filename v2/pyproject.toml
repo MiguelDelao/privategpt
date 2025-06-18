@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "privategpt"
-version = "0.1.0"
+version = "0.2.0"
 description = "PrivateGPT v2 monorepo"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,9 @@ dependencies = [
     "sentence-transformers>=2.6",
     "torch>=2.1; platform_machine!='arm64' or sys_platform!='darwin'",
     "torch==2.1.2; platform_machine=='arm64' and sys_platform=='darwin'",
-    "python-multipart>=0.0.7"
+    "python-multipart>=0.0.7",
+    "celery>=5.3",
+    "pydantic-settings>=2.1"
 ]
 
 [tool.setuptools.packages.find]

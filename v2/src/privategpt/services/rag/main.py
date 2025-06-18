@@ -16,11 +16,13 @@ from privategpt.infra.splitters.simple import SimpleSplitterAdapter
 from privategpt.infra.vector_store.memory import InMemoryVectorStore
 from privategpt.core.domain.document import Document
 from privategpt.infra.chat.echo import EchoChatAdapter
-from privategpt.services.rag.service import RagService
+from privategpt.services.rag.core.service import RagService
 from privategpt.core.domain.query import SearchQuery
 from privategpt.infra.vector_store.weaviate_adapter import WeaviateAdapter  # noqa: E501
 from privategpt.infra.embedder.bge_adapter import BgeEmbedderAdapter
 from privategpt.infra.embedder.fake import FakeEmbedderAdapter
+from privategpt.infra.http.log_middleware import RequestLogMiddleware
+from privategpt.services.rag.api import rag_router
 
 # create tables at startup (sync call inside async lifespan is okay for sqlite)
 
@@ -71,6 +73,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(RequestLogMiddleware)
+
+# new sliced router @ /rag/*
+app.include_router(rag_router.router)
 
 
 @app.get("/health")

@@ -15,6 +15,8 @@ from privategpt.core.ports.chunk_repository import ChunkRepositoryPort
 
 
 class RagService:
+    """Use-case orchestration for RAG ingestion & chat."""
+
     def __init__(
         self,
         repo: DocumentRepositoryPort,
@@ -35,7 +37,9 @@ class RagService:
         parts = self.splitter.split(text)
         embeddings = await self.embedder.embed_documents(parts)
 
-        doc = Document(id=None, title=title, file_path=file_path, uploaded_at=__import__("datetime").datetime.utcnow())
+        import datetime as _dt
+
+        doc = Document(id=None, title=title, file_path=file_path, uploaded_at=_dt.datetime.utcnow())
         doc = await self.repo.add(doc)
 
         ids = [f"{doc.id}_{i}" for i in range(len(parts))]
@@ -62,4 +66,4 @@ class RagService:
         chunk_ids = [int(s[0].split("_")[-1]) for s in sim]
         chunks = await self.chunk_repo.list_by_ids(chunk_ids)
         answer = await self.chat_llm.generate_answer(question, chunks)
-        return Answer(text=answer, citations=[{"chunk_id": s[0], "score": s[1]} for s in sim]) 
+        return Answer(text=answer, citations=[{"chunk_id": s[0], "score": s[1]} for s in sim])

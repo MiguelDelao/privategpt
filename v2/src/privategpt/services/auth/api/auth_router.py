@@ -7,8 +7,13 @@ from sqlalchemy.orm import Session
 from privategpt.infra.database.session import get_db
 from privategpt.shared.security import decode_token
 
-from privategpt.services.auth.schemas import UserCreate, UserLogin, Token, UserOut
-from privategpt.services.auth.service import AuthService
+from privategpt.services.auth.schemas import (
+    UserCreate,
+    UserLogin,
+    Token,
+    UserOut,
+)
+from privategpt.services.auth.core.service import AuthService
 from privategpt.infra.database.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,15 +25,17 @@ def _svc(db: Session = Depends(get_db)) -> AuthService:  # noqa
     return AuthService(db)
 
 
-async def _current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) -> User:
+async def _current_user(
+    token: str = Depends(oauth2), db: Session = Depends(get_db)
+) -> User:
     try:
         payload = decode_token(token)
     except Exception:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid token")
     email = payload.get("sub")
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user not found")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="user not found")
     return user
 
 

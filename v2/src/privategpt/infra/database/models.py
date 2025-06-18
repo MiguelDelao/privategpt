@@ -27,6 +27,7 @@ class Document(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String(50), nullable=False, default="pending")
     error = Column(String(1024), nullable=True)
+    task_id = Column(String(255), nullable=True, index=True)
 
 
 class Chunk(Base):
