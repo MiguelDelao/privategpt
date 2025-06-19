@@ -32,7 +32,7 @@ stop:
 	$(DC) down
 
 build-base:
-	docker build -f docker/base/Dockerfile -t privategpt-base .
+	docker build -f docker/base/Dockerfile -t privategpt/base:latest .
 
 build: build-base
 	$(DC) up -d --build
