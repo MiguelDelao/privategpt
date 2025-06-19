@@ -13,10 +13,10 @@ import requests
 
 
 class AuthClient:  # noqa: D101
-    def __init__(self, auth_service_url: str | None = None):
-        base = auth_service_url or os.getenv("AUTH_URL", "http://auth-service:8000")
+    def __init__(self, gateway_url: str | None = None):
+        base = gateway_url or os.getenv("GATEWAY_URL", "http://gateway-service:8000")
         # Normalise and strip trailing slashes
-        self.auth_service_url = base.rstrip("/")
+        self.gateway_url = base.rstrip("/")
         self.session = requests.Session()
 
     # ---------------------------------------------------------------------
@@ -24,8 +24,10 @@ class AuthClient:  # noqa: D101
     # ---------------------------------------------------------------------
     def login(self, email: str, password: str) -> Dict:  # noqa: D401
         """Login user and return token response."""
+        # For now, this will use direct Keycloak integration
+        # TODO: Implement proper OIDC flow
         resp = self.session.post(
-            f"{self.auth_service_url}/auth/login",
+            f"{self.gateway_url}/api/auth/login",
             json={"email": email, "password": password},
             timeout=30,
         )
@@ -37,7 +39,7 @@ class AuthClient:  # noqa: D101
         """Verify JWT token and return user info (or None)."""
         try:
             resp = self.session.post(
-                f"{self.auth_service_url}/auth/verify",
+                f"{self.gateway_url}/api/auth/verify",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=30,
             )

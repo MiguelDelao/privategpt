@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, ForeignKey, Index, JSON, Text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -11,10 +11,16 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    keycloak_id = Column(String(255), unique=True, index=True, nullable=True)  # Keycloak user ID
     email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
+    username = Column(String(255), nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    hashed_password = Column(String(255), nullable=True)  # Legacy field, nullable for Keycloak users
     role = Column(String(50), nullable=False, default="user")
     is_active = Column(Boolean, default=True, nullable=False)
+    preferences = Column(JSON, nullable=True, default=dict)  # User app preferences
+    last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

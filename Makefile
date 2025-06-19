@@ -30,6 +30,10 @@ build-base:
 
 build: build-base
 	$(DC) up -d --build
+	@echo "Setting up Keycloak realm and users..."
+	$(DC) up --no-deps keycloak-setup
+	@echo "✅ Build complete! UI available at http://localhost:8501"
+	@echo "🔐 Login with: admin@admin.com / admin"
 
 clean:
 	$(DC) down -v

@@ -25,7 +25,7 @@ LLM_MODEL_NAME = os.getenv("LLM_MODEL", "LLaMA-3 70B")
 VECTOR_DB_NAME = os.getenv("VECTOR_DB", "Weaviate+bge-base"); WORKFLOW_ENGINE = "n8n"
 
 # Service endpoints
-AUTH_SERVICE_URL = os.getenv("AUTH_URL", "http://auth-service:8000")
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://gateway-service:8000")
 KNOWLEDGE_SERVICE_URL = os.getenv("RAG_URL", "http://rag-service:8000")
 OLLAMA_URL = os.getenv("LLM_URL", "http://llm-service:8000")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://weaviate:8080")
@@ -36,7 +36,7 @@ ENVIRONMENT = os.getenv("ENV", "local")
 # ---------------------------------------------------------------------------
 @st.cache_resource
 def get_auth_client():  # noqa: D401
-    return AuthClient(AUTH_SERVICE_URL)
+    return AuthClient(GATEWAY_URL)
 
 @st.cache_resource
 def get_document_processor():  # noqa: D401

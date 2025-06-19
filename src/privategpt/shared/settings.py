@@ -68,12 +68,21 @@ class _CoreSettings(BaseSettings):
     # DATABASE & CACHES ----------------------------------------------
     database_url: str = Field("sqlite+aiosqlite:///./privategpt.db", env="DATABASE_URL")
     redis_url: str = Field("redis://redis:6379/0", env="REDIS_URL")
-    weaviate_url: str = Field("http://weaviate-db:8080", env="WEAVIATE_URL")
+    weaviate_url: str = Field("http://weaviate:8080", env="WEAVIATE_URL")
 
     # LLM / EMBEDDINGS ----------------------------------------------
     ollama_url: str | None = Field(None, env="OLLAMA_URL")
     ollama_model: str | None = Field(None, env="OLLAMA_MODEL")
     embed_model: str = Field("BAAI/bge-small-en-v1.5", env="EMBED_MODEL")
+    
+    # KEYCLOAK / AUTHENTICATION -----------------------------------
+    keycloak_url: str = Field("http://keycloak:8080", env="KEYCLOAK_URL")
+    keycloak_realm: str = Field("privategpt", env="KEYCLOAK_REALM")
+    keycloak_client_id: str = Field("privategpt-ui", env="KEYCLOAK_CLIENT_ID")
+    
+    # SERVICE URLS ------------------------------------------------
+    rag_service_url: str = Field("http://rag-service:8000", env="RAG_SERVICE_URL")
+    llm_service_url: str = Field("http://llm-service:8000", env="LLM_SERVICE_URL")
 
     model_config = {
         "extra": "allow",

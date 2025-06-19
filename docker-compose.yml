@@ -22,15 +22,79 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
 
+  keycloak-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_secret
+      POSTGRES_DB: keycloak
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_secret
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+    command: start-dev
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 10s bash -c '</dev/tcp/localhost/8080'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    labels:
+      - logging.service=keycloak
+
+  keycloak-setup:
+    image: alpine:latest
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+    volumes:
+      - ./scripts/init-keycloak-realm.sh:/init-keycloak-realm.sh:ro
+    command: >
+      sh -c "
+        apk add --no-cache curl jq bash &&
+        bash /init-keycloak-realm.sh
+      "
+    restart: "no"
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
 
-  auth-service:
+  gateway-service:
     build:
       context: .
-      dockerfile: docker/auth/Dockerfile
+      dockerfile: docker/gateway/Dockerfile
     depends_on:
+      keycloak:
+        condition: service_healthy
       db:
         condition: service_healthy
       redis:
@@ -38,11 +102,14 @@ services:
     environment:
       DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
       REDIS_URL: redis://redis:6379/0
-      SERVICE_NAME: auth
+      KEYCLOAK_URL: http://keycloak:8080
+      RAG_SERVICE_URL: http://rag-service:8000
+      LLM_SERVICE_URL: http://llm-service:8000
+      SERVICE_NAME: gateway
     ports:
-      - "8001:8000"
+      - "8000:8000"
     labels:
-      - logging.service=auth
+      - logging.service=gateway
 
   rag-service:
     build:
@@ -69,17 +136,17 @@ services:
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
       PERSISTENCE_DATA_PATH: /var/lib/weaviate
     ports:
-      - "8080:8080"
+      - "8081:8080"
 
   ui-service:
     build:
       context: .
       dockerfile: docker/ui/Dockerfile
     depends_on:
-      auth-service:
+      gateway-service:
         condition: service_started
     environment:
-      AUTH_URL: http://auth-service:8000
+      GATEWAY_URL: http://gateway-service:8000
     ports:
       - "8501:8501"
     labels:
@@ -96,7 +163,7 @@ services:
       context: .
       dockerfile: docker/tests/Dockerfile
     depends_on:
-      - auth-service
+      - gateway-service
     command: pytest -q tests
 
   elasticsearch:
@@ -185,4 +252,5 @@ services:
 
 volumes:
   db-data:
+  keycloak-db-data:
   n8n_data:
