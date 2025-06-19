@@ -94,6 +94,7 @@ open http://localhost:8080
 **Default Login:**
 - **Email:** `admin@admin.com`
 - **Password:** `admin`
+- **Customizable**: Edit `config.json` or set `DEFAULT_ADMIN_EMAIL`/`DEFAULT_ADMIN_PASSWORD` environment variables
 
 ## 📋 Prerequisites
 
@@ -198,23 +199,42 @@ OLLAMA_URL=http://ollama:11434
 
 ### Advanced Configuration
 
-Create a `config.json` file:
+The system uses a **configuration hierarchy**:
+1. **Environment Variables** (highest priority)
+2. **config.json** file settings
+3. **Pydantic defaults** (fallback)
+
+#### Default config.json
+A default `config.json` is provided with sensible defaults:
 
 ```json
 {
+  "default_admin": {
+    "email": "admin@admin.com",
+    "username": "admin@admin.com", 
+    "password": "admin"
+  },
   "database": {
-    "url": "postgresql://user:pass@host:5432/db",
-    "pool_size": 20
+    "url": "postgresql://privategpt:secret@db:5432/privategpt"
+  },
+  "llm": {
+    "ollama_url": "http://ollama:11434",
+    "ollama_model": "tinydolphin:latest"
   },
   "embedding": {
-    "model": "BAAI/bge-small-en-v1.5",
-    "batch_size": 32
-  },
-  "chunking": {
-    "chunk_size": 1000,
-    "chunk_overlap": 200
+    "model": "BAAI/bge-small-en-v1.5"
   }
 }
+```
+
+#### Environment Variable Overrides
+```bash
+# Customize admin user
+export DEFAULT_ADMIN_EMAIL="myemail@company.com"
+export DEFAULT_ADMIN_PASSWORD="secure-password"
+
+# Use different LLM model
+export OLLAMA_MODEL="llama3.2:7b"
 ```
 
 ## 📚 API Documentation

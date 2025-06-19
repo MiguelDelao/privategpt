@@ -80,6 +80,13 @@ class _CoreSettings(BaseSettings):
     keycloak_realm: str = Field("privategpt", env="KEYCLOAK_REALM")
     keycloak_client_id: str = Field("privategpt-ui", env="KEYCLOAK_CLIENT_ID")
     
+    # DEFAULT ADMIN USER ----------------------------------------
+    default_admin_email: str = Field("admin@admin.com", env="DEFAULT_ADMIN_EMAIL")
+    default_admin_username: str = Field("admin@admin.com", env="DEFAULT_ADMIN_USERNAME")
+    default_admin_password: str = Field("admin", env="DEFAULT_ADMIN_PASSWORD")
+    default_admin_first_name: str = Field("Admin", env="DEFAULT_ADMIN_FIRST_NAME")
+    default_admin_last_name: str = Field("User", env="DEFAULT_ADMIN_LAST_NAME")
+    
     # SERVICE URLS ------------------------------------------------
     rag_service_url: str = Field("http://rag-service:8000", env="RAG_SERVICE_URL")
     llm_service_url: str = Field("http://llm-service:8000", env="LLM_SERVICE_URL")

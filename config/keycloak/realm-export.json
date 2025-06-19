@@ -88,11 +88,11 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "privategpt-ui-secret-key",
       "redirectUris": [
-        "http://localhost:8501/*",
+        "http://localhost:8080/*",
         "http://localhost/*"
       ],
       "webOrigins": [
-        "http://localhost:8501",
+        "http://localhost:8080",
         "http://localhost"
       ],
       "notBefore": 0,
@@ -232,7 +232,7 @@
   "users": [
     {
       "id": "admin-user-id",
-      "username": "admin",
+      "username": "admin@admin.com",
       "enabled": true,
       "totp": false,
       "emailVerified": true,

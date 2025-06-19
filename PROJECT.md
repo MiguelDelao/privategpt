@@ -80,13 +80,15 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 
 #### Authentication (Keycloak)
 - **Service**: `keycloak`
-- **Port**: 8080
+- **Port**: 8180
 - **Database**: PostgreSQL (`keycloak-db`)
-- **Configuration**: Automated realm setup via `scripts/init-keycloak-realm.sh`
+- **Configuration**: Automated realm import via `config/keycloak/realm-export.json`
+- **Default Admin**: `admin@admin.com` / `admin` (configurable via `config.json`)
 - **Features**:
   - OIDC/OAuth2 provider
   - User management and roles
   - JWT token issuance
+  - Pre-configured realm with admin user
   - Admin console at `http://localhost:8180`
 
 #### Language Model (Ollama)
@@ -207,10 +209,32 @@ make remove-model MODEL=llama3.2:1b
 4. **Startup Order**: Database → Keycloak → Application Services
 
 ### Configuration Management
-- **Settings**: `src/privategpt/shared/settings.py` - Pydantic-based configuration
-- **Environment Variables**: Docker Compose `.env` support
-- **Service Discovery**: Internal Docker networking
-- **Secrets**: Keycloak client secrets, database credentials
+
+#### Pydantic Settings Model
+- **Location**: `src/privategpt/shared/settings.py`
+- **Type**: Pydantic BaseSettings with environment variable support
+- **Features**: Type validation, automatic env var parsing, config file support
+
+#### Configuration Files
+- **Default Config**: `config.json` - Default settings for all services
+- **Keycloak Realm**: `config/keycloak/realm-export.json` - Pre-configured authentication realm
+- **Environment Variables**: Docker Compose `.env` support for overrides
+
+#### Default Admin User
+- **Email**: `admin@admin.com` (configurable via `DEFAULT_ADMIN_EMAIL`)
+- **Password**: `admin` (configurable via `DEFAULT_ADMIN_PASSWORD`)
+- **Automatic Creation**: Created during `make build` via realm import
+- **Customization**: Update `config.json` or set environment variables
+
+#### Configuration Hierarchy
+1. **Environment Variables** (highest priority)
+2. **config.json** file settings  
+3. **Pydantic field defaults** (fallback)
+
+#### Service Discovery
+- **Internal**: Docker Compose networking with service hostnames
+- **External**: Configurable URLs via settings
+- **Secrets**: Keycloak client secrets, database credentials in environment
 
 ## API Documentation
 
@@ -280,10 +304,27 @@ services:
 ## Troubleshooting
 
 ### Common Issues
-1. **Authentication Failures**: Check Keycloak realm configuration
-2. **Service Connectivity**: Verify Docker network and health checks
-3. **Database Migrations**: Ensure schema is up to date
-4. **Port Conflicts**: Check for conflicting services on host ports
+
+#### Authentication Failures
+1. **Cannot login with admin@admin.com**:
+   - Check Keycloak setup logs: `make logs-keycloak-setup`
+   - Verify realm import: `make logs-keycloak`
+   - Restart Keycloak setup: `docker-compose up --no-deps keycloak-setup`
+
+2. **Keycloak not accessible**:
+   - Verify Keycloak is running: `make logs-keycloak`
+   - Check port 8180 is accessible: `curl http://localhost:8180/health/ready`
+   - Check Docker network connectivity
+
+#### Service Connectivity
+- Verify Docker network and health checks: `make status`
+- Check service logs: `make logs-<service>`
+- Restart specific services: `docker-compose restart <service>`
+
+#### Database and Configuration
+- **Database Migrations**: Ensure schema is up to date
+- **Port Conflicts**: Check for conflicting services on host ports
+- **Configuration Issues**: Verify `config.json` syntax and settings
 
 ### Debugging Commands
 ```bash

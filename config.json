@@ -1,0 +1,48 @@
+{
+  "log_level": "INFO",
+  
+  "database": {
+    "url": "postgresql://privategpt:secret@db:5432/privategpt"
+  },
+  
+  "redis_url": "redis://redis:6379/0",
+  "weaviate_url": "http://weaviate:8080",
+  
+  "llm": {
+    "ollama_url": "http://ollama:11434",
+    "ollama_model": "tinydolphin:latest"
+  },
+  
+  "embedding": {
+    "model": "BAAI/bge-small-en-v1.5"
+  },
+  
+  "keycloak": {
+    "url": "http://keycloak:8080",
+    "realm": "privategpt",
+    "client_id": "privategpt-ui"
+  },
+  
+  "default_admin": {
+    "email": "admin@admin.com",
+    "username": "admin@admin.com", 
+    "password": "admin",
+    "first_name": "Admin",
+    "last_name": "User"
+  },
+  
+  "services": {
+    "rag_service_url": "http://rag-service:8000",
+    "llm_service_url": "http://llm-service:8000"
+  },
+  
+  "chunking": {
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+  },
+  
+  "ui": {
+    "port": 8080,
+    "title": "PrivateGPT - Enterprise RAG System"
+  }
+}
