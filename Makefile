@@ -32,8 +32,11 @@ build: build-base
 	$(DC) up -d --build
 	@echo "Setting up Keycloak realm and users..."
 	$(DC) up --no-deps keycloak-setup
+	@echo "Setting up Ollama models..."
+	$(DC) up --no-deps ollama-setup
 	@echo "✅ Build complete! UI available at http://localhost:8501"
 	@echo "🔐 Login with: admin@admin.com / admin"
+	@echo "🤖 LLM service: http://localhost:8003"
 
 clean:
 	$(DC) down -v

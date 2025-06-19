@@ -97,6 +97,8 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      llm-service:
+        condition: service_started
       redis:
         condition: service_started
     environment:
@@ -105,6 +107,7 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       RAG_SERVICE_URL: http://rag-service:8000
       LLM_SERVICE_URL: http://llm-service:8000
+      OLLAMA_URL: http://ollama:11434
       SERVICE_NAME: gateway
     ports:
       - "8000:8000"
@@ -127,6 +130,27 @@ services:
       - "8002:8000"
     labels:
       - logging.service=rag
+
+  llm-service:
+    build:
+      context: .
+      dockerfile: docker/llm/Dockerfile
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:1b
+      SERVICE_NAME: llm
+    ports:
+      - "8003:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - logging.service=llm
 
   weaviate:
     image: semitechnologies/weaviate:1.22.0
@@ -250,7 +274,43 @@ services:
       - traefik.http.routers.traefik.service=api@internal
       - logging.service=traefik
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - logging.service=ollama
+
+  ollama-setup:
+    image: alpine:latest
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:1b
+    volumes:
+      - ./scripts:/scripts
+    command: |
+      sh -c "
+        apk add --no-cache curl jq &&
+        chmod +x /scripts/init-ollama.sh &&
+        /scripts/init-ollama.sh
+      "
+    restart: "no"
+
 volumes:
   db-data:
   keycloak-db-data:
   n8n_data:
+  ollama_data:

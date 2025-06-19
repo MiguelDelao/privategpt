@@ -71,8 +71,8 @@ class _CoreSettings(BaseSettings):
     weaviate_url: str = Field("http://weaviate:8080", env="WEAVIATE_URL")
 
     # LLM / EMBEDDINGS ----------------------------------------------
-    ollama_url: str | None = Field(None, env="OLLAMA_URL")
-    ollama_model: str | None = Field(None, env="OLLAMA_MODEL")
+    ollama_url: str = Field("http://ollama:11434", env="OLLAMA_URL")
+    ollama_model: str = Field("llama3.2:1b", env="OLLAMA_MODEL")
     embed_model: str = Field("BAAI/bge-small-en-v1.5", env="EMBED_MODEL")
     
     # KEYCLOAK / AUTHENTICATION -----------------------------------
