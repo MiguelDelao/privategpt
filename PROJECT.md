@@ -162,10 +162,11 @@ class Chunk:
 5. **JWKS Validation**: Signature verification using Keycloak's public keys
 
 ### Security Implementation
-- **Middleware**: `KeycloakAuthMiddleware` for request interception
-- **Token Validation**: JWKS-based signature verification
+- **Middleware**: `KeycloakAuthMiddleware` for request interception (gateway-level)
+- **Token Validation**: JWKS-based signature verification (gateway handles validation)
 - **Role Extraction**: Claims parsing for authorization
-- **Session Management**: Refresh token support for long sessions
+- **Session Management**: Simplified session-based approach in UI, no external token validation
+- **Authentication Flow**: Gateway validates tokens, UI manages local session state
 
 ## Development Workflow
 
