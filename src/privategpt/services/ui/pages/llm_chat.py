@@ -170,9 +170,7 @@ if prompt := st.chat_input("Ask the AI anything..."):
             logger.log_ai_query(
                 user_email=st.session_state.user_email,
                 query=prompt[:100] + "..." if len(prompt) > 100 else prompt,
-                response_length=len(full_response),
-                processing_time_seconds=generation_time,
-                query_type="llm_chat"
+                response_tokens=len(full_response.split())
             )
             
         except Exception as e:
