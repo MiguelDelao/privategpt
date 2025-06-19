@@ -175,13 +175,30 @@ make clean
 # Full build with automated setup
 make build
 
-# Development mode with hot reloading
-make dev
+# Start/stop services
+make start
+make stop
 
-# Service-specific operations
-make logs service=gateway-service
-make restart service=ui-service
+# Container and status management
+make status
+make clean-all  # Remove everything including volumes
 ```
+
+### Model Management
+```bash
+# Install specific Ollama models
+make install-model MODEL=llama3.2:1b
+make install-model MODEL=mistral:7b
+make install-model MODEL=codellama:7b
+
+# List installed models
+make list-models
+
+# Remove specific models
+make remove-model MODEL=llama3.2:1b
+```
+
+**Model Persistence**: Models are stored in the `ollama_data` Docker volume and persist across container restarts and `make clean` operations. Only `make clean-all` removes the models completely.
 
 ### Service Dependencies
 1. **Base Image**: `docker/base/Dockerfile` - Common Python dependencies
