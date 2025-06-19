@@ -14,6 +14,7 @@ import streamlit as st
 from utils.auth_client import AuthClient
 from utils.document_processor import DocumentProcessor
 from utils.logger import Logger
+from utils.llm_client import LLMClient
 
 # ---------------------------------------------------------------------------
 # Application-wide constants
@@ -42,6 +43,9 @@ def get_auth_client():  # noqa: D401
 def get_document_processor():  # noqa: D401
     return DocumentProcessor()
 
+@st.cache_resource  
+def get_llm_client():  # noqa: D401
+    return LLMClient(OLLAMA_URL)
 
 def get_logger():  # noqa: D401
     return Logger()
