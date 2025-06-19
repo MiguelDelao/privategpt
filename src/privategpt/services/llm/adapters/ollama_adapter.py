@@ -18,7 +18,7 @@ class OllamaAdapter(LLMPort):
         self,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: float = 300.0
+        timeout: float = 600.0
     ):
         self.base_url = base_url or settings.ollama_url
         self.model = model or settings.ollama_model
@@ -28,14 +28,16 @@ class OllamaAdapter(LLMPort):
     async def generate(self, prompt: str, **kwargs) -> str:
         """Generate a single response to a prompt."""
         try:
+            request_data = {
+                "model": kwargs.get("model", self.model),
+                "prompt": prompt,
+                "stream": False,
+                "options": self._build_options(**kwargs)
+            }
+            logger.info(f"Sending request to Ollama: {request_data}")
             response = await self.client.post(
                 f"{self.base_url}/api/generate",
-                json={
-                    "model": kwargs.get("model", self.model),
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": self._build_options(**kwargs)
-                }
+                json=request_data
             )
             response.raise_for_status()
             result = response.json()

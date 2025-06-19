@@ -139,7 +139,7 @@ services:
       - ollama
     environment:
       OLLAMA_URL: http://ollama:11434
-      OLLAMA_MODEL: llama3.2:1b
+      OLLAMA_MODEL: tinydolphin:latest
       SERVICE_NAME: llm
     ports:
       - "8003:8000"
@@ -298,7 +298,7 @@ services:
       - ollama
     environment:
       OLLAMA_URL: http://ollama:11434
-      OLLAMA_MODEL: llama3.2:1b
+      OLLAMA_MODEL: tinydolphin:latest
     volumes:
       - ./scripts:/scripts
     command: |
