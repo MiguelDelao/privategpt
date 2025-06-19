@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "Setting up Keycloak realm and users..."
 
@@ -151,3 +151,6 @@ fi
 
 echo "Keycloak setup completed successfully!"
 echo "Default credentials: admin@admin.com / admin"
+
+# Ensure script exits cleanly
+exit 0

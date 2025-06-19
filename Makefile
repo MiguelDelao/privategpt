@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model
+.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model diagnose nuke hard-build
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -24,6 +24,11 @@ help:
 	@echo "make install-model MODEL=<name> - Install specific Ollama model"
 	@echo "make list-models - Show available Ollama models"
 	@echo "make remove-model MODEL=<name> - Remove specific Ollama model"
+	@echo ""
+	@echo "Troubleshooting:"
+	@echo "make diagnose - Diagnose Docker and system issues"
+	@echo "make nuke - Nuclear option: delete EVERYTHING"
+	@echo "make hard-build - Force complete rebuild after nuke"
 
 start:
 	$(DC) up -d
@@ -35,7 +40,10 @@ build-base:
 	docker build -f docker/base/Dockerfile -t privategpt/base:latest .
 
 build: build-base
-	$(DC) up -d --build
+	@echo "🧹 Cleaning up any existing containers..."
+	$(DC) down --remove-orphans || true
+	@echo "🔨 Building and starting services..."
+	$(DC) up -d --build --force-recreate
 	@echo "Setting up Keycloak realm and users..."
 	$(DC) up --no-deps keycloak-setup
 	@echo "Setting up Ollama models..."
@@ -46,14 +54,16 @@ build: build-base
 	@echo "🤖 LLM service: http://localhost:8003"
 
 clean:
-	$(DC) down
+	$(DC) down --remove-orphans
 	docker container prune -f
+	docker network prune -f
 	# Note: Preserving ollama_data volume to keep downloaded models
 	# Use 'make clean-all' to remove all volumes including models
 
 clean-all:
-	$(DC) down -v
+	$(DC) down -v --remove-orphans
 	docker container prune -f
+	docker network prune -f
 	docker volume prune -f
 
 
@@ -187,3 +197,62 @@ remove-model:
 		echo "📋 Available models:"; \
 		$(DC) exec ollama ollama list; \
 	fi
+
+# -------------------------------------------------------------------
+# Troubleshooting targets
+# -------------------------------------------------------------------
+
+diagnose:
+	@echo "🔍 Docker System Diagnosis"
+	@echo "=========================="
+	@echo "Docker version:"
+	@docker --version
+	@echo ""
+	@echo "Docker Compose version:"
+	@docker-compose --version
+	@echo ""
+	@echo "Docker system info:"
+	@docker system df
+	@echo ""
+	@echo "Running containers:"
+	@docker ps
+	@echo ""
+	@echo "Docker networks:"
+	@docker network ls
+	@echo ""
+	@echo "Docker volumes:"
+	@docker volume ls
+	@echo ""
+	@echo "Compose project status:"
+	@$(DC) ps
+
+nuke:
+	@echo "💥 NUCLEAR OPTION: Delete EVERYTHING"
+	@echo "This will remove:"
+	@echo "- ALL containers (running and stopped)"
+	@echo "- ALL images (including base images)"
+	@echo "- ALL volumes (including Ollama models)"
+	@echo "- ALL networks"
+	@echo "- ALL build cache"
+	@echo ""
+	@echo "⚠️  WARNING: This includes your downloaded Ollama models!"
+	@read -p "Are you absolutely sure? Type 'NUKE' to confirm: " confirm; \
+	if [ "$$confirm" = "NUKE" ]; then \
+		echo "💀 Nuking everything..."; \
+		$(DC) down -v --remove-orphans || true; \
+		docker stop $$(docker ps -aq) 2>/dev/null || true; \
+		docker rm $$(docker ps -aq) 2>/dev/null || true; \
+		docker rmi $$(docker images -q) 2>/dev/null || true; \
+		docker volume prune -f; \
+		docker network prune -f; \
+		docker system prune -af; \
+		echo "💀 Nuclear destruction complete"; \
+	else \
+		echo "❌ Cancelled (you must type exactly 'NUKE')"; \
+	fi
+
+hard-build:
+	@echo "🔨 Hard build: Nuke + rebuild from scratch"
+	$(MAKE) nuke
+	@echo "🏗️  Starting fresh build..."
+	$(MAKE) build
