@@ -79,39 +79,24 @@ def initialize_session_state() -> None:
 # ---------------------------------------------------------------------------
 
 def require_auth(*, admin_only: bool = False, main_app_file: str = "app.py") -> bool:  # noqa: D401
+    """Simple session-based authentication check without external token validation."""
     initialize_session_state()
 
     authenticated = st.session_state.get("authenticated", False)
-    token = st.session_state.get("access_token")
+    user_email = st.session_state.get("user_email")
 
-    if not authenticated or not token:
+    if not authenticated or not user_email:
         st.session_state.login_error_message = "Please log in to access this page."
         st.switch_page(main_app_file)
 
-    auth_client = get_auth_client()
-    try:
-        user_info = auth_client.verify_token(token)
-        if not user_info:
-            raise Exception("Invalid token")
-        st.session_state.user_info = user_info
-        st.session_state.user_email = user_info.get("user", {}).get("email")
-        st.session_state.user_role = user_info.get("user", {}).get("role")
-    except Exception:  # noqa: BLE001
-        for key in [
-            "authenticated",
-            "user_email",
-            "user_role",
-            "access_token",
-        ]:
-            st.session_state[key] = None if key != "authenticated" else False
-        st.session_state.login_error_message = "Session expired or token invalid. Please log in again."
-        st.switch_page(main_app_file)
+    # Check admin role if required
+    if admin_only:
+        user_role = st.session_state.get("user_role", "user")
+        if user_role != "admin":
+            st.session_state.login_error_message = "Admin access required."
+            st.switch_page(main_app_file)
 
-    if admin_only and st.session_state.user_role != "admin":
-        st.error("Access Denied: You do not have admin privileges to view this page.")
-        if st.button("Go to Dashboard"):
-            st.switch_page("pages/dashboard.py")
-        st.stop()
+    # If we get here, user is authenticated
     return True
 
 # ---------------------------------------------------------------------------
