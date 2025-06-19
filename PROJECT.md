@@ -42,24 +42,39 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - Context-aware response generation
 
 #### 3. LLM Service (`llm-service`)
-**Purpose**: Language model inference and generation
+**Purpose**: Ollama-based language model inference and generation
 - **Location**: `src/privategpt/services/llm/`
-- **Port**: 8002
+- **Port**: 8003
 - **Responsibilities**:
-  - Text generation and completion
-  - Chat conversation management
-  - Model parameter configuration
-  - Response streaming
+  - Ollama model management and initialization
+  - Real-time streaming text generation
+  - Chat conversation with context
+  - Model parameter configuration (temperature, max_tokens)
+  - Multi-model support and switching
+
+**Implementation Details**:
+- `adapters/ollama_adapter.py`: Full Ollama API integration with streaming
+- `api/main.py`: FastAPI endpoints for /generate, /chat, /models
+- Model: tinydolphin:latest (optimized for memory constraints)
+- Features: Server-Sent Events for streaming, async HTTP with HTTPX
 
 #### 4. UI Service (`ui-service`)
-**Purpose**: Streamlit-based web interface
+**Purpose**: Streamlit-based web interface with streaming chat
 - **Location**: `src/privategpt/services/ui/`
 - **Port**: 8501
 - **Responsibilities**:
   - User authentication interface
   - Document upload and management
-  - Chat interface with RAG capabilities
+  - Real-time streaming LLM chat interface
+  - RAG chat with document context
   - Admin panel for system management
+
+**Key Features**:
+- `pages/llm_chat.py`: Streaming chat with model selection and settings
+- `utils/llm_client.py`: LLM service API client with streaming support
+- Real-time response generation with typing indicators
+- Model switching, temperature controls, generation settings
+- Chat history with timestamps and performance metrics
 
 ### Infrastructure Services
 
@@ -73,6 +88,17 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - User management and roles
   - JWT token issuance
   - Admin console at `http://localhost:8080`
+
+#### Language Model (Ollama)
+- **Service**: `ollama`
+- **Port**: 11434
+- **Storage**: Persistent volume (`ollama_data`) for model files
+- **Configuration**: Automated model setup via `scripts/init-ollama.sh`
+- **Features**:
+  - Local LLM hosting with API compatibility
+  - Model persistence between container restarts
+  - Health checks and dependency management
+  - tinydolphin:latest model (1B parameters, memory optimized)
 
 #### Databases
 - **Main Database**: PostgreSQL (`db`) - Application data
