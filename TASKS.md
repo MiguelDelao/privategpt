@@ -16,7 +16,6 @@
 ## ⏳ Planned
 
 ### Production Features (High Priority)
-- [ ] Database migrations with Alembic
 - [ ] API rate limiting and input validation
 - [ ] File upload size/type restrictions
 - [ ] Comprehensive error handling
@@ -27,12 +26,6 @@
 - [ ] Load testing for RAG pipeline
 - [ ] Security testing and vulnerability scanning
 - [ ] Performance benchmarking
-
-### Advanced Features (Low Priority)
-- [ ] Multi-tenant support
-- [ ] Advanced analytics and metrics
-- [ ] Plugin system for extensibility
-- [ ] Horizontal scaling support
 
 ---
 

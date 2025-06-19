@@ -1,0 +1,1 @@
+READ through the PROJECT.md file, and the TASKS.md file to understand the project. 

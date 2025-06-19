@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model diagnose nuke hard-build
+.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-ollama-setup logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -24,6 +24,18 @@ help:
 	@echo "make install-model MODEL=<name> - Install specific Ollama model"
 	@echo "make list-models - Show available Ollama models"
 	@echo "make remove-model MODEL=<name> - Remove specific Ollama model"
+	@echo ""
+	@echo "Logs:"
+	@echo "make logs - Show logs for all services"
+	@echo "make logs-follow - Follow logs for all services"
+	@echo "make logs-gateway - Gateway service logs"
+	@echo "make logs-rag - RAG service logs"
+	@echo "make logs-llm - LLM service logs"
+	@echo "make logs-ui - UI service logs"
+	@echo "make logs-ollama - Ollama logs"
+	@echo "make logs-keycloak - Keycloak authentication logs"
+	@echo "make logs-db - Database logs"
+	@echo "... (and more: logs-redis, logs-weaviate, etc.)"
 	@echo ""
 	@echo "Troubleshooting:"
 	@echo "make diagnose - Diagnose Docker and system issues"
@@ -197,6 +209,100 @@ remove-model:
 		echo "📋 Available models:"; \
 		$(DC) exec ollama ollama list; \
 	fi
+
+# -------------------------------------------------------------------
+# Logging targets
+# -------------------------------------------------------------------
+
+logs:
+	@echo "📋 All service logs (last 100 lines):"
+	$(DC) logs --tail=100
+
+logs-follow:
+	@echo "📋 Following all service logs:"
+	$(DC) logs -f
+
+# Core application services
+logs-gateway:
+	@echo "📋 Gateway service logs:"
+	$(DC) logs --tail=100 gateway-service
+
+logs-rag:
+	@echo "📋 RAG service logs:"
+	$(DC) logs --tail=100 rag-service
+
+logs-llm:
+	@echo "📋 LLM service logs:"
+	$(DC) logs --tail=100 llm-service
+
+logs-ui:
+	@echo "📋 UI service logs:"
+	$(DC) logs --tail=100 ui-service
+
+# Infrastructure services
+logs-db:
+	@echo "📋 Database logs:"
+	$(DC) logs --tail=100 db
+
+logs-redis:
+	@echo "📋 Redis logs:"
+	$(DC) logs --tail=100 redis
+
+logs-weaviate:
+	@echo "📋 Weaviate logs:"
+	$(DC) logs --tail=100 weaviate
+
+logs-ollama:
+	@echo "📋 Ollama logs:"
+	$(DC) logs --tail=100 ollama
+
+# Authentication services
+logs-keycloak:
+	@echo "📋 Keycloak logs:"
+	$(DC) logs --tail=100 keycloak
+
+logs-keycloak-db:
+	@echo "📋 Keycloak database logs:"
+	$(DC) logs --tail=100 keycloak-db
+
+logs-keycloak-setup:
+	@echo "📋 Keycloak setup logs:"
+	$(DC) logs keycloak-setup
+
+# Observability services
+logs-elasticsearch:
+	@echo "📋 Elasticsearch logs:"
+	$(DC) logs --tail=100 elasticsearch
+
+logs-kibana:
+	@echo "📋 Kibana logs:"
+	$(DC) logs --tail=100 kibana
+
+logs-filebeat:
+	@echo "📋 Filebeat logs:"
+	$(DC) logs --tail=100 filebeat
+
+logs-traefik:
+	@echo "📋 Traefik logs:"
+	$(DC) logs --tail=100 traefik
+
+logs-n8n:
+	@echo "📋 n8n logs:"
+	$(DC) logs --tail=100 n8n
+
+# Setup and test services
+logs-ollama-setup:
+	@echo "📋 Ollama setup logs:"
+	$(DC) logs ollama-setup
+
+logs-tests:
+	@echo "📋 Tests logs:"
+	$(DC) logs tests
+
+# Convenience aliases
+logs-auth: logs-keycloak
+logs-vector: logs-weaviate
+logs-database: logs-db
 
 # -------------------------------------------------------------------
 # Troubleshooting targets
