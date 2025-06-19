@@ -174,8 +174,8 @@ services:
       gateway-service:
         condition: service_started
     environment:
-      GATEWAY_URL: http://gateway-service:8000
-      LLM_URL: http://llm-service:8000
+      GATEWAY_URL: http://localhost:8000
+      LLM_URL: http://localhost:8003
     ports:
       - "8080:8501"
     labels:
