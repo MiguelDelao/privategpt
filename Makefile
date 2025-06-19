@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean test test-unit test-api stack-logs import-dashboard status ensure-dashboard
+.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -10,7 +10,8 @@ help:
 	@echo "make stop    - Stop all v2 containers"
 	@echo "make build   - Build images and start containers"
 	@echo "make build-base - Build (or rebuild) the common base image"
-	@echo "make clean   - Remove containers and dangling images"
+	@echo "make clean   - Remove containers (preserves Ollama models)"
+	@echo "make clean-all - Remove containers and ALL volumes (including models)"
 	@echo "make test    - Run unit + integration tests inside host environment"
 	@echo "make test-unit - Run unit tests"
 	@echo "make test-api - Run API tests"
@@ -39,6 +40,12 @@ build: build-base
 	@echo "🤖 LLM service: http://localhost:8003"
 
 clean:
+	$(DC) down
+	docker container prune -f
+	# Note: Preserving ollama_data volume to keep downloaded models
+	# Use 'make clean-all' to remove all volumes including models
+
+clean-all:
 	$(DC) down -v
 	docker container prune -f
 	docker volume prune -f
