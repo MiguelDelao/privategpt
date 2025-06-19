@@ -41,7 +41,7 @@
 
 ```mermaid
 graph TB
-    UI[Streamlit UI :8501] --> GW[API Gateway :8000]
+    UI[Streamlit UI :8080] --> GW[API Gateway :8000]
     GW --> AUTH[Auth Service :8001]
     GW --> RAG[RAG Service :8002]
     GW --> LLM[LLM Service :8003]
@@ -70,9 +70,9 @@ graph TB
 | **API Gateway** | 8000 | Authentication, routing, CORS | FastAPI + Keycloak |
 | **Auth Service** | 8001 | User management, profiles | FastAPI + PostgreSQL |
 | **RAG Service** | 8002 | Document processing, Q&A | FastAPI + Weaviate + BGE |
-| **UI Service** | 8501 | Web interface | Streamlit |
+| **UI Service** | 8080 | Web interface | Streamlit |
 | **LLM Service** | 8003 | Language model integration | FastAPI + Ollama |
-| **Keycloak** | 8080 | Authentication provider | Keycloak + PostgreSQL |
+| **Keycloak** | 8180 | Authentication provider | Keycloak + PostgreSQL |
 | **Weaviate** | 8081 | Vector database | Weaviate |
 
 ## 🚀 Quick Start
@@ -88,7 +88,7 @@ cd privategpt-v2
 ./scripts/setup-keycloak.sh
 
 # 3. Access the application
-open http://localhost:8501
+open http://localhost:8080
 ```
 
 **Default Login:**
@@ -152,7 +152,7 @@ streamlit run src/privategpt/services/ui/app.py
 
 ### 📄 Upload Documents
 
-1. **Access UI:** Navigate to http://localhost:8501
+1. **Access UI:** Navigate to http://localhost:8080
 2. **Login:** Use admin credentials or create a new account
 3. **Upload:** Go to "Document Management" and upload PDFs or text files
 4. **Process:** Wait for documents to be processed (check status tab)

@@ -173,7 +173,7 @@ services:
       GATEWAY_URL: http://gateway-service:8000
       LLM_URL: http://llm-service:8000
     ports:
-      - "8501:8501"
+      - "8080:8501"
     labels:
       - traefik.enable=true
       # Root path -> Streamlit UI

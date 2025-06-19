@@ -61,7 +61,7 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 #### 4. UI Service (`ui-service`)
 **Purpose**: Streamlit-based web interface with streaming chat
 - **Location**: `src/privategpt/services/ui/`
-- **Port**: 8501
+- **Port**: 8080
 - **Responsibilities**:
   - User authentication interface
   - Document upload and management
