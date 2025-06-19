@@ -171,6 +171,7 @@ services:
         condition: service_started
     environment:
       GATEWAY_URL: http://gateway-service:8000
+      LLM_URL: http://llm-service:8000
     ports:
       - "8501:8501"
     labels:

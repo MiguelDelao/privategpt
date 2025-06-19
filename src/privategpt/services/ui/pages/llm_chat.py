@@ -167,17 +167,12 @@ if prompt := st.chat_input("Ask the AI anything..."):
             st.session_state.llm_messages.append(assistant_message)
             
             # Log the interaction
-            logger.log(
-                level="info",
-                message="LLM chat interaction",
-                extra={
-                    "user_email": st.session_state.user_email,
-                    "model": selected_model,
-                    "prompt_length": len(prompt),
-                    "response_length": len(full_response),
-                    "generation_time": generation_time,
-                    "streaming": use_streaming
-                }
+            logger.log_ai_query(
+                user_email=st.session_state.user_email,
+                query=prompt[:100] + "..." if len(prompt) > 100 else prompt,
+                response_length=len(full_response),
+                processing_time_seconds=generation_time,
+                query_type="llm_chat"
             )
             
         except Exception as e:
