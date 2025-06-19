@@ -95,12 +95,12 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Service**: `ollama`
 - **Port**: 11434
 - **Storage**: Persistent volume (`ollama_data`) for model files
-- **Configuration**: Automated model setup via `scripts/init-ollama.sh`
+- **Model Management**: Manual installation via `make install-model MODEL=<name>`
 - **Features**:
   - Local LLM hosting with API compatibility
   - Model persistence between container restarts
   - Health checks and dependency management
-  - tinydolphin:latest model (1B parameters, memory optimized)
+  - No default models (install as needed)
 
 #### Databases
 - **Main Database**: PostgreSQL (`db`) - Application data
@@ -187,9 +187,13 @@ make clean-all  # Remove everything including volumes
 ```
 
 ### Model Management
+
+**No Auto-Installation**: Models are not automatically downloaded during build.
+
 ```bash
 # Install specific Ollama models
 make install-model MODEL=llama3.2:1b
+make install-model MODEL=llama3.2:3b
 make install-model MODEL=mistral:7b
 make install-model MODEL=codellama:7b
 
@@ -201,6 +205,11 @@ make remove-model MODEL=llama3.2:1b
 ```
 
 **Model Persistence**: Models are stored in the `ollama_data` Docker volume and persist across container restarts and `make clean` operations. Only `make clean-all` removes the models completely.
+
+**Recommended Models**:
+- `llama3.2:1b` - Fastest, smallest (1.3GB)
+- `llama3.2:3b` - Good balance of speed/quality (2GB)
+- `llama3.2:7b` - Higher quality (4.7GB)
 
 ### Service Dependencies
 1. **Base Image**: `docker/base/Dockerfile` - Common Python dependencies

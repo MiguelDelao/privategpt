@@ -96,6 +96,13 @@ open http://localhost:8080
 - **Password:** `admin`
 - **Customizable**: Edit `config.json` or set `DEFAULT_ADMIN_EMAIL`/`DEFAULT_ADMIN_PASSWORD` environment variables
 
+**Install Models:**
+```bash
+# Install a model after setup
+make install-model MODEL=llama3.2:3b
+make list-models
+```
+
 ## 📋 Prerequisites
 
 - **Docker** 20.10+ with Docker Compose

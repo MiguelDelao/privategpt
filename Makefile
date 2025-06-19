@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-ollama-setup logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build
+.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -58,12 +58,15 @@ build: build-base
 	$(DC) up -d --build --force-recreate
 	@echo "Setting up Keycloak realm and users..."
 	$(DC) up --no-deps keycloak-setup
-	@echo "Setting up Ollama models..."
-	$(DC) up --no-deps ollama-setup
 	@echo "✅ Build complete! UI available at http://localhost:8080"
 	@echo "🔐 Login with: admin@admin.com / admin"
 	@echo "🔑 Keycloak admin: http://localhost:8180"
 	@echo "🤖 LLM service: http://localhost:8003"
+	@echo ""
+	@echo "📥 To install Ollama models:"
+	@echo "   make install-model MODEL=llama3.2:1b"
+	@echo "   make install-model MODEL=llama3.2:3b"
+	@echo "   make list-models"
 
 clean:
 	$(DC) down --remove-orphans
@@ -291,10 +294,6 @@ logs-n8n:
 	$(DC) logs --tail=100 n8n
 
 # Setup and test services
-logs-ollama-setup:
-	@echo "📋 Ollama setup logs:"
-	$(DC) logs ollama-setup
-
 logs-tests:
 	@echo "📋 Tests logs:"
 	$(DC) logs tests

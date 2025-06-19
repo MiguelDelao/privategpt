@@ -297,22 +297,6 @@ services:
     labels:
       - logging.service=ollama
 
-  ollama-setup:
-    image: alpine:latest
-    depends_on:
-      - ollama
-    environment:
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_MODEL: tinydolphin:latest
-    volumes:
-      - ./scripts:/scripts
-    command: |
-      sh -c "
-        apk add --no-cache curl jq &&
-        chmod +x /scripts/init-ollama.sh &&
-        /scripts/init-ollama.sh
-      "
-    restart: "no"
 
 volumes:
   db-data:

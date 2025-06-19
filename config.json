@@ -10,7 +10,7 @@
   
   "llm": {
     "ollama_url": "http://ollama:11434",
-    "ollama_model": "tinydolphin:latest"
+    "ollama_model": ""
   },
   
   "embedding": {

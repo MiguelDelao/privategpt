@@ -72,7 +72,7 @@ class _CoreSettings(BaseSettings):
 
     # LLM / EMBEDDINGS ----------------------------------------------
     ollama_url: str = Field("http://ollama:11434", env="OLLAMA_URL")
-    ollama_model: str = Field("tinydolphin:latest", env="OLLAMA_MODEL")
+    ollama_model: str = Field("", env="OLLAMA_MODEL")
     embed_model: str = Field("BAAI/bge-small-en-v1.5", env="EMBED_MODEL")
     
     # KEYCLOAK / AUTHENTICATION -----------------------------------
