@@ -41,6 +41,15 @@ st.set_page_config(
 
 initialize_session_state()
 
+# Clear any stale authentication state on login page
+if st.session_state.get("access_token") and not st.session_state.get("authenticated"):
+    for key in ["authenticated", "user_email", "user_role", "access_token", "login_error_message"]:
+        if key in st.session_state:
+            if key == "authenticated":
+                st.session_state[key] = False
+            else:
+                st.session_state[key] = None
+
 auth_client = get_auth_client()
 logger = get_logger()
 
