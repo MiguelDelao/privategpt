@@ -1,500 +1,188 @@
-version: '3.8'
-
+version: "3.9"
 services:
-  # PostgreSQL Database for Auth Service
-  auth-postgres:
-    image: postgres:16-alpine
-    container_name: auth-postgres
-    environment:
-      POSTGRES_DB: privategpt_auth
-      POSTGRES_USER: privategpt
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_change_me}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
-    volumes:
-      - auth-postgres-data:/var/lib/postgresql/data
-      - ./docker/auth-service/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
-    networks:
-      - private-network
+  base:
+    image: privategpt/base:latest
+    build:
+      context: .
+      dockerfile: docker/base/Dockerfile
+    profiles: ["build"]
+
+  db:
+    image: postgres:16
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U privategpt -d privategpt_auth"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
       timeout: 5s
       retries: 5
-    labels:
-      - "logging.service=auth-postgres"
-
-  # Redis for Auth Service Sessions & Rate Limiting
-  auth-redis:
-    image: redis:7-alpine
-    container_name: auth-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-secure_redis_password}
-    volumes:
-      - auth-redis-data:/data
-    networks:
-      - private-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    labels:
-      - "logging.service=auth-redis"
-
-  # Authentication Service
-  auth-service:
-    build: ./docker/auth-service
-    container_name: auth-service
-    ports:
-      - "8001:8000"
     environment:
-      - DATABASE_URL=postgresql://privategpt:${POSTGRES_PASSWORD:-secure_password_change_me}@auth-postgres:5432/privategpt_auth
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@auth-redis:6379/0
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - SECRET_KEY=${AUTH_SECRET_KEY:-your-secret-key-here-change-in-production}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
-      - REFRESH_TOKEN_EXPIRE_DAYS=30
-      - API_VERSION=1.0.0
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - LOG_LEVEL=INFO
-      - RATE_LIMIT_REQUESTS=100
-      - RATE_LIMIT_WINDOW=3600
-      - PASSWORD_MIN_LENGTH=12
-      - MFA_ISSUER=PrivateGPT Legal AI
+      POSTGRES_USER: privategpt
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: privategpt
     volumes:
-      - auth-data:/app/data
-      - ./logs/auth-service:/app/logs
-    networks:
-      - private-network
+      - db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: docker/auth/Dockerfile
     depends_on:
-      auth-postgres:
-        condition: service_healthy
-      auth-redis:
+      db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-    labels:
-      - "logging.service=auth-service"
-
-  # Traefik - Reverse Proxy & Load Balancer
-  traefik-gateway:
-    image: traefik:v3.0
-    container_name: traefik-gateway
-    command:
-      - "--api.dashboard=true"
-      - "--api.insecure=false"  # Disable insecure API access on main port
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@yourdomain.com}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/certificates/acme.json"
-      - "--log.level=INFO"
-      - "--accesslog=true"
-    ports:
-      - "8080:80"   # Changed: Map 8080 to web entrypoint (80), not Traefik API
-      - "443:443"   # HTTPS
-      - "8090:8080" # Traefik dashboard on separate port
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-certs:/certificates
-      - ./logs/traefik:/logs
-    networks:
-      - private-network
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`localhost`) && PathPrefix(`/dashboard/`)"
-      - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.entrypoints=web"
-      - "logging.service=traefik-gateway"
-
-  # Knowledge Service - Document Processing & Search
-  knowledge-service:
-    build: ./docker/knowledge-service
-    container_name: knowledge-service
-    ports:
-      - "8000:8000"
+        condition: service_started
     environment:
-      - WEAVIATE_URL=http://weaviate-db:8080
-      - BGE_EMBEDDING_URL=http://t2v-transformers:8080
-      - OLLAMA_URL=http://ollama-service:11434
-      - OLLAMA_MODEL=llama3:8b
-      - LOG_LEVEL=INFO
-      - API_TITLE=Knowledge Service API
-      - API_VERSION=1.0.0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - MAX_CONTEXT_TOKENS=${MAX_CONTEXT_TOKENS:-3000}
-      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-120}
-      - DEFAULT_SEARCH_LIMIT=${DEFAULT_SEARCH_LIMIT:-5}
-      - DEFAULT_MAX_TOKENS=${DEFAULT_MAX_TOKENS:-1000}
-      - DEFAULT_TEMPERATURE=${DEFAULT_TEMPERATURE:-0.7}
-      - SELECTED_MODEL=${SELECTED_MODEL:-llama3:8b}
-    volumes:
-      - ./knowledge-service-data:/app/data
-      - ./logs/knowledge-service:/app/logs
-      - ./config_loader.py:/app/config_loader.py:ro
-      - ./config.json:/app/config.json:ro
-    networks:
-      - private-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: auth
+    ports:
+      - "8001:8000"
+    labels:
+      - logging.service=auth
+
+  rag-service:
+    build:
+      context: .
+      dockerfile: docker/rag/Dockerfile
     depends_on:
-      - weaviate-db
-      - t2v-transformers
+      - db
       - redis
-    labels:
-      - "logging.service=knowledge-service"
-
-  # Streamlit Web Application
-  streamlit-app:
-    build: ./docker/streamlit
-    container_name: streamlit-app
-    ports:
-      - "8501:8501"  # Direct access to Streamlit
+      - weaviate
     environment:
-      - OLLAMA_URL=http://ollama-service:11434
-      - WEAVIATE_URL=http://weaviate-db:8080
-      - AUTH_SERVICE_URL=http://auth-service:8000
-      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll  # Enable file watching
-      - STREAMLIT_SERVER_HEADLESS=true
-    volumes:
-      - ./docker/streamlit:/app  # Mount source code for live reload
-      - ./data/uploads:/app/uploads
-      - ./logs/app:/app/logs
-      - ./config_loader.py:/app/config_loader.py:ro
-      - ./config.json:/app/config.json:ro
-    networks:
-      - private-network
+      DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: rag
+    ports:
+      - "8002:8000"
+    labels:
+      - logging.service=rag
+
+  weaviate:
+    image: semitechnologies/weaviate:1.22.0
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    environment:
+      QUERY_DEFAULTS_LIMIT: 20
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+    ports:
+      - "8080:8080"
+
+  ui-service:
+    build:
+      context: .
+      dockerfile: docker/ui/Dockerfile
+    depends_on:
+      auth-service:
+        condition: service_started
+    environment:
+      AUTH_URL: http://auth-service:8000
+    ports:
+      - "8501:8501"
+    labels:
+      - traefik.enable=true
+      # Root path -> Streamlit UI
+      - traefik.http.routers.streamlit.rule=Host(`localhost`)
+      - traefik.http.routers.streamlit.entrypoints=web
+      - traefik.http.routers.streamlit.priority=1
+      - traefik.http.services.streamlit.loadbalancer.server.port=8501
+      - logging.service=ui
+
+  tests:
+    build:
+      context: .
+      dockerfile: docker/tests/Dockerfile
     depends_on:
       - auth-service
-      - ollama-service
-      - weaviate-db
-      - knowledge-service
-      - redis
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.streamlit.rule=Host(`localhost`)"
-      - "traefik.http.routers.streamlit.entrypoints=web"
-      - "traefik.http.routers.streamlit.priority=100"
-      - "traefik.http.services.streamlit.loadbalancer.server.port=8501"
-      - "logging.service=streamlit-app"
+    command: pytest -q tests
 
-  # LLM Service (Ollama)
-  ollama-service:
-    image: ollama/ollama:latest
-    container_name: ollama-service
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
     ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_MODEL=llama3:8b
-    volumes:
-      - ollama_data:/root/.ollama
-      - ./data/models:/models
-      - ./scripts:/scripts
-    networks:
-      - private-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "/bin/ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.ollama.rule=Host(`localhost`) && PathPrefix(`/ollama`)"
-      - "traefik.http.services.ollama.loadbalancer.server.port=11434"
-      - "logging.service=ollama-service"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - "9200:9200"
 
-  # Vector Database (Weaviate)
-  weaviate-db:
-    image: semitechnologies/weaviate:1.26.1
-    container_name: weaviate-db
-    restart: unless-stopped
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.14.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
-      - "8081:8080"  # Changed to 8081 to avoid conflict with Traefik
-      - "50051:50051"
-    environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'text2vec-transformers'
-      ENABLE_MODULES: 'text2vec-transformers'
-      CLUSTER_HOSTNAME: 'node1'
-      TRANSFORMERS_INFERENCE_API: 'http://t2v-transformers:8080'
-      LOG_LEVEL: 'info'
-    volumes:
-      - weaviate_data:/var/lib/weaviate
-    networks:
-      - private-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.weaviate.rule=Host(`localhost`) && PathPrefix(`/weaviate`)"
-      - "traefik.http.services.weaviate.loadbalancer.server.port=8080"
-      - "logging.service=weaviate-db"
+      - traefik.enable=true
+      # /logs -> Kibana (strip prefix before proxying)
+      - traefik.http.routers.kibana.rule=PathPrefix(`/logs`)
+      - traefik.http.routers.kibana.entrypoints=web
+      - traefik.http.routers.kibana.middlewares=kibana-stripprefix
+      - traefik.http.middlewares.kibana-stripprefix.stripprefix.prefixes=/logs
+      - traefik.http.services.kibana.loadbalancer.server.port=5601
+      - logging.service=kibana
+      - traefik.http.routers.kibana.priority=10
 
-  # Text-to-Vector Embeddings (BGE Model)
-  t2v-transformers:
-    image: semitechnologies/transformers-inference:sentence-transformers-all-MiniLM-L6-v2
-    container_name: t2v-transformers
-    environment:
-      ENABLE_CUDA: '1'
-    volumes:
-      - transformers_cache:/tmp/.cache
-    networks:
-      - private-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/.well-known/ready')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      - "logging.service=t2v-transformers"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-  # Document Processing Workflows
-  n8n-automation:
+  n8n:
     image: n8nio/n8n:latest
-    container_name: n8n-automation
-    ports:
-      - "5678:5678"
+    restart: unless-stopped
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-change_this_password}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
-      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
+      - WEBHOOK_URL=http://localhost/n/
+      - RAG_SERVICE_URL=http://rag-service:8000
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./data/uploads:/data/uploads:ro
-      - ./logs/n8n:/logs
-    networks:
-      - private-network
-    restart: unless-stopped
     depends_on:
-      - knowledge-service
+      - rag-service
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`localhost`) && PathPrefix(`/n8n`)"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
-      - "logging.service=n8n-automation"
-
-  # ELK Stack and Beats
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - xpack.security.enabled=false
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
-      - ./config/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
-    ports:
-      - "9200:9200"
-      - "9300:9300"
-    networks:
-      - private-network
-    restart: unless-stopped
-    labels:
-      - "logging.service=elasticsearch"
-
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.11.1
-    container_name: logstash
-    volumes:
-      - ./config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
-      - ./config/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
-    ports:
-      - "5044:5044"
-      - "9600:9600"
-    networks:
-      - private-network
-    restart: unless-stopped
-    depends_on:
-      - elasticsearch
-    labels:
-      - "logging.service=logstash"
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.1
-    container_name: kibana
-    volumes:
-      - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
-    ports:
-      - "5601:5601"
-    networks:
-      - private-network
-    restart: unless-stopped
-    depends_on:
-      - elasticsearch
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.kibana.rule=PathPrefix(`/kibana`)"
-      - "traefik.http.routers.kibana.middlewares=kibana-stripprefix"
-      - "traefik.http.middlewares.kibana-stripprefix.stripprefix.prefixes=/kibana"
-      - "traefik.http.services.kibana.loadbalancer.server.port=5601"
-      - "logging.service=kibana"
+      - traefik.enable=true
+      - traefik.http.routers.n8n.rule=PathPrefix(`/n`)
+      - traefik.http.routers.n8n.entrypoints=web
+      - traefik.http.routers.n8n.middlewares=n8n-stripprefix
+      - traefik.http.middlewares.n8n-stripprefix.stripprefix.prefixes=/n
+      - traefik.http.routers.n8n.priority=5
+      - traefik.http.services.n8n.loadbalancer.server.port=5678
+      - logging.service=n8n
 
   filebeat:
-    image: docker.elastic.co/beats/filebeat:8.11.1
-    container_name: filebeat
+    image: docker.elastic.co/beats/filebeat:8.14.0
     user: root
     volumes:
-      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ./logs:/var/log/legal-ai:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - private-network
-    restart: unless-stopped
-    depends_on:
-      - logstash
-    command: filebeat -e -strict.perms=false
-    labels:
-      - "logging.service=filebeat"
-
-  metricbeat:
-    image: docker.elastic.co/beats/metricbeat:8.11.1
-    container_name: metricbeat
-    user: root
-    volumes:
-      - ./config/metricbeat/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
-      - /proc:/hostfs/proc:ro
-      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
-      - /:/hostfs:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - private-network
-    restart: unless-stopped
     depends_on:
       - elasticsearch
-    command: metricbeat -e -strict.perms=false
+
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"  # dashboard exposed under /dashboard/
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "8090:8080"  # Traefik dashboard (moved to avoid conflict with Weaviate)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
-      - "logging.service=metricbeat"
-
-  # Redis - Message Broker and Progress Storage
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-    networks:
-      - private-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # Celery Worker - Background Document Processing
-  celery-worker:
-    build:
-      context: ./docker/knowledge-service
-      dockerfile: Dockerfile
-    container_name: celery-worker
-    command: celery -A app.celery_app worker -Q documents --loglevel=info --concurrency=2
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - WEAVIATE_URL=http://weaviate-db:8080
-    volumes:
-      - ./docker/knowledge-service:/app
-    depends_on:
-      - redis
-      - weaviate-db
-    networks:
-      - private-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Celery Flower - Task Monitoring (Optional)
-  celery-flower:
-    build:
-      context: ./docker/knowledge-service
-      dockerfile: Dockerfile
-    container_name: celery-flower
-    command: celery -A app.celery_app flower --port=5555
-    ports:
-      - "5555:5555"
-    environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
-    depends_on:
-      - redis
-      - celery-worker
-    networks:
-      - private-network
-
-networks:
-  private-network:
-    driver: bridge
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`localhost`) && PathPrefix(`/dashboard`)
+      - traefik.http.routers.traefik.entrypoints=web
+      - traefik.http.routers.traefik.service=api@internal
+      - logging.service=traefik
 
 volumes:
-  # Data persistence
-  ollama_data:
-  weaviate_data:
-  transformers_cache:
-  auth-data:
+  db-data:
   n8n_data:
-  elasticsearch-data:
-
-  # SSL certificates
-  traefik-certs:
-  redis_data:
-  auth-postgres-data:
-  auth-redis-data:

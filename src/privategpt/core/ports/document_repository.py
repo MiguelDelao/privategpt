@@ -1,26 +1,17 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import List, Protocol
+from typing import Protocol, Iterable
 
-from ..domain.document import Document
+from privategpt.core.domain.document import Document
 
 
-class DocumentRepository(Protocol):  # noqa: D401 – interface
-    """Persistence operations for Document domain objects."""
+class DocumentRepositoryPort(Protocol):
+    """Repository abstraction for Document persistence."""
 
-    @abstractmethod
-    async def save(self, document: Document) -> None:  # noqa: D401 – imperative
-        ...
+    async def add(self, doc: Document) -> Document: ...
 
-    @abstractmethod
-    async def delete(self, document_id: str) -> None:
-        ...
+    async def get(self, doc_id: int) -> Document | None: ...
 
-    @abstractmethod
-    async def get(self, document_id: str) -> Document | None:
-        ...
+    async def list(self) -> Iterable[Document]: ...
 
-    @abstractmethod
-    async def search(self, query_embedding: list[float], *, limit: int = 10, threshold: float = 0.7) -> List[Document]:
-        ... 
+    async def update(self, doc: Document) -> None: ... 
