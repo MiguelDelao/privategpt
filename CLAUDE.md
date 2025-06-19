@@ -1,45 +1,30 @@
-# Claude AI Collaboration Guide
+# Claude AI Instructions
 
-This file provides context and guidelines for AI assistants working on the PrivateGPT project.
+## Primary Directive
+**Read PROJECT.md first** - it contains everything you need to understand this codebase at a senior engineering level.
 
-## Project Overview
-PrivateGPT v2 is a self-hosted RAG (Retrieval-Augmented Generation) system with vertical-slice microservices architecture. The system processes documents into searchable chunks and provides AI-powered question answering while maintaining privacy.
+## Key Guidelines
+1. **Always read PROJECT.md** before starting any work to understand the architecture
+2. **Make frequent small commits** - commit after completing discrete changes or fixes
+3. **Track progress in TASKS.md** - update task status as you work
+4. **Follow existing patterns** - this is a well-architected microservices system
 
-## Architecture Principles
-- **Domain-Driven Design**: Clear separation between core domain and infrastructure
-- **Ports & Adapters**: Infrastructure abstraction for testability and flexibility
-- **Vertical Slices**: Independent services (auth, rag, llm, ui) with their own APIs
-- **Async-First**: Non-blocking operations throughout the stack
+## Commit Strategy
+- Commit after each logical change (bug fix, feature addition, refactor)
+- Use conventional commit format: `type(scope): description`
+- Include co-authorship footer for AI assistance
 
-## Key Directories
-- `src/privategpt/core/`: Domain models and business logic
-- `src/privategpt/infra/`: Infrastructure adapters (database, vector store, etc.)
-- `src/privategpt/services/`: Independent service implementations
-- `docs/contexts/`: Rich domain context for AI assistants
-- `docs/decisions/`: Architectural decision records
-- `docs/constraints/`: Hard rules and boundaries
+## File Locations
+- **PROJECT.md** - Complete system documentation and architecture
+- **TASKS.md** - Current task tracking and status
+- **docker-compose.yml** - Service orchestration
+- **src/privategpt/services/** - Microservice implementations
+- **src/privategpt/shared/** - Common utilities and authentication
 
-## When Working on This Codebase
-1. **Always read relevant context files** in `docs/contexts/` before making changes
-2. **Check constraints** in `docs/constraints/` to avoid violations
-3. **Follow existing patterns** - this is a well-architected system
-4. **Use async/await** consistently
-5. **Maintain type hints** and modern Python practices
+## Current System Status
+✅ Authentication working (Keycloak + JWT)  
+✅ API Gateway routing requests  
+✅ UI login functional with admin@admin.com/admin  
+✅ Microservices architecture established
 
-## Services Overview
-- **Auth Service** (port 8001): JWT-based authentication
-- **RAG Service** (port 8002): Document processing and question answering
-- **UI Service** (port 8501): Streamlit web interface
-- **LLM Service**: Language model integration (placeholder)
-
-## Testing Strategy
-- Unit tests in `tests/unit/`
-- Integration tests run via Docker
-- Use fake adapters for testing infrastructure components
-
-## Deployment
-- Docker Compose with comprehensive observability
-- ELK stack for logging and monitoring
-- Traefik for reverse proxy and routing
-
-Refer to specific context files for detailed domain knowledge and decision rationale.
+That's it. Read PROJECT.md for everything else.
