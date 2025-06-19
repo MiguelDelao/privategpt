@@ -87,7 +87,7 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - OIDC/OAuth2 provider
   - User management and roles
   - JWT token issuance
-  - Admin console at `http://localhost:8080`
+  - Admin console at `http://localhost:8180`
 
 #### Language Model (Ollama)
 - **Service**: `ollama`
@@ -294,7 +294,7 @@ docker-compose logs -f gateway-service
 docker-compose exec db psql -U privategpt -d privategpt
 
 # Keycloak admin
-# URL: http://localhost:8080
+# URL: http://localhost:8180
 # Credentials: admin/admin123
 
 # Health checks

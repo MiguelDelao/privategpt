@@ -170,7 +170,7 @@ async def get_keycloak_config():
     """Get Keycloak configuration for frontend."""
     from privategpt.shared.settings import settings
     
-    keycloak_url = getattr(settings, 'keycloak_url', 'http://localhost:8080')
+    keycloak_url = getattr(settings, 'keycloak_url', 'http://localhost:8180')
     
     return {
         "realm": "privategpt",

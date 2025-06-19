@@ -123,7 +123,7 @@ make build-base
 docker-compose up -d keycloak-db keycloak db redis weaviate
 
 # 3. Wait for Keycloak to be ready
-curl -f http://localhost:8080/health/ready
+curl -f http://localhost:8180/health/ready
 
 # 4. Start application services
 docker-compose up -d gateway-service auth-service rag-service ui-service
@@ -166,7 +166,7 @@ streamlit run src/privategpt/services/ui/app.py
 
 ### 👥 User Management
 
-1. **Keycloak Admin:** Access http://localhost:8080
+1. **Keycloak Admin:** Access http://localhost:8180
 2. **Login:** Username: `admin`, Password: `admin123`
 3. **Manage Users:** Create users, assign roles, configure SSO
 4. **API Access:** Use `/api/admin/*` endpoints for programmatic management
@@ -335,7 +335,7 @@ make build
 **🔴 Authentication failures**
 ```bash
 # Check Keycloak status
-curl http://localhost:8080/health/ready
+curl http://localhost:8180/health/ready
 
 # Reset Keycloak realm
 docker-compose restart keycloak

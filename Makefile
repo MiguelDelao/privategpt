@@ -42,6 +42,7 @@ build: build-base
 	$(DC) up --no-deps ollama-setup
 	@echo "✅ Build complete! UI available at http://localhost:8501"
 	@echo "🔐 Login with: admin@admin.com / admin"
+	@echo "🔑 Keycloak admin: http://localhost:8180"
 	@echo "🤖 LLM service: http://localhost:8003"
 
 clean:
