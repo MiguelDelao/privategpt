@@ -3,6 +3,8 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
+**Current Phase**: Transitioning from Streamlit proof-of-concept to production-ready React/Next.js UI with comprehensive gateway APIs supporting advanced features like tool calls, conversation threading, and real-time collaboration.
+
 ## Architecture
 
 ### System Design

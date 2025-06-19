@@ -10,17 +10,18 @@ WORKDIR /app
 COPY pyproject.toml README.md /app/
 
 # Create a temporary setup to extract and install just the dependencies
+# Added longer timeout (1200s) and retries (5) for large packages like PyTorch
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel toml && \
+    pip install --upgrade --timeout=600 --retries=3 pip setuptools wheel toml && \
     python -c "import tomllib; data = tomllib.load(open('pyproject.toml', 'rb')); open('requirements.txt', 'w').writelines([dep + '\n' for dep in data['project']['dependencies']])" && \
-    pip install -r requirements.txt
+    pip install --timeout=1200 --retries=5 -r requirements.txt
 
 # Copy source code AFTER dependencies are installed (better caching)
 COPY src/ /app/src/
 
 # Install the package in editable mode (no dependencies since they're already installed)
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -e . --no-deps
+    pip install --timeout=600 --retries=3 -e . --no-deps
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 

@@ -51,6 +51,7 @@ stop:
 build-base:
 	docker build -f docker/base/Dockerfile -t privategpt/base:latest .
 
+
 build: build-base
 	@echo "🧹 Cleaning up any existing containers..."
 	$(DC) down --remove-orphans || true
@@ -67,6 +68,7 @@ build: build-base
 	@echo "   make install-model MODEL=llama3.2:1b"
 	@echo "   make install-model MODEL=llama3.2:3b"
 	@echo "   make list-models"
+
 
 clean:
 	$(DC) down --remove-orphans

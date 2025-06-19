@@ -5,17 +5,32 @@
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Core Infrastructure | ✅ Complete | 100% |
-| Authentication & Gateway | ✅ Complete | 100% |
+| Authentication & Gateway | ✅ Complete | 90% |
 | LLM Integration (Ollama) | ✅ Complete | 100% |
 | RAG Functionality | 🔄 In Progress | 60% |
-| User Interface | ✅ Complete | 90% |
-| Production Features | ⏳ Planned | 10% |
+| User Interface (Streamlit) | ✅ Complete | 100% |
+| Production Gateway APIs | 🚧 Starting | 5% |
+| React/Next.js UI | ⏳ Planned | 0% |
 
 ---
 
 ## ⏳ Planned
 
-### Production Features (High Priority)
+### React/Next.js UI Development (High Priority)
+- [ ] Modern React/Next.js frontend architecture
+- [ ] Real-time chat interface with streaming
+- [ ] Document management with drag & drop
+- [ ] Advanced chat history with tool calls visualization
+- [ ] Responsive design and mobile support
+
+### Production Gateway APIs (High Priority)
+- [ ] Chat history management with tool calls support
+- [ ] Comprehensive conversation APIs
+- [ ] Document retrieval and search APIs
+- [ ] Real-time streaming with WebSocket/SSE
+- [ ] Advanced user management and preferences
+
+### Production Features (Medium Priority)
 - [ ] API rate limiting and input validation
 - [ ] File upload size/type restrictions
 - [ ] Comprehensive error handling
@@ -30,6 +45,21 @@
 ---
 
 ## 🔄 In Progress
+
+### Production Gateway APIs (Current Focus)
+- [ ] Analyze current gateway architecture and API structure
+- [ ] Design production-ready chat history data model with tool calls support
+- [ ] Plan comprehensive gateway APIs for React/Next.js UI
+- [ ] Design document management and retrieval APIs
+- [ ] Plan LLM chat APIs with streaming and conversation management
+
+### MCP Server Development (New)
+- [ ] Design and implement MCP (Model Context Protocol) server for local LLM integration
+- [ ] Create FastMCP server with RAG tools (search, upload, chat)
+- [ ] Add file manipulation tools (create, edit, read files)
+- [ ] Integrate mcp-client-for-ollama with gateway service
+- [ ] Create custom Ollama Modelfile with optimized system prompt
+- [ ] Test tool calling with qwen2.5 and llama3.2 models
 
 ### RAG Core Functionality
 - [x] Document upload API
@@ -59,17 +89,19 @@
 
 ## 🎯 Immediate Priorities (Next 2 Weeks)
 
-### Week 1: Complete RAG Chat
-1. Implement document processing status tracking
-2. Build RAG chat endpoint with context retrieval
-3. Complete document management UI
-4. Test end-to-end document upload → chat flow
+### Week 1: Production Gateway API Design
+1. Analyze current gateway architecture and identify gaps
+2. Design comprehensive chat history data model with tool calls
+3. Plan all necessary APIs for React/Next.js UI integration
+4. Design document management and retrieval endpoints
+5. Plan streaming LLM chat APIs with conversation management
 
-### Week 2: Production Readiness
-1. Add database migrations
-2. Implement API rate limiting
-3. Add comprehensive error handling
-4. Performance optimization and testing
+### Week 2: Gateway API Implementation
+1. Implement chat history management APIs
+2. Build document retrieval and search endpoints
+3. Create comprehensive conversation management
+4. Add real-time streaming capabilities
+5. Implement advanced user management features
 
 ---
 
@@ -142,5 +174,7 @@
 
 - **Default Credentials**: admin@admin.com / admin
 - **Architecture**: Gateway handles auth + user management + routing
-- **Current Status**: Full authentication working, ready for RAG implementation
-- **Next Focus**: RAG chat functionality and document management UI
+- **Current Status**: Streamlit UI complete, authentication working, ready for production gateway APIs
+- **Next Focus**: Production-ready gateway APIs for React/Next.js UI
+- **UI Transition**: Moving from Streamlit to React/Next.js for better UX and tool call visualization
+- **Chat History**: Need to design robust data model supporting tool calls, sources, and conversation threads
