@@ -28,6 +28,8 @@ display_navigation_sidebar(current_page="LLM Chat")
 llm_client = get_llm_client()
 logger = get_logger()
 
+# LLM client is ready
+
 st.title("🤖 LLM Chat")
 st.caption("Direct conversation with the language model")
 
