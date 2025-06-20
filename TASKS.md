@@ -101,6 +101,17 @@
 - [ ] Responsive design and mobile support
 - [ ] Integration with enhanced API features
 
+### Tool Configuration & Management (Medium Priority)
+- [ ] Remove hardcoded tool lists from UI components
+- [ ] Implement dynamic tool discovery from MCP server
+- [ ] Design tool selection UX (per-chat vs user preferences - TBD)
+- [ ] Create tool factory system for runtime tool enablement
+- [ ] Centralize tool-related configuration appropriately
+- [ ] Consider tool categories and enhanced tool-specific settings
+- [ ] Investigate swappable system prompts (future consideration)
+
+**Note**: Current implementation with hardcoded tools is working. UX for tool selection still being explored - may involve per-chat tool selection, user preferences, or other approaches.
+
 ### Advanced Features (Medium Priority)
 - [ ] Real-time streaming with WebSocket/SSE
 - [ ] Chat export and sharing capabilities
@@ -147,6 +158,7 @@
 - **XML Structured Prompts**: Enables rich UI rendering and thinking display
 - **Single-Page Dashboard**: Simplified from tabs for better usability
 - **Database Schema v2**: Enhanced to support advanced chat features
+- **Tool Configuration**: Current hardcoded approach maintained while exploring UX for dynamic tool selection
 
 ### Technical Debt
 - **Authentication Bypass**: Temporary auth bypass for testing needs proper fix
