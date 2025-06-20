@@ -1,0 +1,66 @@
+{
+  "name": "PrivateGPT MCP Server",
+  "description": "Model Context Protocol server for PrivateGPT with RAG, file management, and system tools",
+  "version": "1.0.0",
+  "author": "PrivateGPT Team",
+  
+  "server": {
+    "command": "python",
+    "args": ["-m", "privategpt.services.mcp.main"],
+    "env": {
+      "RAG_SERVICE_URL": "http://rag-service:8000",
+      "LLM_SERVICE_URL": "http://llm-service:8000", 
+      "GATEWAY_SERVICE_URL": "http://gateway-service:8000"
+    }
+  },
+  
+  "tools": [
+    {
+      "name": "search_documents",
+      "description": "Search through uploaded documents using semantic similarity"
+    },
+    {
+      "name": "upload_document", 
+      "description": "Upload and process a document for RAG search"
+    },
+    {
+      "name": "rag_chat",
+      "description": "Ask a question using RAG (Retrieval-Augmented Generation)"
+    },
+    {
+      "name": "create_file",
+      "description": "Create a new file with specified content"
+    },
+    {
+      "name": "read_file",
+      "description": "Read the contents of a file"
+    },
+    {
+      "name": "edit_file", 
+      "description": "Edit an existing file by replacing its content"
+    },
+    {
+      "name": "list_directory",
+      "description": "List contents of a directory"
+    },
+    {
+      "name": "get_system_info",
+      "description": "Get basic system information"
+    },
+    {
+      "name": "check_service_health",
+      "description": "Check the health status of PrivateGPT services"
+    }
+  ],
+  
+  "resources": [
+    {
+      "uri_template": "document://{doc_id}",
+      "description": "Access to specific documents by ID"
+    },
+    {
+      "uri": "config://privategpt", 
+      "description": "PrivateGPT configuration information"
+    }
+  ]
+}

@@ -22,6 +22,7 @@ help:
 	@echo ""
 	@echo "Model Management:"
 	@echo "make install-model MODEL=<name> - Install specific Ollama model"
+	@echo "make setup-mcp-model - Setup MCP-optimized model"
 	@echo "make list-models - Show available Ollama models"
 	@echo "make remove-model MODEL=<name> - Remove specific Ollama model"
 	@echo ""
@@ -33,6 +34,7 @@ help:
 	@echo "make logs-llm - LLM service logs"
 	@echo "make logs-ui - UI service logs"
 	@echo "make logs-ollama - Ollama logs"
+	@echo "make logs-mcp - MCP service logs"
 	@echo "make logs-keycloak - Keycloak authentication logs"
 	@echo "make logs-db - Database logs"
 	@echo "... (and more: logs-redis, logs-weaviate, etc.)"
@@ -172,6 +174,23 @@ install-model:
 	fi
 	@echo "🎯 Model $(MODEL) is ready for use"
 
+setup-mcp-model:
+	@echo "🤖 Setting up MCP-optimized Ollama model"
+	@echo "========================================"
+	@echo "This will create a custom model optimized for MCP tool usage"
+	@if ! $(DC) ps ollama | grep -q "Up"; then \
+		echo "⚠️  Ollama service not running, starting..."; \
+		$(DC) up -d ollama; \
+		echo "⏳ Waiting for Ollama to be ready..."; \
+		sleep 10; \
+	fi
+	@echo "📥 Installing base model qwen2.5:3b (if not already present)..."
+	@$(MAKE) install-model MODEL=qwen2.5:3b
+	@echo "🔧 Building custom MCP model..."
+	@bash scripts/setup-mcp-model.sh
+	@echo "✅ MCP model setup complete!"
+	@echo "🎯 You can now use 'privategpt-mcp' model in your applications"
+
 list-models:
 	@echo "📋 Available Ollama Models"
 	@echo "========================="
@@ -243,6 +262,10 @@ logs-llm:
 logs-ui:
 	@echo "📋 UI service logs:"
 	$(DC) logs --tail=100 ui-service
+
+logs-mcp:
+	@echo "📋 MCP service logs:"
+	$(DC) logs --tail=100 mcp-service
 
 # Infrastructure services
 logs-db:

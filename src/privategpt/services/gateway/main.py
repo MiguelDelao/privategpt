@@ -19,6 +19,7 @@ from privategpt.infra.http.log_middleware import RequestLogMiddleware
 from privategpt.shared.auth_middleware import KeycloakAuthMiddleware
 from privategpt.services.gateway.api.gateway_router import router as gateway_router
 from privategpt.services.gateway.api.user_router import router as user_router
+from privategpt.services.gateway.api.chat_router import router as chat_router
 from privategpt.services.gateway.core.proxy import get_proxy
 from privategpt.infra.database.models import Base
 from privategpt.infra.database.session import engine
@@ -97,6 +98,7 @@ app.add_middleware(RequestLogMiddleware)
 # Include routers
 app.include_router(gateway_router)
 app.include_router(user_router)
+app.include_router(chat_router)
 
 # Error handlers
 @app.exception_handler(HTTPException)

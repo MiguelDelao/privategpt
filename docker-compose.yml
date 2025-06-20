@@ -156,6 +156,24 @@ services:
     labels:
       - logging.service=llm
 
+  mcp-service:
+    build:
+      context: .
+      dockerfile: docker/mcp/Dockerfile
+    depends_on:
+      - gateway-service
+      - rag-service
+      - llm-service
+    environment:
+      RAG_SERVICE_URL: http://rag-service:8000
+      LLM_SERVICE_URL: http://llm-service:8000
+      GATEWAY_SERVICE_URL: http://gateway-service:8000
+      SERVICE_NAME: mcp
+    ports:
+      - "8004:8000"
+    labels:
+      - logging.service=mcp
+
   weaviate:
     image: semitechnologies/weaviate:1.22.0
     restart: unless-stopped
