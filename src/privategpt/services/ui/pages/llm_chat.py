@@ -53,9 +53,18 @@ with st.sidebar:
                 st.error(f"❌ Error loading models: {e}")
                 st.session_state.available_models = []
     
-    # Initialize available models if not set
+    # Initial model fetch on first load
     if "available_models" not in st.session_state:
-        st.session_state.available_models = []
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get(f"{GATEWAY_URL}/api/llm/models")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    st.session_state.available_models = [m["name"] for m in data]
+                else:
+                    st.session_state.available_models = []
+        except Exception:
+            st.session_state.available_models = []
     
     # Model selection dropdown
     if st.session_state.available_models:
@@ -66,12 +75,8 @@ with st.sidebar:
             help="Select which model to use for chat"
         )
     else:
-        selected_model = st.text_input(
-            "Model:", 
-            value="",
-            placeholder="Enter model name or click 'Refresh Models'",
-            help="No models loaded. Try refreshing or enter manually."
-        )
+        st.warning("⚠️  No models found in your LLM service. Use 'make install-model' or click 'Refresh Models' after installation.")
+        selected_model = ""
     
     # Tool controls
     st.markdown("### 🛠️ Tool Settings")
