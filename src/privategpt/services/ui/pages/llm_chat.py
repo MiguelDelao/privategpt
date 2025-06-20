@@ -41,7 +41,11 @@ with st.sidebar:
         with st.spinner("Loading models..."):
             try:
                 with httpx.Client(timeout=10.0) as client:
-                    response = client.get(f"{GATEWAY_URL}/api/llm/models")
+                    headers = {}
+                    token = st.session_state.get("access_token")
+                    if token:
+                        headers["Authorization"] = f"Bearer {token}"
+                    response = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
                     if response.status_code == 200:
                         models_data = response.json()
                         st.session_state.available_models = [m["name"] for m in models_data]
@@ -57,7 +61,11 @@ with st.sidebar:
     if "available_models" not in st.session_state:
         try:
             with httpx.Client(timeout=10.0) as client:
-                resp = client.get(f"{GATEWAY_URL}/api/llm/models")
+                headers = {}
+                token = st.session_state.get("access_token")
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+                resp = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
                     st.session_state.available_models = [m["name"] for m in data]
@@ -124,7 +132,11 @@ with st.sidebar:
         with st.spinner("Testing connection..."):
             try:
                 with httpx.Client(timeout=10.0) as client:
-                    response = client.get(f"{GATEWAY_URL}/api/llm/models")
+                    headers = {}
+                    token = st.session_state.get("access_token")
+                    if token:
+                        headers["Authorization"] = f"Bearer {token}"
+                    response = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
                     if response.status_code == 200:
                         models = response.json()
                         st.success(f"✅ Connected! Found {len(models)} models")
