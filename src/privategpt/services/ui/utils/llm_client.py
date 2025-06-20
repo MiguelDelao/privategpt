@@ -15,7 +15,8 @@ class LLMClient:
     """Client for interacting with the LLM service."""
     
     def __init__(self, llm_url: str | None = None):
-        base = llm_url or os.getenv("LLM_URL", "http://localhost:8002")
+        # Prefer explicit argument, then env var, then fallback to default host-port mapping
+        base = llm_url or os.getenv("LLM_URL") or "http://localhost:8003"
         self.llm_url = base.rstrip("/")
         self.session = requests.Session()
         

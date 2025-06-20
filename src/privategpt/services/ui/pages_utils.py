@@ -26,9 +26,9 @@ LLM_MODEL_NAME = os.getenv("LLM_MODEL", "LLaMA-3 70B")
 VECTOR_DB_NAME = os.getenv("VECTOR_DB", "Weaviate+bge-base"); WORKFLOW_ENGINE = "n8n"
 
 # Service endpoints - Use Docker internal networking for container-to-container communication
-GATEWAY_URL = os.getenv("GATEWAY_URL", "http://gateway-service:8000")
-KNOWLEDGE_SERVICE_URL = os.getenv("RAG_URL", "http://rag-service:8000")
-LLM_SERVICE_URL = os.getenv("LLM_URL", "http://llm-service:8000")
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8000")
+KNOWLEDGE_SERVICE_URL = os.getenv("RAG_URL", "http://localhost:8002")
+LLM_SERVICE_URL = os.getenv("LLM_URL", "http://localhost:8003")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://weaviate:8080")
 ENVIRONMENT = os.getenv("ENV", "local")
 

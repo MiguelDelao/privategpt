@@ -25,6 +25,19 @@ async def health_check():
     return {"status": "healthy", "service": "gateway"}
 
 
+@router.get("/test/auth-check")
+async def test_auth_check(request: Request):
+    """Test endpoint to check authentication state."""
+    user = getattr(request.state, 'user', None)
+    return {
+        "has_user": user is not None,
+        "user": user,
+        "path": request.url.path
+    }
+
+
+
+
 @router.get("/health/{service}")
 async def service_health_check(
     service: str,
@@ -129,10 +142,12 @@ async def proxy_rag_request(
 async def proxy_llm_request(
     path: str,
     request: Request,
-    proxy: ServiceProxy = Depends(get_proxy),
-    user: Dict[str, Any] = Depends(get_current_user)
+    proxy: ServiceProxy = Depends(get_proxy)
 ):
-    """Proxy requests to LLM service with authentication."""
+    """Proxy requests to LLM service."""
+    print(f"PROXY_LLM_REQUEST CALLED - path: {path}")
+    logger.error(f"PROXY_LLM_REQUEST CALLED - path: {path}")
+    
     return await proxy.proxy_request("llm", request, f"/{path}")
 
 
