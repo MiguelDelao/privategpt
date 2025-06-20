@@ -16,6 +16,9 @@ from privategpt.core.domain.conversation import Conversation
 from privategpt.core.domain.message import Message
 from privategpt.infra.database.conversation_repository import SqlConversationRepository
 from privategpt.infra.database.message_repository import SqlMessageRepository
+from privategpt.services.gateway.core.mcp_client import get_mcp_client, MCPClientError
+from privategpt.services.gateway.core.xml_parser import parse_ai_content
+from privategpt.services.gateway.core.prompt_manager import PromptManager
 from privategpt.shared.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -28,8 +31,10 @@ class ChatService:
         self.session = session
         self.conversation_repo = SqlConversationRepository(session)
         self.message_repo = SqlMessageRepository(session)
+        self.prompt_manager = PromptManager(session)
         self.llm_client = httpx.AsyncClient(timeout=30.0)
         self.llm_base_url = settings.llm_service_url
+        self.mcp_client = None  # Lazy-loaded
     
     async def create_conversation(
         self, 
@@ -103,12 +108,28 @@ class ChatService:
             conversation_id, count=20
         )
         
+        # Get appropriate system prompt
+        system_prompt = await self.prompt_manager.get_prompt_for_model(
+            model_name or conversation.model_name or settings.ollama_model,
+            conversation_id
+        )
+        
+        # Get MCP tools if enabled
+        tools = []
+        if settings.mcp_enabled:
+            try:
+                if not self.mcp_client:
+                    self.mcp_client = await get_mcp_client()
+                tools = self.mcp_client.format_tools_for_ollama()
+            except MCPClientError as e:
+                logger.warning(f"MCP not available: {e}")
+        
         # Prepare messages for LLM
         llm_messages = []
-        if conversation.system_prompt:
+        if system_prompt:
             llm_messages.append({
                 "role": "system",
-                "content": conversation.system_prompt
+                "content": system_prompt
             })
         
         # Add recent conversation history
@@ -124,12 +145,34 @@ class ChatService:
             "content": message_content
         })
         
-        # Call LLM service
+        # Call LLM service with tools
         llm_response = await self._call_llm_service(
             messages=llm_messages,
             model_name=model_name or conversation.model_name,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            tools=tools
+        )
+        
+        # Handle tool calls if present
+        if "tool_calls" in llm_response and llm_response["tool_calls"] and self.mcp_client:
+            # Process tool calls
+            tool_results = await self.mcp_client.process_tool_calls(llm_response["tool_calls"])
+            
+            # Add tool results to messages and get final response
+            llm_messages.extend(tool_results)
+            final_response = await self._call_llm_service(
+                messages=llm_messages,
+                model_name=model_name or conversation.model_name,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            llm_response = final_response
+        
+        # Parse AI response content
+        parsed_content = parse_ai_content(
+            llm_response["text"], 
+            settings.enable_thinking_mode
         )
         
         # Create assistant message
@@ -137,10 +180,14 @@ class ChatService:
             id=str(uuid.uuid4()),
             conversation_id=conversation_id,
             role="assistant",
-            content=llm_response["text"],
+            content=parsed_content.processed_content,
+            raw_content=parsed_content.raw_content,
+            thinking_content=parsed_content.thinking_content,
             data={
                 "model": llm_response["model"],
-                "response_time_ms": llm_response.get("response_time_ms")
+                "response_time_ms": llm_response.get("response_time_ms"),
+                "ui_tags": parsed_content.ui_tags,
+                "has_tool_calls": "tool_calls" in llm_response
             },
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
@@ -280,7 +327,8 @@ class ChatService:
         messages: List[Dict[str, str]],
         model_name: Optional[str] = None,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Call the LLM service for a single response"""
         payload = {
@@ -289,6 +337,10 @@ class ChatService:
             "temperature": temperature,
             "max_tokens": max_tokens
         }
+        
+        # Add tools if provided
+        if tools:
+            payload["tools"] = tools
         
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
@@ -350,5 +402,7 @@ class ChatService:
             raise Exception("LLM service returned an error")
     
     async def close(self):
-        """Close HTTP client"""
+        """Close HTTP client and cleanup resources"""
         await self.llm_client.aclose()
+        if self.mcp_client:
+            await self.mcp_client.close()

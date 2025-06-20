@@ -20,6 +20,7 @@ from privategpt.shared.auth_middleware import KeycloakAuthMiddleware
 from privategpt.services.gateway.api.gateway_router import router as gateway_router
 from privategpt.services.gateway.api.user_router import router as user_router
 from privategpt.services.gateway.api.chat_router import router as chat_router
+from privategpt.services.gateway.api.prompt_router import router as prompt_router
 from privategpt.services.gateway.core.proxy import get_proxy
 from privategpt.infra.database.models import Base
 from privategpt.infra.database.session import engine
@@ -38,6 +39,18 @@ async def lifespan(app: FastAPI):
         logger.info("Database tables initialized")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+    
+    # Initialize default system prompts
+    try:
+        from privategpt.infra.database.async_session import get_async_session
+        from privategpt.services.gateway.core.prompt_manager import PromptManager
+        
+        async with get_async_session() as session:
+            prompt_manager = PromptManager(session)
+            await prompt_manager.initialize_default_prompts()
+        logger.info("Default system prompts initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize default prompts: {e}")
     
     # Startup
     proxy = get_proxy()
@@ -99,6 +112,7 @@ app.add_middleware(RequestLogMiddleware)
 app.include_router(gateway_router)
 app.include_router(user_router)
 app.include_router(chat_router)
+app.include_router(prompt_router)
 
 # Error handlers
 @app.exception_handler(HTTPException)

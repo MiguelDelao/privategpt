@@ -90,6 +90,16 @@ class _CoreSettings(BaseSettings):
     # SERVICE URLS ------------------------------------------------
     rag_service_url: str = Field("http://rag-service:8000", env="RAG_SERVICE_URL")
     llm_service_url: str = Field("http://llm-service:8000", env="LLM_SERVICE_URL")
+    mcp_service_url: str = Field("http://mcp-service:8000", env="MCP_SERVICE_URL")
+    
+    # MCP CONFIGURATION -------------------------------------------
+    mcp_enabled: bool = Field(True, env="MCP_ENABLED")
+    mcp_transport: str = Field("stdio", env="MCP_TRANSPORT")  # "stdio" or "http"
+    
+    # SYSTEM PROMPTS ---------------------------------------------
+    default_system_prompt: str = Field("", env="DEFAULT_SYSTEM_PROMPT")
+    enable_prompt_caching: bool = Field(True, env="ENABLE_PROMPT_CACHING")
+    enable_thinking_mode: bool = Field(True, env="ENABLE_THINKING_MODE")
 
     model_config = {
         "extra": "allow",

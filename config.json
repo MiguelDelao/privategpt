@@ -33,7 +33,25 @@
   
   "services": {
     "rag_service_url": "http://rag-service:8000",
-    "llm_service_url": "http://llm-service:8000"
+    "llm_service_url": "http://llm-service:8000",
+    "mcp_service_url": "http://mcp-service:8000"
+  },
+  
+  "mcp": {
+    "enabled": true,
+    "transport": "stdio",
+    "tools": {
+      "search_documents": true,
+      "rag_chat": true,
+      "file_operations": true,
+      "system_info": true
+    }
+  },
+  
+  "system_prompts": {
+    "default": "<persona>You are an intelligent AI assistant with access to powerful tools through the Model Context Protocol (MCP). You help users with document search, file management, and system operations.</persona>\n\n<communication>\n- Be concise and direct\n- Always explain what tools you're using and why\n- Show progress for long-running operations\n</communication>\n\n<tool_calling>\n- Use search_documents before answering questions about uploaded content\n- Use rag_chat for comprehensive answers needing document context\n- Always check tool results before responding\n- If a tool fails, explain the error and suggest alternatives\n</tool_calling>\n\n<ui_rendering>\n- Use <thinking> tags for reasoning that shouldn't be shown to user\n- Use <status> tags for operation progress\n- Use <error> tags for error messages that need special UI treatment\n</ui_rendering>",
+    "enable_caching": true,
+    "enable_thinking_mode": true
   },
   
   "chunking": {

@@ -107,8 +107,10 @@ class Message(Base):
     id = Column(String(255), primary_key=True, index=True)  # UUID
     conversation_id = Column(String(255), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(Enum(MessageRole), nullable=False)
-    content = Column(Text, nullable=False)
-    raw_content = Column(Text, nullable=True)  # Original unprocessed content
+    content = Column(Text, nullable=False)  # Processed content for UI (thinking stripped)
+    raw_content = Column(Text, nullable=True)  # Original unprocessed content with thinking
+    thinking_content = Column(Text, nullable=True)  # Extracted thinking content for debug
+    ui_tags = Column(JSON, nullable=True, default=dict)  # Parsed XML tags for UI rendering
     token_count = Column(Integer, nullable=True)  # Token count for this message
     data = Column(JSON, nullable=True, default=dict)  # Message metadata (sources, etc.)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -156,8 +158,26 @@ class ModelUsage(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class SystemPrompt(Base):
+    """System prompt templates for different models and use cases"""
+    __tablename__ = "system_prompts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    model_pattern = Column(String(255), nullable=True)  # e.g., "ollama:*", "privategpt-mcp"
+    prompt_xml = Column(Text, nullable=False)  # XML-structured prompt
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    metadata = Column(JSON, nullable=True, default=dict)  # Additional config
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 # Indexes for performance
 Index("idx_conversation_user_updated", Conversation.user_id, Conversation.updated_at.desc())
 Index("idx_message_conversation_created", Message.conversation_id, Message.created_at)
 Index("idx_tool_call_message_status", ToolCall.message_id, ToolCall.status)
-Index("idx_model_usage_conversation", ModelUsage.conversation_id, ModelUsage.created_at.desc()) 
+Index("idx_model_usage_conversation", ModelUsage.conversation_id, ModelUsage.created_at.desc())
+Index("idx_system_prompt_active", SystemPrompt.is_active, SystemPrompt.name)
+Index("idx_system_prompt_pattern", SystemPrompt.model_pattern, SystemPrompt.is_active) 

@@ -86,53 +86,8 @@ async def search_documents(
         }, indent=2)
 
 
-@mcp.tool()
-async def upload_document(
-    title: str,
-    content: str,
-    document_type: str = "text"
-) -> str:
-    """
-    Upload and process a document for RAG search.
-    
-    Args:
-        title: Title of the document
-        content: Text content of the document
-        document_type: Type of document (default: "text")
-    
-    Returns:
-        JSON string with upload status and document ID
-    """
-    try:
-        response = await http_client.post(
-            f"{RAG_SERVICE_URL}/rag/documents",
-            json={
-                "title": title,
-                "text": content,
-                "metadata": {
-                    "type": document_type,
-                    "uploaded_via": "mcp_server",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            }
-        )
-        response.raise_for_status()
-        result = response.json()
-        
-        return json.dumps({
-            "status": "uploaded",
-            "document_id": result.get("document_id"),
-            "task_id": result.get("task_id"),
-            "title": title,
-            "message": "Document uploaded and processing started"
-        }, indent=2)
-        
-    except Exception as e:
-        logger.error(f"Document upload failed: {e}")
-        return json.dumps({
-            "error": f"Upload failed: {str(e)}",
-            "title": title
-        }, indent=2)
+# Document upload removed - AI doesn't need this capability
+# Users upload documents through the UI, AI only searches existing documents
 
 
 @mcp.tool()

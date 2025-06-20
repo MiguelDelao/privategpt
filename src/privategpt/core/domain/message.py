@@ -14,8 +14,9 @@ class Message:
     id: str
     conversation_id: str
     role: str  # "user", "assistant", "system", "tool"
-    content: str
-    raw_content: Optional[str] = None
+    content: str  # Processed content for UI (thinking stripped)
+    raw_content: Optional[str] = None  # Original unprocessed content with thinking
+    thinking_content: Optional[str] = None  # Extracted thinking content for debug
     token_count: Optional[int] = None
     data: Dict[str, Any] = field(default_factory=dict)
     tool_calls: List[ToolCall] = field(default_factory=list)
