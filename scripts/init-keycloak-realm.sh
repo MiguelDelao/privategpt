@@ -69,7 +69,58 @@ else
         "accessTokenLifespan": 3600,
         "ssoSessionMaxLifespan": 36000
       }' || echo "Basic realm creation failed"
+    
+    # Create the privategpt-ui client
+    echo "📱 Creating privategpt-ui client..."
+    curl -s -X POST "http://keycloak:8080/admin/realms/privategpt/clients" \
+      -H "Authorization: Bearer $ADMIN_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "clientId": "privategpt-ui",
+        "name": "PrivateGPT UI Client",
+        "enabled": true,
+        "publicClient": false,
+        "standardFlowEnabled": true,
+        "directAccessGrantsEnabled": true,
+        "serviceAccountsEnabled": false,
+        "implicitFlowEnabled": false,
+        "redirectUris": ["*"],
+        "webOrigins": ["*"],
+        "protocol": "openid-connect",
+        "clientAuthenticatorType": "client-secret",
+        "secret": "privategpt-ui-secret-key"
+      }' || echo "Client creation failed"
   fi
+fi
+
+# Verify client exists
+echo "Verifying privategpt-ui client exists..."
+CLIENT_EXISTS=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "http://keycloak:8080/admin/realms/privategpt/clients?clientId=privategpt-ui" | jq -r 'length')
+
+if [ "$CLIENT_EXISTS" = "0" ]; then
+  echo "⚠️  Client not found, creating..."
+  curl -s -X POST "http://keycloak:8080/admin/realms/privategpt/clients" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "clientId": "privategpt-ui",
+      "name": "PrivateGPT UI Client",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "privategpt-ui-secret-key"
+    }'
+  echo "Client created"
+else
+  echo "✅ Client exists"
 fi
 
 # Verify admin user exists
