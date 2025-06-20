@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -337,7 +338,7 @@ class SimpleChatResponse(BaseModel):
     tools_used: bool = False
 
 
-@router.post("/chat/direct", response_model=SimpleChatResponse)
+@router.post("/direct", response_model=SimpleChatResponse)
 async def direct_chat(chat_request: SimpleChatRequest):
     """Direct chat with LLM service (no conversation persistence)"""
     try:
@@ -381,7 +382,7 @@ async def direct_chat(chat_request: SimpleChatRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/chat/mcp", response_model=SimpleChatResponse)
+@router.post("/mcp", response_model=SimpleChatResponse)
 async def mcp_chat(chat_request: SimpleChatRequest):
     """Chat with MCP tool integration"""
     if not chat_request.use_mcp:
