@@ -183,16 +183,16 @@ if prompt := st.chat_input("Type your message here..."):
         message_placeholder = st.empty()
         
         try:
-            # Choose endpoint based on tool settings
+            # Choose endpoint based on tool settings - USE STREAMING
             if use_mcp and available_tools:
-                endpoint = f"{GATEWAY_URL}/api/chat/mcp"
+                endpoint = f"{GATEWAY_URL}/api/chat/mcp/stream"
             else:
-                endpoint = f"{GATEWAY_URL}/api/chat/direct"
+                endpoint = f"{GATEWAY_URL}/api/chat/direct/stream"
             
-            # Call appropriate chat endpoint
-            with httpx.Client(timeout=30.0) as client:
+            # Call streaming chat endpoint
+            with httpx.Client(timeout=180.0) as client:  # Longer timeout for streaming
                 payload = {
-                    "message": prompt,  # Simple endpoints take single message
+                    "message": prompt,
                     "model": selected_model if selected_model else None,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
@@ -203,45 +203,75 @@ if prompt := st.chat_input("Type your message here..."):
                 # Remove None values
                 payload = {k: v for k, v in payload.items() if v is not None}
                 
-                with st.spinner("Thinking..."):
-                    response = client.post(endpoint, json=payload, timeout=30.0)
+                # Start streaming
+                assistant_response = ""
+                response_timestamp = datetime.now().strftime("%H:%M:%S")
                 
-                if response.status_code == 200:
-                    result = response.json()
-                    assistant_response = result.get("text", "No response generated")
-                    response_timestamp = datetime.now().strftime("%H:%M:%S")
+                with client.stream('POST', endpoint, json=payload, 
+                                 headers={'Accept': 'text/event-stream'}) as response:
                     
-                    # Display response
-                    message_placeholder.markdown(assistant_response)
-                    
-                    # Show additional info
-                    info_parts = []
-                    info_parts.append(f"Model: {result.get('model', selected_model or 'unknown')}")
-                    if result.get('tools_used'):
-                        info_parts.append("🛠️ Tools: Used")
-                    if result.get('response_time_ms'):
-                        info_parts.append(f"⚡ {result.get('response_time_ms'):.0f}ms")
-                    
-                    st.caption(f"*{response_timestamp} - {' | '.join(info_parts)}*")
-                    
-                    # Add to chat history
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": assistant_response,
-                        "timestamp": response_timestamp,
-                        "model": result.get("model", selected_model),
-                        "tools_used": result.get("tools_used", False),
-                        "response_time_ms": result.get("response_time_ms")
-                    })
-                    
-                else:
-                    error_msg = f"Error {response.status_code}: {response.text}"
-                    message_placeholder.error(error_msg)
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": f"❌ {error_msg}",
-                        "timestamp": datetime.now().strftime("%H:%M:%S")
-                    })
+                    if response.status_code == 200:
+                        # Process streaming response
+                        for line in response.iter_lines():
+                            if line.startswith('data: '):
+                                try:
+                                    import json
+                                    data = json.loads(line[6:])  # Remove 'data: ' prefix
+                                    
+                                    if data.get('type') == 'content_delta':
+                                        # Add streaming content
+                                        content = data.get('content', '')
+                                        assistant_response += content
+                                        # Update display in real-time
+                                        message_placeholder.markdown(assistant_response + "▋")
+                                        
+                                    elif data.get('type') == 'message_complete':
+                                        # Final message with metadata
+                                        final_text = data.get('text', assistant_response)
+                                        message_placeholder.markdown(final_text)
+                                        
+                                        # Show additional info
+                                        info_parts = []
+                                        info_parts.append(f"Model: {data.get('model', selected_model or 'unknown')}")
+                                        if data.get('tools_used'):
+                                            info_parts.append("🛠️ Tools: Used")
+                                        if data.get('response_time_ms'):
+                                            info_parts.append(f"⚡ {data.get('response_time_ms'):.0f}ms")
+                                        
+                                        st.caption(f"*{response_timestamp} - {' | '.join(info_parts)}*")
+                                        
+                                        # Add to chat history
+                                        st.session_state.messages.append({
+                                            "role": "assistant",
+                                            "content": final_text,
+                                            "timestamp": response_timestamp,
+                                            "model": data.get("model", selected_model),
+                                            "tools_used": data.get("tools_used", False),
+                                            "response_time_ms": data.get("response_time_ms")
+                                        })
+                                        break
+                                        
+                                    elif data.get('type') == 'error':
+                                        error_msg = data.get('message', 'Unknown streaming error')
+                                        message_placeholder.error(f"❌ {error_msg}")
+                                        st.session_state.messages.append({
+                                            "role": "assistant",
+                                            "content": f"❌ {error_msg}",
+                                            "timestamp": response_timestamp
+                                        })
+                                        break
+                                        
+                                except json.JSONDecodeError:
+                                    continue  # Skip invalid JSON lines
+                                    
+                    else:
+                        error_msg = f"Error {response.status_code}: {response.text}"
+                        message_placeholder.error(error_msg)
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": f"❌ {error_msg}",
+                            "timestamp": response_timestamp
+                        })
                     
         except httpx.TimeoutException:
             error_msg = "Request timed out. The model might be loading or the service is slow."

@@ -404,3 +404,101 @@ async def mcp_chat(chat_request: SimpleChatRequest):
     except Exception as e:
         logger.error(f"MCP chat error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/direct/stream")
+async def direct_chat_stream(chat_request: SimpleChatRequest):
+    """Direct chat with LLM service streaming (no conversation persistence)"""
+    try:
+        async def stream_generator():
+            try:
+                import json
+                import time
+                start_time = time.time()
+                
+                # Send start event
+                yield f"data: {json.dumps({'type': 'content_start'})}\n\n"
+                
+                # Call LLM service with streaming
+                async with httpx.AsyncClient(timeout=180.0) as client:
+                    # Prepare messages for LLM
+                    messages = [{"role": "user", "content": chat_request.message}]
+                    
+                    # Build payload for streaming
+                    payload = {
+                        "messages": messages,
+                        "model": chat_request.model,
+                        "temperature": chat_request.temperature,
+                        "max_tokens": chat_request.max_tokens
+                    }
+                    
+                    # Remove None values
+                    payload = {k: v for k, v in payload.items() if v is not None}
+                    
+                    # Stream from LLM service
+                    from privategpt.shared.settings import settings
+                    
+                    async with client.stream(
+                        'POST',
+                        f"{settings.llm_service_url}/chat/stream",
+                        json=payload
+                    ) as response:
+                        response.raise_for_status()
+                        
+                        full_content = ""
+                        async for line in response.aiter_lines():
+                            if line.startswith('data: '):
+                                content = line[6:]  # Remove 'data: ' prefix
+                                if content.strip() == '[DONE]':
+                                    break
+                                if content.strip():
+                                    full_content += content
+                                    # Forward streaming content to client
+                                    yield f"data: {json.dumps({'type': 'content_delta', 'content': content})}\n\n"
+                
+                # Send completion event
+                response_time = (time.time() - start_time) * 1000
+                yield f"data: {json.dumps({'type': 'content_end'})}\n\n"
+                yield f"data: {json.dumps({
+                    'type': 'message_complete', 
+                    'text': full_content,
+                    'model': chat_request.model or 'unknown',
+                    'response_time_ms': response_time,
+                    'tools_used': False
+                })}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                
+            except Exception as e:
+                logger.error(f"Direct chat stream error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        
+        return StreamingResponse(
+            stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Direct chat stream setup error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/mcp/stream")
+async def mcp_chat_stream(chat_request: SimpleChatRequest):
+    """MCP chat with streaming support"""
+    if not chat_request.use_mcp:
+        # If MCP disabled, redirect to direct chat stream
+        return await direct_chat_stream(chat_request)
+    
+    try:
+        # TODO: Implement MCP streaming
+        # For now, fall back to direct chat stream
+        return await direct_chat_stream(chat_request)
+        
+    except Exception as e:
+        logger.error(f"MCP chat stream error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
