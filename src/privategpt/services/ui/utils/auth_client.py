@@ -14,7 +14,8 @@ import requests
 
 class AuthClient:  # noqa: D101
     def __init__(self, gateway_url: str | None = None):
-        base = gateway_url or os.getenv("GATEWAY_URL", "http://gateway-service:8000")
+        # Prefer explicit argument, then env var, then sensible localhost default.
+        base = gateway_url or os.getenv("GATEWAY_URL") or "http://localhost:8000"
         # Normalise and strip trailing slashes
         self.gateway_url = base.rstrip("/")
         self.session = requests.Session()

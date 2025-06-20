@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from privategpt.services.llm.adapters.ollama_adapter import OllamaAdapter
 from privategpt.services.llm.adapters.echo import EchoAdapter
+from privategpt.services.llm.core import LLMPort
 from privategpt.shared.settings import settings
 
 logger = logging.getLogger(__name__)

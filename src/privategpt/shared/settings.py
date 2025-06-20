@@ -17,7 +17,7 @@ import os
 # We prefer the standalone *pydantic-settings* package (pydantic ≥2.5) but fall
 # back to `pydantic.BaseSettings` if the extra package is missing (helps during
 # unit-test execution without installing optional deps).
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 
 try:
     from pydantic_settings import BaseSettings  # type: ignore
@@ -108,7 +108,7 @@ class _CoreSettings(BaseSettings):
         "case_sensitive": False,
     }
 
-    @validator("database_url", "redis_url", "weaviate_url", "ollama_url", pre=True)
+    @field_validator("database_url", "redis_url", "weaviate_url", "llm_base_url", mode="before")
     @classmethod
     def _strip(cls, v):  # noqa: D401
         if isinstance(v, str):

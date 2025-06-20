@@ -37,12 +37,15 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
         self.protected_paths = protected_paths or ["/api/"]
         self.excluded_paths = excluded_paths or ["/health", "/docs", "/openapi.json"]
         self.require_roles = require_roles or []
+        logger.info(f"KeycloakAuthMiddleware initialized with protected_paths: {self.protected_paths}, excluded_paths: {self.excluded_paths}")
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request through authentication middleware."""
+        logger.info(f"Auth middleware processing path: {request.url.path}")
         
         # Check if path requires authentication
         if not self._requires_auth(request.url.path):
+            logger.info(f"Path {request.url.path} does not require auth, passing through")
             return await call_next(request)
         
         # Extract and validate token
@@ -84,13 +87,16 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
         # Check excluded paths first
         for excluded in self.excluded_paths:
             if path.startswith(excluded):
+                logger.info(f"Path {path} excluded from auth (matches {excluded})")
                 return False
         
         # Check if path matches protected patterns
         for protected in self.protected_paths:
             if path.startswith(protected):
+                logger.info(f"Path {path} requires auth (matches {protected})")
                 return True
         
+        logger.info(f"Path {path} does not match any auth rules")
         return False
     
     def _has_required_role(self, user_claims: dict, required_roles: List[str]) -> bool:

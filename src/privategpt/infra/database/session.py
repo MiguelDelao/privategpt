@@ -12,11 +12,7 @@ from privategpt.shared.settings import settings  # type: ignore[attr-defined]
 
 # Prefer environment override, then config value, finally SQLite.
 
-DATABASE_URL = (
-    os.getenv("DATABASE_URL")
-    or settings.get("database.auth.url")
-    or "sqlite:///./auth.db"
-)
+DATABASE_URL = settings.database_url
 
 # If the URL points to Postgres but the driver is not installed, transparently
 # swap to in-memory SQLite so unit tests can proceed without extra deps.
