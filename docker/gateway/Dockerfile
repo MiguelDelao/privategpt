@@ -10,7 +10,7 @@ COPY src/ src/
 RUN pip install -e .
 
 # Add required dependencies for gateway
-RUN pip install python-jose[cryptography] httpx
+RUN pip install python-jose[cryptography] httpx asyncpg
 
 # Expose port
 EXPOSE 8000

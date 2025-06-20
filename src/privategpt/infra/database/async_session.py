@@ -8,7 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from privategpt.shared.settings import settings  # type: ignore[attr-defined]
 
 
-DATABASE_URL = settings.database_url
+# Ensure the async driver is used for PostgreSQL URLs. SQLAlchemy needs an
+# async-compatible driver such as *asyncpg* (or psycopg v3) when used via
+# `create_async_engine`. If the configured DATABASE_URL uses the common
+# blocking driver prefix `postgresql://`, transparently swap it for
+# `postgresql+asyncpg://` so we don't require callers to specify it.
+
+DATABASE_URL: str = settings.database_url
+
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 

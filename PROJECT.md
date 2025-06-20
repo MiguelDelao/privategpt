@@ -39,7 +39,7 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 #### 2. RAG Service (`rag-service`)
 **Purpose**: Document processing, embedding, and retrieval
 - **Location**: `src/privategpt/services/rag/`
-- **Port**: 8001
+- **Port**: 8002 (exposed on host; internal service listens on 8000)
 - **Responsibilities**:
   - Document ingestion and chunking
   - Vector embedding generation
@@ -302,7 +302,7 @@ GET  /api/auth/keycloak/config # Frontend Keycloak config
 ```
 
 ### Service Communication
-- **Internal**: HTTP with service hostnames (`http://rag-service:8001`)
+- **Internal**: HTTP with service hostnames (`http://rag-service:8000`)
 - **External**: Gateway exposure on `localhost:8000`
 - **Authentication**: Bearer token propagation
 - **Error Handling**: Standardized HTTP status codes

@@ -5,10 +5,9 @@
 ## Current System State
 
 ### Core Services (Production Ready)
-- ✅ **Auth Service**: JWT authentication with PostgreSQL user store
 - ✅ **RAG Service**: Document processing pipeline with BGE embeddings + Weaviate
+- ✅ **LLM Service**: Ollama-based language model microservice
 - ✅ **UI Service**: Streamlit multi-page application with authentication
-- 🔄 **LLM Service**: Placeholder implementation (echo adapter)
 
 ### Infrastructure Status
 - ✅ **Database**: PostgreSQL with SQLAlchemy 2.0 (async)
@@ -21,7 +20,7 @@
 1. **Document Upload**: PDF/text file ingestion via REST API
 2. **Document Processing**: Chunking → BGE embeddings → Weaviate storage
 3. **Semantic Search**: Vector similarity search with metadata filtering
-4. **RAG Chat**: Question answering with document context (using echo LLM)
+4. **RAG Chat**: Question answering with document context (powered by Ollama LLM)
 5. **User Management**: Registration, login, role-based access
 6. **Admin Interface**: Document management and system monitoring
 
@@ -59,7 +58,7 @@ User Query → Vector Search → Context + LLM → Answer
 
 ## Immediate Priorities
 1. **Security hardening**: Environment-based secrets, CORS restrictions
-2. **LLM integration**: Replace echo adapter with real LLM provider
+2. **LLM integration**: Ongoing performance tuning and model upgrades for the Ollama adapter
 3. **Database migrations**: Proper schema versioning with Alembic
 4. **Vector storage optimization**: Native vector types vs JSON
 
@@ -71,4 +70,4 @@ User Query → Vector Search → Context + LLM → Answer
 - **Infrastructure**: Docker, Traefik, ELK stack
 - **Task Processing**: Celery
 
-*Last updated: 2025-01-19*
+*Last updated: 2025-06-20*

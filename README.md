@@ -47,12 +47,10 @@
 ```mermaid
 graph TB
     UI[Streamlit UI :8080] --> GW[API Gateway :8000]
-    GW --> AUTH[Auth Service :8001]
     GW --> RAG[RAG Service :8002]
     GW --> LLM[LLM Service :8003]
     
     GW --> KC[Keycloak :8080]
-    AUTH --> DB[(PostgreSQL)]
     RAG --> DB
     RAG --> VDB[(Weaviate :8081)]
     RAG --> REDIS[(Redis)]
@@ -73,7 +71,7 @@ graph TB
 | Service | Port | Purpose | Technology |
 |---------|------|---------|------------|
 | **API Gateway** | 8000 | Authentication, routing, MCP integration | FastAPI + Keycloak + MCP |
-| **RAG Service** | 8001 | Document processing, Q&A | FastAPI + Weaviate + BGE |
+| **RAG Service** | 8002 | Document processing, Q&A | FastAPI + Weaviate + BGE |
 | **LLM Service** | 8003 | Language model integration | FastAPI + Ollama |
 | **UI Service** | 8080 | Developer testing interface | Streamlit |
 | **Keycloak** | 8180 | Authentication provider | Keycloak + PostgreSQL |
@@ -140,7 +138,7 @@ docker-compose up -d keycloak-db keycloak db redis weaviate
 curl -f http://localhost:8180/health/ready
 
 # 4. Start application services
-docker-compose up -d gateway-service auth-service rag-service ui-service
+docker-compose up -d gateway-service rag-service ui-service
 
 # 5. Check all services are healthy
 make status
@@ -157,7 +155,6 @@ docker-compose up -d db keycloak redis weaviate
 
 # 3. Run services locally
 python -m privategpt.services.gateway.main &
-python -m privategpt.services.auth.main &
 python -m privategpt.services.rag.main &
 streamlit run src/privategpt/services/ui/app.py
 ```
@@ -203,7 +200,6 @@ KEYCLOAK_CLIENT_ID=privategpt-api
 
 # Services
 GATEWAY_URL=http://gateway-service:8000
-AUTH_SERVICE_URL=http://auth-service:8000
 RAG_SERVICE_URL=http://rag-service:8000
 
 # ML Models
