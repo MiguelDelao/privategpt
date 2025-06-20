@@ -23,7 +23,7 @@ from privategpt.services.gateway.api.chat_router import router as chat_router
 from privategpt.services.gateway.api.prompt_router import router as prompt_router
 from privategpt.services.gateway.core.proxy import get_proxy
 from privategpt.infra.database.models import Base
-from privategpt.infra.database.session import engine
+from privategpt.infra.database.async_session import engine
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,8 @@ async def lifespan(app: FastAPI):
     
     # Initialize database tables
     try:
-        Base.metadata.create_all(bind=engine)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables initialized")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
@@ -90,25 +91,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Authentication middleware for API routes
-app.add_middleware(
-    KeycloakAuthMiddleware,
-    protected_paths=["/api/"],
-    excluded_paths=[
-        "/health",
-        "/docs", 
-        "/openapi.json",
-        "/api/auth/keycloak/config",
-        "/api/auth/login",  # Login endpoint doesn't need auth
-        "/api/auth/verify",  # Let the route handle auth
-        "/api/users",  # User endpoints handle their own auth
-        # Basic LLM endpoints for simple testing (TODO: add auth when core features work)
-        "/api/llm/models",     # Model listing for basic connectivity testing
-        "/api/llm/chat",       # Direct LLM chat for basic functionality testing
-        "/api/chat/direct",    # Simple direct chat endpoint
-        "/api/chat/mcp",       # Simple MCP chat endpoint
-    ]
-)
+# Authentication middleware for API routes - DISABLED FOR DEBUGGING
+print("AUTH MIDDLEWARE DISABLED FOR DEBUGGING")
+# app.add_middleware(
+#     KeycloakAuthMiddleware,
+#     protected_paths=["/api/"],
+#     excluded_paths=[
+#         "/health",
+#         "/docs", 
+#         "/openapi.json",
+#         "/api/auth/keycloak/config",
+#         "/api/auth/login",  # Login endpoint doesn't need auth
+#         "/api/auth/verify",  # Let the route handle auth
+#         "/api/users",  # User endpoints handle their own auth
+#         # Basic LLM endpoints for simple testing (TODO: add auth when core features work)
+#         "/api/llm/models",     # Model listing for basic connectivity testing
+#         "/api/llm/chat",       # Direct LLM chat for basic functionality testing
+#         "/api/chat/direct",    # Simple direct chat endpoint
+#         "/api/chat/mcp",       # Simple MCP chat endpoint
+#     ]
+# )
 
 # Request logging middleware
 app.add_middleware(RequestLogMiddleware)
@@ -123,13 +125,15 @@ app.include_router(prompt_router)
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions with proper logging."""
+    import traceback
     logger.warning(
-        "HTTP exception in gateway",
+        f"HTTP exception in gateway - path: {request.url.path}, detail: {exc.detail}",
         extra={
             "status_code": exc.status_code,
             "detail": exc.detail,
             "path": request.url.path,
-            "method": request.method
+            "method": request.method,
+            "traceback": traceback.format_exc()
         }
     )
     return JSONResponse(
@@ -146,6 +150,25 @@ async def root():
         "version": "2.0.0",
         "status": "healthy"
     }
+
+
+# Debug endpoint - bypasses all middleware and routing
+@app.get("/simple-test")
+async def simple_test():
+    """Simple test endpoint."""
+    return {"message": "This works!"}
+
+
+@app.get("/test-llm-direct")
+async def test_llm_direct():
+    """Direct test of LLM service."""
+    import httpx
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get("http://llm-service:8000/models")
+            return response.json()
+        except Exception as e:
+            return {"error": str(e)}
 
 
 if __name__ == "__main__":
