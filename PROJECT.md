@@ -3,7 +3,7 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
-**Current Phase**: Transitioning from Streamlit proof-of-concept to production-ready React/Next.js UI with comprehensive gateway APIs supporting advanced features like tool calls, conversation threading, and real-time collaboration.
+**Current Phase**: Enhanced with Model Context Protocol (MCP) integration, advanced chat features including thinking display, tool execution tracking, and comprehensive developer testing interface. Ready for production deployment with full microservices architecture.
 
 ## Architecture
 
@@ -17,21 +17,24 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 ### Core Services
 
 #### 1. API Gateway (`gateway-service`)
-**Purpose**: Centralized routing, authentication, and request proxying
+**Purpose**: Centralized routing, authentication, and conversation management
 - **Location**: `src/privategpt/services/gateway/`
 - **Port**: 8000
 - **Responsibilities**:
   - JWT token validation via Keycloak integration
-  - Request authentication middleware
-  - Service discovery and load balancing
-  - CORS and security headers management
-  - User session management
+  - Conversation and message management
+  - MCP (Model Context Protocol) client integration
+  - System prompt management with XML parsing
+  - User session and chat history persistence
 
 **Key Components**:
 - `main.py`: FastAPI application with middleware stack
-- `api/gateway_router.py`: Authentication endpoints and service proxying
-- `core/keycloak_auth.py`: Keycloak OIDC password grant flow
-- `core/proxy.py`: HTTP request proxying to backend services
+- `api/chat_router.py`: Conversation and message endpoints
+- `api/prompt_router.py`: System prompt management
+- `core/chat_service.py`: Conversation logic and LLM integration
+- `core/mcp_client.py`: MCP client for tool execution
+- `core/xml_parser.py`: Thinking brackets and UI tag parsing
+- `core/prompt_manager.py`: Dynamic system prompt loading
 
 #### 2. RAG Service (`rag-service`)
 **Purpose**: Document processing, embedding, and retrieval
@@ -114,6 +117,41 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Message Queue**: Celery with Redis backend
 - **Monitoring**: Health check endpoints across all services
 - **Logging**: Structured JSON logging with correlation IDs
+
+## Enhanced Features (v2)
+
+### Model Context Protocol (MCP) Integration
+- **Local MCP Server**: STDIO-based tool execution for Ollama models
+- **Available Tools**:
+  - `search_documents`: Semantic search through uploaded documents
+  - `read_file`: Read file contents with permission checks
+  - `list_directory`: Browse directory structures
+  - `create_file`: Create new files with content
+  - `edit_file`: Modify existing files
+  - `get_system_info`: System information and health checks
+  - `check_service_health`: Monitor service status
+
+### Advanced Chat Features
+- **Thinking Display**: AI reasoning visualization (similar to DeepSeek R1)
+- **Tool Call Tracking**: Real-time execution monitoring and results
+- **Conversation Threading**: Persistent chat history with metadata
+- **Model Switching**: Change models within conversations
+- **System Prompt Management**: Dynamic prompts with XML structure
+- **Response Parsing**: XML tag extraction for UI rendering
+
+### Developer Testing Interface
+- **Enhanced Dashboard**: Single-page testing hub with service monitoring
+- **Debug Toggles**: Show/hide thinking content, tool calls, raw responses
+- **JSON Viewers**: Complete API response inspection
+- **API Testing**: Direct endpoint testing with authentication
+- **Performance Metrics**: Response times, token usage, model statistics
+
+### Database Schema (v2)
+- **Conversations**: User chat sessions with model and prompt tracking
+- **Messages**: Individual messages with tool calls and thinking content
+- **Tool Calls**: Execution tracking with parameters and results
+- **System Prompts**: XML-structured prompts with model pattern matching
+- **Model Usage**: Token consumption and cost tracking
 
 ## Data Models
 

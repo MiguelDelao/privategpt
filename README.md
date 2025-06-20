@@ -7,7 +7,7 @@
 [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**PrivateGPT v2** is a production-ready, self-hosted Retrieval-Augmented Generation (RAG) system that lets you chat with your documents while keeping your data completely private. Built with modern microservices architecture, enterprise authentication, and comprehensive observability.
+**PrivateGPT v2** is a production-ready, self-hosted Retrieval-Augmented Generation (RAG) system that lets you chat with your documents while keeping your data completely private. Built with modern microservices architecture, enterprise authentication, Model Context Protocol (MCP) integration, and comprehensive developer tools.
 
 ## ✨ Features
 
@@ -23,6 +23,9 @@
 - **Advanced Chunking** - Intelligent text segmentation for optimal context
 - **BGE Embeddings** - State-of-the-art multilingual embeddings
 - **LLM Integration** - Ready for Ollama, OpenAI, or custom models
+- **Model Context Protocol (MCP)** - Local tool execution for enhanced AI capabilities
+- **Thinking Display** - AI reasoning visualization (similar to DeepSeek R1)
+- **Tool Execution Tracking** - Real-time monitoring of AI tool usage
 
 ### 🏗️ **Modern Architecture**
 - **Microservices** - Independent, scalable service architecture
@@ -34,7 +37,9 @@
 ### 🎨 **User Experience**
 - **Streamlit UI** - Intuitive web interface for document management and chat
 - **Real-time Chat** - Interactive Q&A with document sources
-- **Admin Dashboard** - User and system management interface
+- **Developer Testing Interface** - Comprehensive debugging and testing dashboard
+- **Advanced Chat Features** - System prompt management, model switching, conversation persistence
+- **Debug Toggles** - Show/hide thinking content, tool calls, raw responses
 - **Mobile Responsive** - Works on desktop and mobile devices
 
 ## 🏛️ Architecture
@@ -67,13 +72,13 @@ graph TB
 
 | Service | Port | Purpose | Technology |
 |---------|------|---------|------------|
-| **API Gateway** | 8000 | Authentication, routing, CORS | FastAPI + Keycloak |
-| **Auth Service** | 8001 | User management, profiles | FastAPI + PostgreSQL |
-| **RAG Service** | 8002 | Document processing, Q&A | FastAPI + Weaviate + BGE |
-| **UI Service** | 8080 | Web interface | Streamlit |
+| **API Gateway** | 8000 | Authentication, routing, MCP integration | FastAPI + Keycloak + MCP |
+| **RAG Service** | 8001 | Document processing, Q&A | FastAPI + Weaviate + BGE |
 | **LLM Service** | 8003 | Language model integration | FastAPI + Ollama |
+| **UI Service** | 8080 | Developer testing interface | Streamlit |
 | **Keycloak** | 8180 | Authentication provider | Keycloak + PostgreSQL |
 | **Weaviate** | 8081 | Vector database | Weaviate |
+| **MCP Server** | - | Local tool execution | STDIO transport |
 
 ## 🚀 Quick Start
 
@@ -99,7 +104,8 @@ open http://localhost:8080
 **Install Models:**
 ```bash
 # Install a model after setup
-make install-model MODEL=llama3.2:3b
+make install-model MODEL=tinydolphin:latest  # Recommended: fast and lightweight
+make install-model MODEL=llama3.2:3b        # Alternative: better quality
 make list-models
 ```
 
@@ -167,10 +173,11 @@ streamlit run src/privategpt/services/ui/app.py
 
 ### 💬 Chat with Documents
 
-1. **Navigate:** Go to "RAG Chat" page
-2. **Ask Questions:** Type questions about your uploaded documents
-3. **Review Sources:** See which document sections were used for answers
-4. **Refine:** Ask follow-up questions to dive deeper
+1. **Navigate:** Go to "Enhanced LLM Chat" page for full features
+2. **Choose Model:** Select tinydolphin:latest or other installed models
+3. **Ask Questions:** Type questions with tool execution and thinking display
+4. **Debug Features:** Toggle thinking content, tool calls, and raw responses
+5. **System Prompts:** Customize AI behavior with XML-structured prompts
 
 ### 👥 User Management
 
@@ -230,6 +237,15 @@ A default `config.json` is provided with sensible defaults:
   },
   "embedding": {
     "model": "BAAI/bge-small-en-v1.5"
+  },
+  "mcp": {
+    "enabled": true,
+    "transport": "stdio",
+    "server_command": ["python", "-m", "privategpt.services.mcp.main"]
+  },
+  "system_prompts": {
+    "default": "<persona>You are PrivateGPT...</persona>",
+    "enable_thinking_mode": true
   }
 }
 ```
