@@ -3,7 +3,7 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
-**Current Phase**: Enhanced with Model Context Protocol (MCP) integration, advanced chat features including thinking display, tool execution tracking, and comprehensive developer testing interface. Ready for production deployment with full microservices architecture.
+**Current Phase**: UI and chat functionality fully operational. Model loading, chat endpoints, and API connectivity resolved. Authentication temporarily disabled for debugging. Core features working with Ollama integration and streaming chat interface.
 
 ## Architecture
 
@@ -248,9 +248,12 @@ make remove-model MODEL=llama3.2:1b
 **Model Persistence**: Models are stored in the `ollama_data` Docker volume and persist across container restarts and `make clean` operations. Only `make clean-all` removes the models completely.
 
 **Recommended Models**:
-- `llama3.2:1b` - Fastest, smallest (1.3GB)
+- `tinydolphin:latest` - Smallest, fastest (636MB) - **Currently working**
+- `llama3.2:1b` - Requires 2.1GB memory (may exceed available resources)
 - `llama3.2:3b` - Good balance of speed/quality (2GB)
 - `llama3.2:7b` - Higher quality (4.7GB)
+
+**Memory Considerations**: Some models require more system memory than available in default Docker configuration. Use `tinydolphin:latest` for development with limited resources.
 
 ### Service Dependencies
 1. **Base Image**: `docker/base/Dockerfile` - Common Python dependencies
@@ -290,14 +293,25 @@ make remove-model MODEL=llama3.2:1b
 
 ### Gateway Endpoints
 ```
+# Authentication (currently disabled for debugging)
 POST /api/auth/login          # User authentication
 POST /api/auth/verify         # Token validation
 GET  /api/auth/me            # Current user profile
 GET  /api/auth/keycloak/config # Frontend Keycloak config
 
+# Chat Endpoints (working)
+POST /api/chat/direct         # Direct LLM chat without persistence
+POST /api/chat/mcp           # Chat with MCP tool integration
+GET  /api/chat/conversations  # List user conversations
+POST /api/chat/conversations  # Create new conversation
+
+# Model Management (working)
+GET  /api/llm/models         # List available models
+POST /api/llm/generate       # Single text generation
+POST /api/llm/chat          # Chat with conversation context
+
 # Proxied service endpoints
 /api/rag/*                   # RAG service operations
-/api/llm/*                   # LLM service operations
 /api/admin/*                 # Administrative functions
 ```
 
