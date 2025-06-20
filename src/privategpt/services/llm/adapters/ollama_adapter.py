@@ -16,12 +16,12 @@ class OllamaAdapter(LLMPort):
     
     def __init__(
         self,
-        base_url: Optional[str] = None,
+        base_url: str,
         model: Optional[str] = None,
         timeout: float = 600.0
     ):
-        self.base_url = base_url or settings.ollama_url
-        self.model = model or settings.ollama_model
+        self.base_url = base_url
+        self.model = model or settings.llm_default_model
         self.timeout = timeout
         self.client = httpx.AsyncClient(timeout=timeout)
         

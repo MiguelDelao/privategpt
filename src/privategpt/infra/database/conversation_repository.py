@@ -64,11 +64,14 @@ class SqlConversationRepository(ConversationRepository):
             updated_at=conversation.updated_at
         )
         
-        self.session.add(db_conversation)
-        await self.session.commit()
-        await self.session.refresh(db_conversation)
-        
-        return self._to_domain(db_conversation)
+        try:
+            self.session.add(db_conversation)
+            await self.session.commit()
+            await self.session.refresh(db_conversation)
+            return self._to_domain(db_conversation)
+        except Exception as e:
+            await self.session.rollback()
+            raise Exception(f"Failed to create conversation: {e}")
     
     async def update(self, conversation: DomainConversation) -> DomainConversation:
         """Update an existing conversation"""
@@ -87,10 +90,13 @@ class SqlConversationRepository(ConversationRepository):
         db_conversation.data = conversation.data
         db_conversation.updated_at = conversation.updated_at
         
-        await self.session.commit()
-        await self.session.refresh(db_conversation)
-        
-        return self._to_domain(db_conversation)
+        try:
+            await self.session.commit()
+            await self.session.refresh(db_conversation)
+            return self._to_domain(db_conversation)
+        except Exception as e:
+            await self.session.rollback()
+            raise Exception(f"Failed to update conversation: {e}")
     
     async def delete(self, conversation_id: str) -> bool:
         """Delete a conversation (soft delete by setting status)"""

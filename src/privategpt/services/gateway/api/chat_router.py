@@ -76,6 +76,8 @@ class ChatRequest(BaseModel):
     model_name: Optional[str] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0)
+    use_mcp: bool = Field(default=True)
+    available_tools: str = Field(default="*")  # "*", "", or "tool1,tool2"
 
 
 class ChatResponse(BaseModel):
@@ -316,3 +318,88 @@ async def quick_chat(
     # 3. Return conversation_id and messages
     
     raise HTTPException(status_code=501, detail="Quick chat implementation pending")
+
+
+# Simple chat endpoints for direct LLM access
+class SimpleChatRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    model: Optional[str] = None
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, gt=0)
+    use_mcp: bool = Field(default=True)
+    available_tools: str = Field(default="*")  # "*", "", or "tool1,tool2"
+
+
+class SimpleChatResponse(BaseModel):
+    text: str
+    model: str
+    response_time_ms: Optional[float] = None
+    tools_used: bool = False
+
+
+@router.post("/chat/direct", response_model=SimpleChatResponse)
+async def direct_chat(chat_request: SimpleChatRequest):
+    """Direct chat with LLM service (no conversation persistence)"""
+    try:
+        # Call LLM service directly
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Prepare messages for LLM
+            messages = [{"role": "user", "content": chat_request.message}]
+            
+            # Build payload
+            payload = {
+                "messages": messages,
+                "model": chat_request.model,
+                "temperature": chat_request.temperature,
+                "max_tokens": chat_request.max_tokens
+            }
+            
+            # Remove None values
+            payload = {k: v for k, v in payload.items() if v is not None}
+            
+            # Call LLM service
+            from privategpt.shared.settings import settings
+            response = await client.post(
+                f"{settings.llm_service_url}/chat",
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            return SimpleChatResponse(
+                text=result.get("text", ""),
+                model=result.get("model", chat_request.model or "unknown"),
+                response_time_ms=result.get("response_time_ms"),
+                tools_used=False  # Direct mode doesn't use tools
+            )
+            
+    except httpx.HTTPError as e:
+        logger.error(f"LLM service error: {e}")
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
+    except Exception as e:
+        logger.error(f"Direct chat error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/chat/mcp", response_model=SimpleChatResponse)
+async def mcp_chat(chat_request: SimpleChatRequest):
+    """Chat with MCP tool integration"""
+    if not chat_request.use_mcp:
+        # If MCP disabled, redirect to direct chat
+        return await direct_chat(chat_request)
+    
+    try:
+        # TODO: Implement MCP integration
+        # 1. Get available tools based on available_tools parameter
+        # 2. Add tools to system prompt
+        # 3. Process tool calls if any
+        # 4. Return final response
+        
+        # For now, fall back to direct chat
+        response = await direct_chat(chat_request)
+        response.tools_used = True if chat_request.available_tools else False
+        return response
+        
+    except Exception as e:
+        logger.error(f"MCP chat error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

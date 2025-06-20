@@ -71,8 +71,9 @@ class _CoreSettings(BaseSettings):
     weaviate_url: str = Field("http://weaviate:8080", env="WEAVIATE_URL")
 
     # LLM / EMBEDDINGS ----------------------------------------------
-    ollama_url: str = Field("http://ollama:11434", env="OLLAMA_URL")
-    ollama_model: str = Field("", env="OLLAMA_MODEL")
+    llm_provider: str = Field("", env="LLM_PROVIDER")
+    llm_base_url: str = Field("", env="LLM_BASE_URL")
+    llm_default_model: str = Field("", env="LLM_DEFAULT_MODEL")
     embed_model: str = Field("BAAI/bge-small-en-v1.5", env="EMBED_MODEL")
     
     # KEYCLOAK / AUTHENTICATION -----------------------------------
@@ -95,6 +96,7 @@ class _CoreSettings(BaseSettings):
     # MCP CONFIGURATION -------------------------------------------
     mcp_enabled: bool = Field(True, env="MCP_ENABLED")
     mcp_transport: str = Field("stdio", env="MCP_TRANSPORT")  # "stdio" or "http"
+    mcp_available_tools: str = Field("*", env="MCP_AVAILABLE_TOOLS")  # "*", "", or "tool1,tool2"
     
     # SYSTEM PROMPTS ---------------------------------------------
     default_system_prompt: str = Field("", env="DEFAULT_SYSTEM_PROMPT")

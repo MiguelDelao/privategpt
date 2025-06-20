@@ -102,8 +102,11 @@ app.add_middleware(
         "/api/auth/login",  # Login endpoint doesn't need auth
         "/api/auth/verify",  # Let the route handle auth
         "/api/users",  # User endpoints handle their own auth
-        "/api/chat/conversations",  # Temporarily bypass auth for testing
-        "/api/llm/models"  # Allow model listing without auth
+        # Basic LLM endpoints for simple testing (TODO: add auth when core features work)
+        "/api/llm/models",     # Model listing for basic connectivity testing
+        "/api/llm/chat",       # Direct LLM chat for basic functionality testing
+        "/api/chat/direct",    # Simple direct chat endpoint
+        "/api/chat/mcp",       # Simple MCP chat endpoint
     ]
 )
 

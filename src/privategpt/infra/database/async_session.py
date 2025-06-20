@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from privategpt.shared.settings import settings  # type: ignore[attr-defined]
 
 
-DATABASE_URL = settings.get("database.rag.url") or "sqlite+aiosqlite:///./rag.db"
+DATABASE_URL = settings.database_url
 
 engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 

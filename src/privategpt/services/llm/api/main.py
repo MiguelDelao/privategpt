@@ -15,12 +15,31 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="PrivateGPT LLM Service", version="0.2.0")
 
-# Use Ollama adapter by default, fallback to Echo for testing
+# Provider factory
+def create_adapter() -> LLMPort:
+    """Create LLM adapter based on configuration."""
+    provider = settings.llm_provider
+    base_url = settings.llm_base_url
+    
+    if not provider:
+        logger.warning("No LLM provider configured, using Echo adapter for testing")
+        return EchoAdapter()
+    
+    if provider.lower() == "ollama":
+        if not base_url:
+            raise ValueError("llm_base_url must be configured for Ollama provider")
+        return OllamaAdapter(base_url=base_url)
+    elif provider.lower() == "echo":
+        return EchoAdapter()
+    else:
+        raise ValueError(f"Unknown LLM provider: {provider}")
+
+# Initialize adapter
 try:
-    adapter = OllamaAdapter()
-    logger.info("Using Ollama adapter")
+    adapter = create_adapter()
+    logger.info(f"Using {adapter.__class__.__name__} with provider: {settings.llm_provider}")
 except Exception as e:
-    logger.warning(f"Failed to initialize Ollama adapter: {e}. Using Echo adapter.")
+    logger.error(f"Failed to initialize LLM adapter: {e}. Using Echo adapter.")
     adapter = EchoAdapter()
 
 
@@ -68,7 +87,7 @@ async def generate(data: GenerateRequest):
         text = await adapter.generate(data.prompt, **kwargs)
         return GenerateResponse(
             text=text,
-            model=kwargs.get("model", settings.ollama_model)
+            model=kwargs.get("model", settings.llm_default_model)
         )
     except Exception as e:
         logger.error(f"Generate error: {e}")
@@ -113,7 +132,7 @@ async def chat(data: ChatRequest):
         text = await adapter.chat(messages, **kwargs)
         return GenerateResponse(
             text=text,
-            model=kwargs.get("model", settings.ollama_model)
+            model=kwargs.get("model", settings.llm_default_model)
         )
     except Exception as e:
         logger.error(f"Chat error: {e}")
@@ -182,10 +201,10 @@ async def root():
         "version": "0.2.0",
         "status": "ok",
         "adapter": adapter.__class__.__name__,
-        "model": settings.ollama_model
+        "model": settings.llm_default_model
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002) 
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
