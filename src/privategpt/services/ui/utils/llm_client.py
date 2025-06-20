@@ -15,7 +15,7 @@ class LLMClient:
     """Client for interacting with the LLM service."""
     
     def __init__(self, llm_url: str | None = None):
-        base = llm_url or os.getenv("LLM_URL", "http://llm-service:8000")
+        base = llm_url or os.getenv("LLM_URL", "http://localhost:8002")
         self.llm_url = base.rstrip("/")
         self.session = requests.Session()
         

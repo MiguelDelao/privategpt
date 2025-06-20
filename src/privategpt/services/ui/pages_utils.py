@@ -25,7 +25,7 @@ VERSION_INFO = os.getenv("APP_VERSION", "v2.0.0-dev")
 LLM_MODEL_NAME = os.getenv("LLM_MODEL", "LLaMA-3 70B")
 VECTOR_DB_NAME = os.getenv("VECTOR_DB", "Weaviate+bge-base"); WORKFLOW_ENGINE = "n8n"
 
-# Service endpoints
+# Service endpoints - Use Docker internal networking for container-to-container communication
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://gateway-service:8000")
 KNOWLEDGE_SERVICE_URL = os.getenv("RAG_URL", "http://rag-service:8000")
 LLM_SERVICE_URL = os.getenv("LLM_URL", "http://llm-service:8000")
@@ -62,6 +62,8 @@ def initialize_session_state() -> None:
         "user_role": None,
         "access_token": None,
         "user_info": {"user": {"email": "unknown@example.com", "role": "user"}},
+        # Service URLs
+        "gateway_url": GATEWAY_URL,
         # App specific
         "chat_history": [],
         "llm_chat_history": [],
