@@ -169,7 +169,7 @@ class SystemPrompt(Base):
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_default = Column(Boolean, default=False, nullable=False)
-    metadata = Column(JSON, nullable=True, default=dict)  # Additional config
+    data = Column(JSON, nullable=True, default=dict)  # Additional config
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
