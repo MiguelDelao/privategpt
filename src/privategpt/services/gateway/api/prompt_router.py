@@ -47,7 +47,7 @@ class PromptResponse(BaseModel):
     description: Optional[str]
     is_active: bool
     is_default: bool
-    metadata: Dict[str, Any]
+    data: Dict[str, Any]
     created_at: str
     updated_at: str
 
@@ -76,7 +76,7 @@ async def list_prompts(
             description=prompt.description,
             is_active=prompt.is_active,
             is_default=prompt.is_default,
-            metadata=prompt.metadata or {},
+            data=prompt.data or {},
             created_at=prompt.created_at.isoformat(),
             updated_at=prompt.updated_at.isoformat()
         )
@@ -138,7 +138,7 @@ async def create_prompt(
             description=prompt.description,
             is_active=prompt.is_active,
             is_default=prompt.is_default,
-            metadata=prompt.metadata or {},
+            data=prompt.data or {},
             created_at=prompt.created_at.isoformat(),
             updated_at=prompt.updated_at.isoformat()
         )
@@ -175,7 +175,7 @@ async def update_prompt(
             description=prompt.description,
             is_active=prompt.is_active,
             is_default=prompt.is_default,
-            metadata=prompt.metadata or {},
+            data=prompt.data or {},
             created_at=prompt.created_at.isoformat(),
             updated_at=prompt.updated_at.isoformat()
         )
