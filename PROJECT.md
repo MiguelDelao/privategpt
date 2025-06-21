@@ -3,7 +3,7 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
-**Current Phase**: UI and chat functionality fully operational with streaming support. Model loading, chat endpoints, API connectivity, and real-time streaming responses working. Authentication temporarily disabled for debugging. Core features complete with Ollama integration and streaming chat interface handling slow models.
+**Current Phase**: Production-ready microservices system with multi-provider LLM support, streaming chat, MCP tool integration, and comprehensive configuration management. Authentication temporarily disabled for debugging. Multi-provider (Ollama, OpenAI, Anthropic) architecture with dynamic model discovery and routing.
 
 ## Architecture
 
@@ -63,11 +63,13 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - Multi-model support and switching
 
 **Implementation Details**:
-- `adapters/ollama_adapter.py`: Full Ollama API integration with streaming
-- `api/main.py`: FastAPI endpoints for /generate, /chat, /models with streaming support
-- Model: tinydolphin:latest (optimized for memory constraints)
-- Features: Server-Sent Events for real-time streaming, async HTTP with HTTPX
-- Streaming: Handles slow models without timeouts via extended timeout configuration
+- **Multi-Provider Architecture**: `core/model_registry.py` - Central registry managing Ollama, OpenAI, and Anthropic providers
+- **Provider Factory**: `core/provider_factory.py` - Dynamic provider creation from configuration
+- **Adapters**: Provider-specific implementations (`ollama_adapter.py`, `openai_adapter.py`, `anthropic_adapter.py`)
+- **Model Discovery**: Automatic model discovery from all enabled providers with conflict resolution
+- **Request Routing**: Intelligent routing based on model names to appropriate providers
+- **Streaming Support**: Server-Sent Events across all providers with 600s timeout
+- **Health Monitoring**: Comprehensive provider health checking and status reporting
 
 #### 4. UI Service (`ui-service`)
 **Purpose**: Streamlit-based web interface with streaming chat
@@ -271,15 +273,21 @@ make remove-model MODEL=llama3.2:1b
 
 ### Configuration Management
 
-#### Pydantic Settings Model
+#### Unified Settings System
 - **Location**: `src/privategpt/shared/settings.py`
-- **Type**: Pydantic BaseSettings with environment variable support
-- **Features**: Type validation, automatic env var parsing, config file support
+- **Type**: Enhanced Pydantic BaseSettings with multi-provider support
+- **Features**: 
+  - Type validation and environment variable overrides
+  - Multi-provider LLM configuration (Ollama, OpenAI, Anthropic)
+  - Dynamic model registry initialization
+  - MCP tool configuration with enable/disable flags
+  - System prompt management and thinking mode controls
 
 #### Configuration Files
-- **Default Config**: `config.json` - Default settings for all services
+- **Default Config**: `config.json` - Comprehensive multi-provider settings
 - **Keycloak Realm**: `config/keycloak/realm-export.json` - Pre-configured authentication realm
 - **Environment Variables**: Docker Compose `.env` support for overrides
+- **MCP Tools**: Dynamic tool discovery with configurable availability
 
 #### Default Admin User
 - **Email**: `admin@admin.com` (configurable via `DEFAULT_ADMIN_EMAIL`)
@@ -315,10 +323,11 @@ POST /api/chat/mcp/stream    # MCP chat with streaming support
 GET  /api/chat/conversations  # List user conversations
 POST /api/chat/conversations  # Create new conversation
 
-# Model Management (working)
-GET  /api/llm/models         # List available models
-POST /api/llm/generate       # Single text generation
-POST /api/llm/chat          # Chat with conversation context
+# Model Management (multi-provider)
+GET  /api/llm/models         # List models from all enabled providers
+POST /api/llm/generate       # Single text generation with provider routing
+POST /api/llm/chat          # Chat with conversation context and streaming
+GET  /api/llm/providers      # List available providers and health status
 
 # Proxied service endpoints
 /api/rag/*                   # RAG service operations
@@ -326,10 +335,12 @@ POST /api/llm/chat          # Chat with conversation context
 ```
 
 ### Service Communication
-- **Internal**: HTTP with service hostnames (`http://rag-service:8000`)
+- **Internal**: HTTP with service hostnames (`http://rag-service:8000`, `http://llm-service:8000`)
 - **External**: Gateway exposure on `localhost:8000`
-- **Authentication**: Bearer token propagation
-- **Error Handling**: Standardized HTTP status codes
+- **Model Registry**: Dynamic provider registration and health monitoring
+- **Authentication**: Bearer token propagation (currently disabled for debugging)
+- **Error Handling**: Standardized HTTP status codes with provider-specific error mapping
+- **Load Balancing**: Model-based request routing to appropriate providers
 
 ## Deployment Configuration
 
@@ -362,12 +373,14 @@ services:
 - **Factory Pattern**: Service instantiation
 
 ### Technology Stack
-- **Backend**: FastAPI + SQLAlchemy 2.0 + Pydantic
-- **Frontend**: Streamlit with custom authentication
-- **Identity**: Keycloak for enterprise SSO integration
+- **Backend**: FastAPI + SQLAlchemy 2.0 + Pydantic Settings
+- **Frontend**: Streamlit with multi-provider model selection
+- **Identity**: Keycloak for enterprise SSO integration (temporarily disabled)
 - **Vector Search**: Weaviate for semantic similarity
 - **Embeddings**: Sentence Transformers (BGE models)
-- **LLM Integration**: Ollama-compatible API
+- **LLM Integration**: Multi-provider registry (Ollama, OpenAI, Anthropic)
+- **Model Context Protocol**: Local MCP server with STDIO transport
+- **Configuration**: Unified config.json + environment variable system
 
 ### Performance Optimizations
 - **Async I/O**: All database and HTTP operations
