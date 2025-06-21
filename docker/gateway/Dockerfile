@@ -3,8 +3,9 @@ FROM privategpt/base:latest
 # Set working directory
 WORKDIR /app
 
-# Copy source code
+# Copy source code and configuration
 COPY src/ src/
+COPY config.json .
 
 # Install the package in development mode
 RUN pip install -e .

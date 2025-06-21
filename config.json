@@ -10,6 +10,21 @@
   "llm_default_model": "",
   "embed_model": "BAAI/bge-small-en-v1.5",
   
+  "_comment_providers": "LLM Provider Configuration",
+  "ollama_enabled": true,
+  "ollama_base_url": "http://ollama:11434",
+  "ollama_model": "llama3.2",
+  
+  "openai_enabled": false,
+  "openai_api_key": "",
+  "openai_base_url": "https://api.openai.com/v1", 
+  "openai_model": "gpt-4",
+  
+  "anthropic_enabled": false,
+  "anthropic_api_key": "",
+  "anthropic_base_url": "https://api.anthropic.com",
+  "anthropic_model": "claude-3-5-sonnet-20241022",
+  
   "keycloak_url": "http://keycloak:8180",
   "keycloak_realm": "privategpt",
   "keycloak_client_id": "privategpt-ui",

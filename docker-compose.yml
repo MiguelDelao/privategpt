@@ -146,14 +146,6 @@ services:
       LLM_BASE_URL: http://ollama:11434
       LLM_DEFAULT_MODEL: ""
       SERVICE_NAME: llm
-      # Multi-provider configuration
-      OLLAMA_ENABLED: "true"
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: "llama3.2"
-      OPENAI_ENABLED: "false"
-      OPENAI_API_KEY: ""
-      ANTHROPIC_ENABLED: "false" 
-      ANTHROPIC_API_KEY: ""
     ports:
       - "8003:8000"
     healthcheck:

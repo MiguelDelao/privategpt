@@ -2,8 +2,9 @@ FROM privategpt/base:latest
 
 WORKDIR /app
 
-# Copy source code
+# Copy source code and configuration
 COPY src/ src/
+COPY config.json .
 
 # Install in development mode
 RUN pip install -e .

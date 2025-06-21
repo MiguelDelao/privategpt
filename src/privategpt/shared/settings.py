@@ -76,20 +76,21 @@ class _CoreSettings(BaseSettings):
     llm_default_model: str = Field("", env="LLM_DEFAULT_MODEL")
     embed_model: str = Field("BAAI/bge-small-en-v1.5", env="EMBED_MODEL")
     
-    # OLLAMA PROVIDER -----------------------------------------------
+    # LLM PROVIDERS ------------------------------------------------
+    # Ollama (Local Models)
     ollama_enabled: bool = Field(True, env="OLLAMA_ENABLED")
-    ollama_base_url: str = Field("http://localhost:11434", env="OLLAMA_BASE_URL")
+    ollama_base_url: str = Field("http://ollama:11434", env="OLLAMA_BASE_URL") 
     ollama_model: str = Field("llama3.2", env="OLLAMA_MODEL")
     
-    # OPENAI PROVIDER -----------------------------------------------
+    # OpenAI (Cloud API)
     openai_enabled: bool = Field(False, env="OPENAI_ENABLED")
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL")
     openai_model: str = Field("gpt-4", env="OPENAI_MODEL")
     
-    # ANTHROPIC PROVIDER --------------------------------------------
+    # Anthropic (Claude API)  
     anthropic_enabled: bool = Field(False, env="ANTHROPIC_ENABLED")
-    anthropic_api_key: str = Field("", env="ANTHROPIC_API_KEY") 
+    anthropic_api_key: str = Field("", env="ANTHROPIC_API_KEY")
     anthropic_base_url: str = Field("https://api.anthropic.com", env="ANTHROPIC_BASE_URL")
     anthropic_model: str = Field("claude-3-5-sonnet-20241022", env="ANTHROPIC_MODEL")
     

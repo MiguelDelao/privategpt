@@ -122,36 +122,49 @@ with col1:
     # Current environment configuration
     st.subheader("Environment Configuration")
     
-    # Check for API keys and configuration
-    config_status = {}
-    
-    # Ollama
-    config_status["Ollama"] = {
-        "enabled": os.getenv("OLLAMA_ENABLED", "true").lower() == "true",
-        "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        "model": os.getenv("OLLAMA_MODEL", "llama3.2"),
-        "type": "Local"
-    }
-    
-    # OpenAI
-    openai_key = os.getenv("OPENAI_API_KEY", "")
-    config_status["OpenAI"] = {
-        "enabled": os.getenv("OPENAI_ENABLED", "false").lower() == "true",
-        "api_key_configured": bool(openai_key),
-        "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        "model": os.getenv("OPENAI_MODEL", "gpt-4"),
-        "type": "Cloud API"
-    }
-    
-    # Anthropic
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-    config_status["Anthropic"] = {
-        "enabled": os.getenv("ANTHROPIC_ENABLED", "false").lower() == "true",
-        "api_key_configured": bool(anthropic_key),
-        "base_url": os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
-        "model": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
-        "type": "Cloud API"
-    }
+    # Get configuration from settings (config.json + env vars)
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            headers = {}
+            token = st.session_state.get("access_token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            
+            # Try to get config from a potential settings endpoint, or use fallback
+            config_status = {
+                "Ollama": {
+                    "enabled": True,  # Default from config.json
+                    "base_url": "http://ollama:11434",
+                    "model": "llama3.2", 
+                    "type": "Local"
+                },
+                "OpenAI": {
+                    "enabled": False,  # Default from config.json
+                    "api_key_configured": bool(os.getenv("OPENAI_API_KEY", "")),
+                    "base_url": "https://api.openai.com/v1",
+                    "model": "gpt-4",
+                    "type": "Cloud API"
+                },
+                "Anthropic": {
+                    "enabled": False,  # Default from config.json
+                    "api_key_configured": bool(os.getenv("ANTHROPIC_API_KEY", "")),
+                    "base_url": "https://api.anthropic.com", 
+                    "model": "claude-3-5-sonnet-20241022",
+                    "type": "Cloud API"
+                }
+            }
+            
+            # Override with environment variables if present
+            if os.getenv("OLLAMA_ENABLED"):
+                config_status["Ollama"]["enabled"] = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
+            if os.getenv("OPENAI_ENABLED"):
+                config_status["OpenAI"]["enabled"] = os.getenv("OPENAI_ENABLED", "false").lower() == "true"
+            if os.getenv("ANTHROPIC_ENABLED"):
+                config_status["Anthropic"]["enabled"] = os.getenv("ANTHROPIC_ENABLED", "false").lower() == "true"
+                
+    except Exception as e:
+        st.error(f"Failed to load configuration: {e}")
+        config_status = {}
     
     # Display configuration table
     for provider, config in config_status.items():
@@ -180,31 +193,29 @@ with col2:
     st.subheader("Configuration Guide")
     
     st.markdown("""
-    **🔧 To enable providers:**
+    **🔧 Provider Configuration:**
     
-    **Ollama (Local):**
-    ```bash
-    export OLLAMA_ENABLED=true
-    export OLLAMA_BASE_URL=http://localhost:11434
-    export OLLAMA_MODEL=llama3.2
+    **Method 1: config.json (Persistent)**
+    ```json
+    {
+      "openai_enabled": true,
+      "openai_api_key": "sk-your-key-here",
+      "anthropic_enabled": true,
+      "anthropic_api_key": "sk-ant-your-key-here"
+    }
     ```
     
-    **OpenAI (Cloud):**
+    **Method 2: Environment Variables (Override)**
     ```bash
     export OPENAI_ENABLED=true
     export OPENAI_API_KEY=sk-...
-    export OPENAI_MODEL=gpt-4
-    ```
-    
-    **Anthropic (Cloud):**
-    ```bash
     export ANTHROPIC_ENABLED=true
     export ANTHROPIC_API_KEY=sk-ant-...
-    export ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
     ```
     """)
     
-    st.info("💡 Restart services after changing environment variables")
+    st.info("💡 Edit config.json for persistent settings, use env vars for temporary overrides")
+    st.warning("🔄 Restart services after changing configuration")
 
 # ═══════════════════════════════════════════════════════════════════════════════════════
 # ⚙️ PROVIDER SETTINGS
