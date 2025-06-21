@@ -9,7 +9,6 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, List, AsyncIterator, Optional
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from privategpt.core.domain.conversation import Conversation
@@ -19,6 +18,7 @@ from privategpt.infra.database.message_repository import SqlMessageRepository
 from privategpt.services.gateway.core.mcp_client import get_mcp_client, MCPClientError
 from privategpt.services.gateway.core.xml_parser import parse_ai_content
 from privategpt.services.gateway.core.prompt_manager import PromptManager
+from privategpt.services.llm.core.model_registry import get_model_registry
 from privategpt.shared.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,7 @@ class ChatService:
         self.conversation_repo = SqlConversationRepository(session)
         self.message_repo = SqlMessageRepository(session)
         self.prompt_manager = PromptManager(session)
-        self.llm_client = httpx.AsyncClient(timeout=30.0)
-        self.llm_base_url = settings.llm_service_url
+        self.model_registry = get_model_registry()
         self.mcp_client = None  # Lazy-loaded
     
     async def create_conversation(
@@ -145,29 +144,25 @@ class ChatService:
             "content": message_content
         })
         
-        # Call LLM service with tools
-        llm_response = await self._call_llm_service(
-            messages=llm_messages,
-            model_name=model_name or conversation.model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            tools=tools
-        )
-        
-        # Handle tool calls if present
-        if "tool_calls" in llm_response and llm_response["tool_calls"] and self.mcp_client:
-            # Process tool calls
-            tool_results = await self.mcp_client.process_tool_calls(llm_response["tool_calls"])
-            
-            # Add tool results to messages and get final response
-            llm_messages.extend(tool_results)
-            final_response = await self._call_llm_service(
+        # Call LLM through model registry
+        try:
+            response_text = await self.model_registry.chat(
+                model_name=model_name or conversation.model_name or settings.ollama_model,
                 messages=llm_messages,
-                model_name=model_name or conversation.model_name,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            llm_response = final_response
+            
+            llm_response = {
+                "text": response_text,
+                "model": model_name or conversation.model_name or settings.ollama_model,
+                "response_time_ms": 0  # TODO: Add timing
+            }
+        except Exception as e:
+            logger.error(f"LLM request failed: {e}")
+            raise Exception(f"Failed to get response from LLM: {e}")
+        
+        # TODO: Tool calls will be handled by MCP integration in future updates
         
         # Parse AI response content
         parsed_content = parse_ai_content(
@@ -273,9 +268,9 @@ class ChatService:
         }
         
         try:
-            async for chunk in self._stream_llm_service(
+            async for chunk in self.model_registry.chat_stream(
+                model_name=model_name or conversation.model_name or settings.ollama_model,
                 messages=llm_messages,
-                model_name=model_name or conversation.model_name,
                 temperature=temperature,
                 max_tokens=max_tokens
             ):
@@ -322,87 +317,7 @@ class ChatService:
                 "message": "Failed to get response from LLM service"
             }
     
-    async def _call_llm_service(
-        self,
-        messages: List[Dict[str, str]],
-        model_name: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        tools: Optional[List[Dict[str, Any]]] = None
-    ) -> Dict[str, Any]:
-        """Call the LLM service for a single response"""
-        payload = {
-            "messages": messages,
-            "model": model_name,
-            "temperature": temperature,
-            "max_tokens": max_tokens
-        }
-        
-        # Add tools if provided
-        if tools:
-            payload["tools"] = tools
-        
-        # Remove None values
-        payload = {k: v for k, v in payload.items() if v is not None}
-        
-        try:
-            response = await self.llm_client.post(
-                f"{self.llm_base_url}/chat",
-                json=payload
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.RequestError as e:
-            logger.error(f"LLM service request failed: {e}")
-            raise Exception("Failed to connect to LLM service")
-        except httpx.HTTPStatusError as e:
-            logger.error(f"LLM service returned error: {e}")
-            raise Exception("LLM service returned an error")
-    
-    async def _stream_llm_service(
-        self,
-        messages: List[Dict[str, str]],
-        model_name: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
-    ) -> AsyncIterator[str]:
-        """Stream response from LLM service"""
-        payload = {
-            "messages": messages,
-            "model": model_name,
-            "temperature": temperature,
-            "max_tokens": max_tokens
-        }
-        
-        # Remove None values
-        payload = {k: v for k, v in payload.items() if v is not None}
-        
-        try:
-            async with self.llm_client.stream(
-                "POST",
-                f"{self.llm_base_url}/chat/stream",
-                json=payload
-            ) as response:
-                response.raise_for_status()
-                
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data = line[6:]  # Remove "data: " prefix
-                        if data == "[DONE]":
-                            break
-                        if data.startswith("Error:"):
-                            raise Exception(data)
-                        yield data
-                        
-        except httpx.RequestError as e:
-            logger.error(f"LLM service streaming failed: {e}")
-            raise Exception("Failed to connect to LLM service")
-        except httpx.HTTPStatusError as e:
-            logger.error(f"LLM service streaming error: {e}")
-            raise Exception("LLM service returned an error")
-    
     async def close(self):
-        """Close HTTP client and cleanup resources"""
-        await self.llm_client.aclose()
+        """Close resources"""
         if self.mcp_client:
             await self.mcp_client.close()

@@ -82,6 +82,22 @@ with col2:
         st.write("Auth: ❌ No Token")
         
     st.write(f"Authenticated: {st.session_state.get('authenticated', False)}")
+    
+    # Provider status
+    st.write("**Provider Status:**")
+    try:
+        auth_headers = {"Authorization": f"Bearer {token}"} if token else {}
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(f"{GATEWAY_URL}/api/llm/models", headers=auth_headers)
+            if response.status_code == 200:
+                models = response.json()
+                providers = set(model.get("provider", "unknown") for model in models)
+                st.write(f"Providers: {', '.join(sorted(providers))}")
+                st.write(f"Models: {len(models)} total")
+            else:
+                st.write("Providers: ❌ Unable to load")
+    except Exception:
+        st.write("Providers: ❌ Connection failed")
 
 with col3:
     st.metric("Current Time", datetime.now().strftime("%H:%M:%S"))
@@ -103,19 +119,32 @@ with col1:
     )
 
 with col2:
+    # Dynamic model loading for testing
+    model_options = ["Auto-detect"]
+    try:
+        token = st.session_state.get('access_token')
+        auth_headers = {"Authorization": f"Bearer {token}"} if token else {}
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(f"{GATEWAY_URL}/api/llm/models", headers=auth_headers)
+            if response.status_code == 200:
+                models = response.json()
+                for model in models[:5]:  # Show first 5 models
+                    name = model.get("name", "unknown")
+                    provider = model.get("provider", "unknown")
+                    model_options.append(f"{provider}: {name}")
+    except Exception:
+        pass
+    
     model_choice = st.selectbox(
         "Model:",
-        ["tinydolphin:latest", "llama3.2:1b", "privategpt-mcp"],
+        model_options,
         help="Choose which model to test with"
     )
     
-    st.write("**Model Info:**")
-    model_info = {
-        "tinydolphin:latest": "636 MB - Fast",
-        "llama3.2:1b": "1.3 GB - Small", 
-        "privategpt-mcp": "Tools enabled"
-    }
-    st.caption(model_info.get(model_choice, "Unknown"))
+    st.write("**Provider Support:**")
+    st.write("🏭 Ollama: Local models")
+    st.write("🌐 OpenAI: Cloud models")  
+    st.write("🧠 Anthropic: Claude models")
 
 if st.button("🚀 Test LLM Service", type="primary", use_container_width=True):
     with st.spinner("Testing LLM service..."):
@@ -153,21 +182,39 @@ if st.button("📋 List Models", use_container_width=True):
             models = response.json()
             
             if models:
+                # Group models by provider
+                providers = {}
                 for model in models:
-                    name = model.get('name', 'Unknown')
-                    size = model.get('size', 0)
-                    size_gb = size / (1024**3) if size > 0 else 0
+                    provider = model.get('provider', 'unknown')
+                    if provider not in providers:
+                        providers[provider] = []
+                    providers[provider].append(model)
+                
+                # Display models grouped by provider
+                for provider, provider_models in providers.items():
+                    st.subheader(f"🏭 {provider.title()}")
                     
-                    col1, col2, col3 = st.columns([3, 1, 1])
-                    with col1:
-                        st.write(f"**{name}**")
-                    with col2:
-                        st.write(f"{size_gb:.1f} GB" if size_gb > 0 else "Unknown size")
-                    with col3:
-                        if name in ["tinydolphin:latest", "llama3.2:1b"]:
-                            st.success("✅ Ready")
-                        else:
-                            st.info("🔄 Available")
+                    for model in provider_models:
+                        name = model.get('name', 'Unknown')
+                        size = model.get('size', 0)
+                        size_gb = size / (1024**3) if size > 0 else 0
+                        capabilities = model.get('capabilities', [])
+                        
+                        col1, col2, col3 = st.columns([3, 1, 1])
+                        with col1:
+                            st.write(f"**{name}**")
+                            if capabilities:
+                                st.caption(f"Capabilities: {', '.join(capabilities)}")
+                        with col2:
+                            st.write(f"{size_gb:.1f} GB" if size_gb > 0 else "Cloud model")
+                        with col3:
+                            # Provider-specific status
+                            if provider == "ollama":
+                                st.success("✅ Local")
+                            elif provider in ["openai", "anthropic"]:
+                                st.info("🌐 Cloud")
+                            else:
+                                st.info("🔄 Available")
             else:
                 st.warning("No models found")
         else:

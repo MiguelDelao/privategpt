@@ -36,54 +36,157 @@ if "messages" not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
     
-    # Dynamic model loading
-    if st.button("🔄 Refresh Models", help="Load available models from LLM service"):
-        with st.spinner("Loading models..."):
+    # Provider and model loading
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        if st.button("🔄 Refresh", help="Load available providers and models"):
+            with st.spinner("Loading providers and models..."):
+                try:
+                    with httpx.Client(timeout=10.0) as client:
+                        headers = {}
+                        token = st.session_state.get("access_token")
+                        if token:
+                            headers["Authorization"] = f"Bearer {token}"
+                        
+                        # Get models (now includes provider info)
+                        response = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
+                        if response.status_code == 200:
+                            models_data = response.json()
+                            st.session_state.models_data = models_data
+                            
+                            # Extract providers and models
+                            providers = set()
+                            provider_models = {}
+                            for model in models_data:
+                                provider = model.get("provider", "unknown")
+                                providers.add(provider)
+                                if provider not in provider_models:
+                                    provider_models[provider] = []
+                                provider_models[provider].append(model)
+                            
+                            st.session_state.available_providers = sorted(list(providers))
+                            st.session_state.provider_models = provider_models
+                            st.success(f"✅ Loaded {len(providers)} providers, {len(models_data)} models")
+                        else:
+                            st.error(f"❌ Failed to load models: {response.status_code}")
+                            st.session_state.models_data = []
+                            st.session_state.available_providers = []
+                            st.session_state.provider_models = {}
+                except Exception as e:
+                    st.error(f"❌ Error loading models: {e}")
+                    st.session_state.models_data = []
+                    st.session_state.available_providers = []
+                    st.session_state.provider_models = {}
+    
+    with col2:
+        # Provider status indicator
+        if hasattr(st.session_state, 'available_providers') and st.session_state.available_providers:
+            provider_count = len(st.session_state.available_providers)
+            model_count = len(st.session_state.get('models_data', []))
+            st.metric("Providers", provider_count, help="Number of available LLM providers")
+            st.metric("Models", model_count, help="Total available models across all providers")
+    
+    # Initial provider and model fetch on first load
+    if "models_data" not in st.session_state:
+        with st.spinner("Loading providers and models..."):
             try:
                 with httpx.Client(timeout=10.0) as client:
                     headers = {}
                     token = st.session_state.get("access_token")
                     if token:
                         headers["Authorization"] = f"Bearer {token}"
-                    response = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
-                    if response.status_code == 200:
-                        models_data = response.json()
-                        st.session_state.available_models = [m["name"] for m in models_data]
-                        st.success(f"✅ Loaded {len(models_data)} models")
+                    resp = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
+                    if resp.status_code == 200:
+                        models_data = resp.json()
+                        st.session_state.models_data = models_data
+                        
+                        # Extract providers and models
+                        providers = set()
+                        provider_models = {}
+                        for model in models_data:
+                            provider = model.get("provider", "unknown")
+                            providers.add(provider)
+                            if provider not in provider_models:
+                                provider_models[provider] = []
+                            provider_models[provider].append(model)
+                        
+                        st.session_state.available_providers = sorted(list(providers))
+                        st.session_state.provider_models = provider_models
                     else:
-                        st.error(f"❌ Failed to load models: {response.status_code}")
-                        st.session_state.available_models = []
-            except Exception as e:
-                st.error(f"❌ Error loading models: {e}")
-                st.session_state.available_models = []
+                        st.session_state.models_data = []
+                        st.session_state.available_providers = []
+                        st.session_state.provider_models = {}
+            except Exception:
+                st.session_state.models_data = []
+                st.session_state.available_providers = []
+                st.session_state.provider_models = {}
     
-    # Initial model fetch on first load
-    if "available_models" not in st.session_state:
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                headers = {}
-                token = st.session_state.get("access_token")
-                if token:
-                    headers["Authorization"] = f"Bearer {token}"
-                resp = client.get(f"{GATEWAY_URL}/api/llm/models", headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    st.session_state.available_models = [m["name"] for m in data]
-                else:
-                    st.session_state.available_models = []
-        except Exception:
-            st.session_state.available_models = []
-    
-    # Model selection dropdown
-    if st.session_state.available_models:
-        selected_model = st.selectbox(
-            "Model:",
-            st.session_state.available_models,
+    # Provider selection
+    available_providers = st.session_state.get("available_providers", [])
+    if available_providers:
+        selected_provider = st.selectbox(
+            "🏭 Provider:",
+            ["All"] + available_providers,
             index=0,
-            help="Select which model to use for chat"
+            help="Filter models by provider"
         )
+        
+        # Get models for selected provider
+        if selected_provider == "All":
+            available_models = st.session_state.get("models_data", [])
+        else:
+            available_models = st.session_state.get("provider_models", {}).get(selected_provider, [])
+        
+        # Model selection dropdown with provider info
+        if available_models:
+            # Format model options with provider info
+            model_options = []
+            model_details = {}
+            
+            for model in available_models:
+                name = model.get("name", "unknown")
+                provider = model.get("provider", "unknown")
+                size = model.get("size", 0)
+                
+                # Format display name
+                if selected_provider == "All":
+                    display_name = f"{provider}: {name}"
+                else:
+                    display_name = name
+                
+                # Add size info if available
+                if size > 0:
+                    size_gb = size / (1024**3)
+                    display_name += f" ({size_gb:.1f}GB)"
+                
+                model_options.append(display_name)
+                model_details[display_name] = model
+            
+            selected_model_display = st.selectbox(
+                "🤖 Model:",
+                model_options,
+                index=0,
+                help="Select which model to use for chat"
+            )
+            
+            # Get the actual model data
+            selected_model_data = model_details.get(selected_model_display, {})
+            selected_model = selected_model_data.get("name", "")
+            
+            # Show model details
+            if selected_model_data:
+                provider = selected_model_data.get("provider", "unknown")
+                capabilities = selected_model_data.get("capabilities", [])
+                if capabilities:
+                    caps_text = ", ".join(capabilities)
+                    st.caption(f"📋 **Capabilities:** {caps_text}")
+                st.caption(f"🏭 **Provider:** {provider}")
+        else:
+            st.warning(f"⚠️  No models found for provider '{selected_provider}'")
+            selected_model = ""
     else:
-        st.warning("⚠️  No models found in your LLM service. Use 'make install-model' or click 'Refresh Models' after installation.")
+        st.warning("⚠️  No providers found. Check your LLM service configuration.")
         selected_model = ""
     
     # Tool controls
@@ -295,14 +398,20 @@ if prompt := st.chat_input("Type your message here..."):
 st.markdown("---")
 st.markdown("""
 **💡 Tips:**
-- **Dynamic Models**: Click "Refresh Models" to load available models from your LLM provider
+- **Multi-Provider Support**: Switch between Ollama, OpenAI, Anthropic, and other providers
+- **Dynamic Models**: Click "Refresh" to load available models from all configured providers
+- **Provider Filtering**: Use the provider dropdown to focus on specific LLM providers
 - **Tool Control**: Toggle MCP tools on/off for different complexity levels
 - **Performance**: Direct mode is faster, MCP mode provides more capabilities
-- **No Hard-coding**: All models and tools are discovered dynamically
-- **Provider Agnostic**: Works with Ollama, vLLM, or any compatible provider
 
 **🔧 Current Configuration:**
-- Provider: Check your `llm_provider` and `llm_base_url` settings
-- Tools: MCP integration can be enabled/disabled per conversation
-- Models: Loaded dynamically from your configured LLM service
+- **Providers**: Multiple LLM providers supported (Ollama, OpenAI, Anthropic)
+- **Models**: Loaded dynamically with provider information and capabilities
+- **Tools**: MCP integration can be enabled/disabled per conversation
+- **Authentication**: All provider API keys managed securely through backend
+
+**🏭 Provider Information:**
+- **Ollama**: Local models (tinydolphin, llama3.2, etc.)
+- **OpenAI**: Cloud models (GPT-4, GPT-3.5-turbo, etc.)
+- **Anthropic**: Claude models (claude-3-5-sonnet, claude-3-haiku, etc.)
 """)
