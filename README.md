@@ -36,11 +36,12 @@
 
 ### 🎨 **User Experience**
 - **Streamlit UI** - Intuitive web interface for document management and chat
-- **Real-time Chat** - Interactive Q&A with document sources
+- **Real-time Streaming Chat** - Live character-by-character response generation with typing indicators
 - **Developer Testing Interface** - Comprehensive debugging and testing dashboard
 - **Advanced Chat Features** - System prompt management, model switching, conversation persistence
 - **Debug Toggles** - Show/hide thinking content, tool calls, raw responses
 - **Mobile Responsive** - Works on desktop and mobile devices
+- **180s Timeout Support** - Handles slow models without connection timeouts
 
 ## 🏛️ Architecture
 
@@ -170,11 +171,13 @@ streamlit run src/privategpt/services/ui/app.py
 
 ### 💬 Chat with Documents
 
-1. **Navigate:** Go to "Enhanced LLM Chat" page for full features
+1. **Navigate:** Go to "LLM Chat" page for streaming chat interface
 2. **Choose Model:** Select tinydolphin:latest or other installed models
-3. **Ask Questions:** Type questions with tool execution and thinking display
-4. **Debug Features:** Toggle thinking content, tool calls, and raw responses
-5. **System Prompts:** Customize AI behavior with XML-structured prompts
+3. **Ask Questions:** Type questions and watch responses stream in real-time
+4. **Tool Integration:** Enable MCP tools for document search and system operations
+5. **Real-time Features:** See typing indicators (`▋`) and character-by-character responses
+6. **Debug Features:** Toggle thinking content, tool calls, and raw responses
+7. **System Prompts:** Customize AI behavior with XML-structured prompts
 
 ### 👥 User Management
 
