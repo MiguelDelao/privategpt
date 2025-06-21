@@ -7,13 +7,11 @@ Handles login, logout, token verification, and Keycloak integration.
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
-import jwt
 
 from privategpt.infra.database.session import get_db
 from privategpt.services.gateway.core.keycloak_auth import KeycloakAuthService
@@ -124,49 +122,6 @@ async def login(
                     refresh_token=token_response.get("refresh_token")
                 )
         
-        # If Keycloak fails, try demo mode for development
-        if request.email == settings.default_admin_email and request.password == settings.default_admin_password:
-            # Create demo token
-            demo_payload = {
-                "sub": "demo-admin",
-                "email": request.email,
-                "preferred_username": request.email,
-                "given_name": "Admin",
-                "family_name": "User",
-                "realm_access": {"roles": ["admin"]},
-                "exp": datetime.utcnow() + timedelta(hours=24)
-            }
-            
-            # Create a simple demo token (not secure, only for development)
-            demo_token = jwt.encode(demo_payload, "demo-secret-key", algorithm="HS256")
-            
-            # Get or create demo user
-            local_user = await user_service.get_or_create_user_from_keycloak(
-                keycloak_user_id="demo-admin",
-                email=request.email,
-                username=request.email,
-                first_name="Admin",
-                last_name="User",
-                roles=["admin"]
-            )
-            
-            user_service.record_user_login(local_user.id)
-            
-            user_data = {
-                "user_id": local_user.id,
-                "email": local_user.email,
-                "username": local_user.username,
-                "first_name": local_user.first_name,
-                "last_name": local_user.last_name,
-                "role": local_user.role
-            }
-            
-            return LoginResponse(
-                access_token=demo_token,
-                expires_in=86400,  # 24 hours
-                user=user_data
-            )
-        
         # Authentication failed
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -211,23 +166,7 @@ async def verify_token(
                 user=user_info
             )
         
-        # Try demo token verification
-        try:
-            payload = jwt.decode(token, "demo-secret-key", algorithms=["HS256"])
-            return TokenVerifyResponse(
-                valid=True,
-                user={
-                    "sub": payload.get("sub"),
-                    "email": payload.get("email"),
-                    "preferred_username": payload.get("preferred_username"),
-                    "given_name": payload.get("given_name"),
-                    "family_name": payload.get("family_name"),
-                    "realm_access": payload.get("realm_access", {})
-                },
-                expires_at=datetime.fromtimestamp(payload.get("exp", 0)).isoformat()
-            )
-        except jwt.InvalidTokenError:
-            pass
+        # If Keycloak verification fails, token is invalid
         
         return TokenVerifyResponse(valid=False)
         
