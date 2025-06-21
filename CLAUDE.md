@@ -10,7 +10,7 @@
 4. **Follow existing patterns** - this is a well-architected microservices system
 
 ## Commit Strategy
-- Commit after each logical change (bug fix, feature addition, refactor)
+- Commit after each logical change (bug fix, feature addition, refactor), but only after you or the user can confirmed it was successful.
 - Use conventional commit format: `type(scope): description`
 - Include co-authorship footer for AI assistance
 

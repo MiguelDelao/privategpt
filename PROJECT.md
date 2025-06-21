@@ -71,11 +71,21 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Streaming Support**: Server-Sent Events across all providers with 600s timeout
 - **Health Monitoring**: Comprehensive provider health checking and status reporting
 
-#### 4. UI Service (`ui-service`)
-**Purpose**: Streamlit-based web interface with streaming chat
+#### 4. User Interfaces
+
+**Next.js UI (Primary)**
+- **Service**: `nextjs-ui`
+- **Location**: `src/privategpt_ui/sandbox-ui/`
+- **URL**: `http://localhost` (via Traefik)
+- **Framework**: Next.js 15 + TypeScript + Tailwind CSS
+
+**Streamlit UI (Legacy)**  
+- **Service**: `ui-service`
 - **Location**: `src/privategpt/services/ui/`
-- **Port**: 8080
-- **Responsibilities**:
+- **URL**: `http://localhost/streamlit` (via Traefik)
+- **Framework**: Streamlit
+
+**Shared Responsibilities**:
   - User authentication interface
   - Document upload and management
   - Real-time streaming LLM chat interface
@@ -92,6 +102,16 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - Tool integration with MCP chat modes
 
 ### Infrastructure Services
+
+#### Reverse Proxy (Traefik)
+- **Service**: `traefik`
+- **Port**: 80 (web), 8090 (dashboard)
+- **Purpose**: HTTP reverse proxy and load balancer
+- **Features**:
+  - Automatic service discovery via Docker labels
+  - Path-based routing (`/streamlit` → Streamlit UI)
+  - Host-based routing (`localhost` → Next.js UI)
+  - Dashboard at `http://localhost:8090/dashboard/`
 
 #### Authentication (Keycloak)
 - **Service**: `keycloak`

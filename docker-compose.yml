@@ -196,13 +196,13 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_WS_URL: ws://localhost:8000
       NODE_ENV: development
-    ports:
-      - "3000:3000"  # Direct access for development
+    # No external ports - accessed via Traefik
     volumes:
       # Development mode: mount source for hot reload
-      - "./src/privategpt_ui/sandbox-ui:/app:delegated"
-      - "/app/node_modules"
-      - "/app/.next"
+      - "./src/privategpt_ui/sandbox-ui/src:/app/src"
+      - "./src/privategpt_ui/sandbox-ui/public:/app/public"
+      - "nextjs_node_modules:/app/node_modules"
+      - "nextjs_next:/app/.next"
     labels:
       - traefik.enable=true
       # Main UI: Root path -> Next.js UI (highest priority)
@@ -222,8 +222,7 @@ services:
     environment:
       GATEWAY_URL: http://gateway-service:8000
       LLM_URL: http://llm-service:8000
-    ports:
-      - "8080:8501"
+    # No external ports - accessed via Traefik at /streamlit
     labels:
       - traefik.enable=true
       # Streamlit: /streamlit path -> Streamlit UI
@@ -351,3 +350,5 @@ volumes:
   keycloak-db-data:
   n8n_data:
   ollama_data:
+  nextjs_node_modules:
+  nextjs_next:
