@@ -459,13 +459,14 @@ async def direct_chat_stream(chat_request: SimpleChatRequest):
                 # Send completion event
                 response_time = (time.time() - start_time) * 1000
                 yield f"data: {json.dumps({'type': 'content_end'})}\n\n"
-                yield f"data: {json.dumps({
+                completion_event = {
                     'type': 'message_complete', 
                     'text': full_content,
                     'model': chat_request.model or 'unknown',
                     'response_time_ms': response_time,
                     'tools_used': False
-                })}\n\n"
+                }
+                yield f"data: {json.dumps(completion_event)}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 
             except Exception as e:
