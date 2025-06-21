@@ -249,6 +249,7 @@ class Chunk:
 - **Role Extraction**: Claims parsing for authorization
 - **Session Management**: Simplified session-based approach in UI, no external token validation
 - **Authentication Flow**: Gateway validates tokens, UI manages local session state
+- **Architecture**: Backend exclusively handles real Keycloak authentication, frontend provides demo mode for offline development
 
 ## Development Workflow
 

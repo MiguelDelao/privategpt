@@ -33,6 +33,7 @@
 - [x] **Token persistence and verification on app load**
 - [x] **Demo mode fallback for offline development**
 - [x] **Fixed gateway service dependencies (asyncpg, PyJWT)**
+- [x] **Removed hardcoded demo mode from backend (technical debt cleanup)**
 
 ### Next.js UI Integration (Jun 21, 2025)
 - [x] **Next.js 15 + TypeScript + Tailwind CSS frontend**
@@ -201,7 +202,6 @@
 - **Tool Configuration**: Current hardcoded approach maintained while exploring UX for dynamic tool selection
 
 ### Technical Debt
-- **Authentication Bypass**: Temporary auth bypass for testing needs proper fix
 - **Next.js Production Builds**: Currently configured for development mode only, needs production optimization
 - **Provider Error Handling**: Need consistent error handling across all LLM providers
 - **Test Coverage**: Minimal test coverage across the entire codebase
@@ -213,5 +213,5 @@
 1. **Implement comprehensive test coverage** - Critical for maintainability
 2. **Complete RAG integration** - Connect existing RAG service
 3. **Production hardening** - Multi-provider security and error handling
-4. **Re-enable authentication** - Remove debug bypass mode
-5. **React UI development** - Modern frontend replacement
+4. **Next.js UI chat functionality** - Complete real-time chat features
+5. **Performance optimization** - Provider response times and caching
