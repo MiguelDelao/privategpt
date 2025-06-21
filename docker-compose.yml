@@ -185,6 +185,33 @@ services:
     ports:
       - "8081:8080"
 
+  nextjs-ui:
+    build:
+      context: .
+      dockerfile: docker/nextjs-ui/Dockerfile
+    depends_on:
+      gateway-service:
+        condition: service_started
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      NODE_ENV: development
+    ports:
+      - "3000:3000"  # Direct access for development
+    volumes:
+      # Development mode: mount source for hot reload
+      - "./src/privategpt_ui/sandbox-ui:/app:delegated"
+      - "/app/node_modules"
+      - "/app/.next"
+    labels:
+      - traefik.enable=true
+      # Main UI: Root path -> Next.js UI (highest priority)
+      - traefik.http.routers.nextjs.rule=Host(`localhost`)
+      - traefik.http.routers.nextjs.entrypoints=web
+      - traefik.http.routers.nextjs.priority=100
+      - traefik.http.services.nextjs.loadbalancer.server.port=3000
+      - logging.service=nextjs-ui
+
   ui-service:
     build:
       context: .
@@ -199,10 +226,12 @@ services:
       - "8080:8501"
     labels:
       - traefik.enable=true
-      # Root path -> Streamlit UI
-      - traefik.http.routers.streamlit.rule=Host(`localhost`)
+      # Streamlit: /streamlit path -> Streamlit UI
+      - traefik.http.routers.streamlit.rule=Host(`localhost`) && PathPrefix(`/streamlit`)
       - traefik.http.routers.streamlit.entrypoints=web
-      - traefik.http.routers.streamlit.priority=1
+      - traefik.http.routers.streamlit.priority=50
+      - traefik.http.routers.streamlit.middlewares=streamlit-stripprefix
+      - traefik.http.middlewares.streamlit-stripprefix.stripprefix.prefixes=/streamlit
       - traefik.http.services.streamlit.loadbalancer.server.port=8501
       - logging.service=ui
 

@@ -181,6 +181,7 @@
 
 ### Technical Debt
 - **Authentication Bypass**: Temporary auth bypass for testing needs proper fix
+- **Next.js Production Builds**: Currently configured for development mode only, needs production optimization
 - **Provider Error Handling**: Need consistent error handling across all LLM providers
 - **Test Coverage**: Minimal test coverage across the entire codebase
 - **Code Documentation**: Multi-provider architecture needs comprehensive documentation

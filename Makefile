@@ -26,6 +26,11 @@ help:
 	@echo "make list-models - Show available Ollama models"
 	@echo "make remove-model MODEL=<name> - Remove specific Ollama model"
 	@echo ""
+	@echo "UI Development:"
+	@echo "make build-ui - Build Next.js UI service"
+	@echo "make dev-ui - Start development UI with hot reload"
+	@echo "make start-with-nextjs - Start system with Next.js UI as primary"
+	@echo ""
 	@echo "Logs:"
 	@echo "make logs - Show logs for all services"
 	@echo "make logs-follow - Follow logs for all services"
@@ -386,3 +391,16 @@ hard-build:
 	$(MAKE) nuke
 	@echo "🏗️  Starting fresh build..."
 	$(MAKE) build
+
+# Next.js UI Development Commands
+build-ui:
+	$(DC) build nextjs-ui
+
+dev-ui:
+	$(DC) up --build nextjs-ui gateway-service llm-service db redis
+
+start-with-nextjs:
+	$(DC) up -d db keycloak gateway-service llm-service nextjs-ui
+
+logs-nextjs:
+	$(DC) logs -f nextjs-ui
