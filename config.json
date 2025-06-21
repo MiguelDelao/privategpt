@@ -25,7 +25,7 @@
   "anthropic_base_url": "https://api.anthropic.com",
   "anthropic_model": "claude-3-5-sonnet-20241022",
   
-  "keycloak_url": "http://keycloak:8180",
+  "keycloak_url": "http://keycloak:8080",
   "keycloak_realm": "privategpt",
   "keycloak_client_id": "privategpt-ui",
   
