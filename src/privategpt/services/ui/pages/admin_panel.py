@@ -48,49 +48,163 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader("Current Provider Status")
     
+    # Get provider status from LLM service
     if st.button("🔄 Refresh Provider Status", type="primary"):
-        with st.spinner("Checking provider status..."):
+        with st.spinner("Loading provider information..."):
+            # Get models and provider info
             response = make_admin_request("/api/llm/models")
+            health_response = make_admin_request("/api/llm/health")
+            
             if response and response.status_code == 200:
-                models = response.json()
-                providers = {}
+                models_data = response.json()
                 
-                # Group by provider
-                for model in models:
+                # Group models by provider
+                provider_summary = {}
+                for model in models_data:
                     provider = model.get("provider", "unknown")
-                    if provider not in providers:
-                        providers[provider] = {"models": 0, "total_size": 0}
-                    providers[provider]["models"] += 1
-                    providers[provider]["total_size"] += model.get("size", 0)
-                
-                # Display provider status
-                for provider, info in providers.items():
-                    size_gb = info["total_size"] / (1024**3) if info["total_size"] > 0 else 0
+                    if provider not in provider_summary:
+                        provider_summary[provider] = {
+                            "models": [],
+                            "total_size": 0,
+                            "capabilities": set()
+                        }
                     
-                    col_p1, col_p2, col_p3 = st.columns([2, 1, 1])
-                    with col_p1:
-                        st.write(f"**{provider.title()}**")
-                    with col_p2:
-                        st.metric("Models", info["models"])
-                    with col_p3:
-                        if size_gb > 0:
-                            st.metric("Total Size", f"{size_gb:.1f} GB")
+                    provider_summary[provider]["models"].append(model)
+                    if model.get("size"):
+                        provider_summary[provider]["total_size"] += model.get("size", 0)
+                    
+                    caps = model.get("capabilities", [])
+                    if caps:
+                        provider_summary[provider]["capabilities"].update(caps)
+                
+                # Display provider information
+                for provider, info in provider_summary.items():
+                    model_count = len(info["models"])
+                    total_size_gb = info["total_size"] / (1024**3) if info["total_size"] > 0 else 0
+                    capabilities = ", ".join(sorted(info["capabilities"]))
+                    
+                    # Provider status indicator
+                    if health_response and health_response.status_code == 200:
+                        health_data = health_response.json()
+                        provider_health = health_data.get("providers", {}).get(provider, {})
+                        status = provider_health.get("status", "unknown")
+                        
+                        if status == "healthy":
+                            st.success(f"✅ **{provider.title()}**: {model_count} models available")
                         else:
-                            st.metric("Type", "Cloud")
+                            st.warning(f"⚠️ **{provider.title()}**: {status}")
+                    else:
+                        st.info(f"🏭 **{provider.title()}**: {model_count} models")
+                    
+                    # Model details
+                    with st.expander(f"View {provider} models"):
+                        for model in info["models"][:5]:  # Show first 5 models
+                            name = model.get("name", "unknown")
+                            size = model.get("size", 0)
+                            size_text = f" ({size / (1024**3):.1f}GB)" if size > 0 else ""
+                            description = model.get("description", "")
+                            st.write(f"• **{name}**{size_text}")
+                            if description:
+                                st.write(f"  _{description}_")
+                        
+                        if len(info["models"]) > 5:
+                            st.write(f"... and {len(info['models']) - 5} more models")
+                    
+                    if total_size_gb > 0:
+                        st.caption(f"Total storage: {total_size_gb:.1f}GB")
+                    if capabilities:
+                        st.caption(f"Capabilities: {capabilities}")
+                    
+                    st.markdown("---")
             else:
-                st.error("❌ Unable to get provider status")
+                st.error("❌ Failed to load provider information")
+    
+    # Current environment configuration
+    st.subheader("Environment Configuration")
+    
+    # Check for API keys and configuration
+    config_status = {}
+    
+    # Ollama
+    config_status["Ollama"] = {
+        "enabled": os.getenv("OLLAMA_ENABLED", "true").lower() == "true",
+        "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        "model": os.getenv("OLLAMA_MODEL", "llama3.2"),
+        "type": "Local"
+    }
+    
+    # OpenAI
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    config_status["OpenAI"] = {
+        "enabled": os.getenv("OPENAI_ENABLED", "false").lower() == "true",
+        "api_key_configured": bool(openai_key),
+        "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        "model": os.getenv("OPENAI_MODEL", "gpt-4"),
+        "type": "Cloud API"
+    }
+    
+    # Anthropic
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    config_status["Anthropic"] = {
+        "enabled": os.getenv("ANTHROPIC_ENABLED", "false").lower() == "true",
+        "api_key_configured": bool(anthropic_key),
+        "base_url": os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+        "model": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+        "type": "Cloud API"
+    }
+    
+    # Display configuration table
+    for provider, config in config_status.items():
+        enabled = config["enabled"]
+        provider_type = config["type"]
+        
+        if enabled:
+            if provider == "Ollama":
+                st.success(f"✅ **{provider}** ({provider_type}): Enabled")
+                st.write(f"   Base URL: `{config['base_url']}`")
+                st.write(f"   Default Model: `{config['model']}`")
+            else:
+                api_key_status = "✅ Configured" if config.get("api_key_configured") else "❌ Not configured"
+                if config.get("api_key_configured"):
+                    st.success(f"✅ **{provider}** ({provider_type}): Enabled")
+                else:
+                    st.warning(f"⚠️ **{provider}** ({provider_type}): Enabled but API key missing")
+                st.write(f"   API Key: {api_key_status}")
+                st.write(f"   Default Model: `{config['model']}`")
+        else:
+            st.info(f"ℹ️ **{provider}** ({provider_type}): Disabled")
+        
+        st.markdown("---")
 
 with col2:
-    st.subheader("Quick Actions")
+    st.subheader("Configuration Guide")
     
-    if st.button("🔍 Test All Providers", use_container_width=True):
-        st.info("Provider testing functionality coming soon")
+    st.markdown("""
+    **🔧 To enable providers:**
     
-    if st.button("📊 View Usage Stats", use_container_width=True):
-        st.info("Usage statistics coming soon")
+    **Ollama (Local):**
+    ```bash
+    export OLLAMA_ENABLED=true
+    export OLLAMA_BASE_URL=http://localhost:11434
+    export OLLAMA_MODEL=llama3.2
+    ```
     
-    if st.button("🔑 Manage API Keys", use_container_width=True):
-        st.info("API key management coming soon")
+    **OpenAI (Cloud):**
+    ```bash
+    export OPENAI_ENABLED=true
+    export OPENAI_API_KEY=sk-...
+    export OPENAI_MODEL=gpt-4
+    ```
+    
+    **Anthropic (Cloud):**
+    ```bash
+    export ANTHROPIC_ENABLED=true
+    export ANTHROPIC_API_KEY=sk-ant-...
+    export ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+    ```
+    """)
+    
+    st.info("💡 Restart services after changing environment variables")
 
 # ═══════════════════════════════════════════════════════════════════════════════════════
 # ⚙️ PROVIDER SETTINGS

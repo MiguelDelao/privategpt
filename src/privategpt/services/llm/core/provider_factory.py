@@ -20,9 +20,12 @@ class LLMProviderFactory:
     def create_ollama_provider(config: Dict[str, Any]) -> Optional[LLMPort]:
         """Create an Ollama provider from configuration."""
         try:
+            base_url = config.get("base_url", "http://localhost:11434")
+            default_model = config.get("default_model", "llama3.2")
+            
             return OllamaAdapter(
-                base_url=config.get("base_url", settings.ollama_base_url),
-                default_model=config.get("default_model", settings.ollama_model),
+                base_url=base_url,
+                default_model=default_model,
                 timeout=config.get("timeout", 600.0),
                 enabled=config.get("enabled", True)
             )
@@ -75,26 +78,26 @@ class LLMProviderFactory:
         """Setup all providers from configuration and return configured registry."""
         registry = get_model_registry()
         
-        # Provider configurations - in a real app this would come from settings/config file
+        # Provider configurations from settings
         provider_configs = {
             "ollama": {
-                "enabled": getattr(settings, "ollama_enabled", True),
-                "base_url": getattr(settings, "ollama_base_url", "http://localhost:11434"),
-                "default_model": getattr(settings, "ollama_model", "llama3.2"),
+                "enabled": settings.ollama_enabled,
+                "base_url": settings.ollama_base_url,
+                "default_model": settings.ollama_model,
                 "timeout": 600.0
             },
             "openai": {
-                "enabled": getattr(settings, "openai_enabled", False),
-                "api_key": getattr(settings, "openai_api_key", None),
-                "base_url": getattr(settings, "openai_base_url", "https://api.openai.com/v1"),
-                "default_model": getattr(settings, "openai_model", "gpt-4"),
+                "enabled": settings.openai_enabled and bool(settings.openai_api_key),
+                "api_key": settings.openai_api_key,
+                "base_url": settings.openai_base_url,
+                "default_model": settings.openai_model,
                 "timeout": 30.0
             },
             "anthropic": {
-                "enabled": getattr(settings, "anthropic_enabled", False),
-                "api_key": getattr(settings, "anthropic_api_key", None),
-                "base_url": getattr(settings, "anthropic_base_url", "https://api.anthropic.com"),
-                "default_model": getattr(settings, "anthropic_model", "claude-3-5-sonnet-20241022"),
+                "enabled": settings.anthropic_enabled and bool(settings.anthropic_api_key),
+                "api_key": settings.anthropic_api_key,
+                "base_url": settings.anthropic_base_url,
+                "default_model": settings.anthropic_model,
                 "timeout": 30.0
             }
         }
