@@ -26,6 +26,12 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - MCP (Model Context Protocol) client integration
   - System prompt management with XML parsing
   - User session and chat history persistence
+- **Authentication Endpoints**:
+  - `POST /api/auth/login` - Email/password authentication
+  - `POST /api/auth/verify` - Token verification
+  - `POST /api/auth/refresh` - Token refresh
+  - `POST /api/auth/logout` - User logout
+  - `GET /api/auth/keycloak/config` - Frontend configuration
 
 **Key Components**:
 - `main.py`: FastAPI application with middleware stack
@@ -78,6 +84,12 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Location**: `src/privategpt_ui/sandbox-ui/`
 - **URL**: `http://localhost` (via Traefik)
 - **Framework**: Next.js 15 + TypeScript + Tailwind CSS
+- **Features**:
+  - Full authentication integration with Keycloak
+  - Zustand state management with persistence
+  - Protected routes with AuthWrapper component
+  - API client with token management
+  - Development hot reload via Docker volumes
 
 **Streamlit UI (Legacy)**  
 - **Service**: `ui-service`

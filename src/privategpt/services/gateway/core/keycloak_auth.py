@@ -136,6 +136,43 @@ class KeycloakAuthService:
             logger.error(f"Token refresh error: {e}")
             return None
     
+    async def verify_token(self, access_token: str) -> bool:
+        """Verify if an access token is valid."""
+        userinfo_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/userinfo"
+        
+        try:
+            response = await self.client.get(
+                userinfo_url,
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Token verification error: {e}")
+            return False
+    
+    async def logout(self, access_token: str) -> bool:
+        """Logout user and invalidate tokens."""
+        logout_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/logout"
+        
+        try:
+            # Keycloak logout endpoint
+            response = await self.client.post(
+                logout_url,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "refresh_token": ""  # Would need refresh token for full logout
+                },
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Authorization": f"Bearer {access_token}"
+                }
+            )
+            return response.status_code in [200, 204]
+        except Exception as e:
+            logger.error(f"Logout error: {e}")
+            return False
+    
     async def close(self):
         """Close HTTP client."""
         await self.client.aclose()

@@ -21,6 +21,7 @@ from privategpt.services.gateway.api.gateway_router import router as gateway_rou
 from privategpt.services.gateway.api.user_router import router as user_router
 from privategpt.services.gateway.api.chat_router import router as chat_router
 from privategpt.services.gateway.api.prompt_router import router as prompt_router
+from privategpt.services.gateway.api.auth_router import router as auth_router
 from privategpt.services.gateway.core.proxy import get_proxy
 from privategpt.infra.database.models import Base
 from privategpt.infra.database.async_session import engine
@@ -117,6 +118,7 @@ app.add_middleware(RequestLogMiddleware)
 
 # Include routers
 app.include_router(gateway_router)
+app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(prompt_router)
