@@ -3,7 +3,7 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
-**Current Phase**: UI and chat functionality fully operational. Model loading, chat endpoints, and API connectivity resolved. Authentication temporarily disabled for debugging. Core features working with Ollama integration and streaming chat interface.
+**Current Phase**: UI and chat functionality fully operational with streaming support. Model loading, chat endpoints, API connectivity, and real-time streaming responses working. Authentication temporarily disabled for debugging. Core features complete with Ollama integration and streaming chat interface handling slow models.
 
 ## Architecture
 
@@ -29,12 +29,17 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 
 **Key Components**:
 - `main.py`: FastAPI application with middleware stack
-- `api/chat_router.py`: Conversation and message endpoints
+- `api/chat_router.py`: Conversation and message endpoints with streaming support
 - `api/prompt_router.py`: System prompt management
 - `core/chat_service.py`: Conversation logic and LLM integration
 - `core/mcp_client.py`: MCP client for tool execution
 - `core/xml_parser.py`: Thinking brackets and UI tag parsing
 - `core/prompt_manager.py`: Dynamic system prompt loading
+
+**Streaming Endpoints**:
+- `/api/chat/direct/stream`: Direct LLM chat with Server-Sent Events
+- `/api/chat/mcp/stream`: Tool-enabled chat with real-time streaming
+- Extended 180s timeout support for slow model responses
 
 #### 2. RAG Service (`rag-service`)
 **Purpose**: Document processing, embedding, and retrieval
@@ -52,16 +57,17 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Port**: 8003
 - **Responsibilities**:
   - Ollama model management and initialization
-  - Real-time streaming text generation
-  - Chat conversation with context
+  - Real-time streaming text generation with SSE support
+  - Chat conversation with context and 180s timeout support
   - Model parameter configuration (temperature, max_tokens)
   - Multi-model support and switching
 
 **Implementation Details**:
 - `adapters/ollama_adapter.py`: Full Ollama API integration with streaming
-- `api/main.py`: FastAPI endpoints for /generate, /chat, /models
+- `api/main.py`: FastAPI endpoints for /generate, /chat, /models with streaming support
 - Model: tinydolphin:latest (optimized for memory constraints)
-- Features: Server-Sent Events for streaming, async HTTP with HTTPX
+- Features: Server-Sent Events for real-time streaming, async HTTP with HTTPX
+- Streaming: Handles slow models without timeouts via extended timeout configuration
 
 #### 4. UI Service (`ui-service`)
 **Purpose**: Streamlit-based web interface with streaming chat
@@ -75,11 +81,13 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - Admin panel for system management
 
 **Key Features**:
-- `pages/llm_chat.py`: Streaming chat with model selection and settings
+- `pages/llm_chat.py`: Streaming chat with model selection and real-time display
 - `utils/llm_client.py`: LLM service API client with streaming support
-- Real-time response generation with typing indicators
+- Real-time response generation with typing indicators (`▋`)
 - Model switching, temperature controls, generation settings
 - Chat history with timestamps and performance metrics
+- SSE-based streaming with 180s timeout for slow models
+- Tool integration with MCP chat modes
 
 ### Infrastructure Services
 
@@ -299,9 +307,11 @@ POST /api/auth/verify         # Token validation
 GET  /api/auth/me            # Current user profile
 GET  /api/auth/keycloak/config # Frontend Keycloak config
 
-# Chat Endpoints (working)
+# Chat Endpoints (working with streaming)
 POST /api/chat/direct         # Direct LLM chat without persistence
+POST /api/chat/direct/stream  # Direct LLM chat with Server-Sent Events
 POST /api/chat/mcp           # Chat with MCP tool integration
+POST /api/chat/mcp/stream    # MCP chat with streaming support
 GET  /api/chat/conversations  # List user conversations
 POST /api/chat/conversations  # Create new conversation
 

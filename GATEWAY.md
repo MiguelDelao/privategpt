@@ -303,6 +303,22 @@ Content-Type: application/json
 }
 ```
 
+#### Direct Chat Streaming
+```http
+POST /api/chat/direct/stream
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "message": "Hello, how are you?",
+  "model": "tinydolphin:latest",
+  "temperature": 0.7,
+  "max_tokens": 500,
+  "use_mcp": false,
+  "available_tools": ""
+}
+```
+
 **Response (200)**:
 ```json
 {
@@ -321,6 +337,22 @@ Content-Type: application/json
 ```http
 POST /api/chat/mcp
 Content-Type: application/json
+
+{
+  "message": "Search for documents about machine learning",
+  "model": "tinydolphin:latest",
+  "temperature": 0.7,
+  "max_tokens": 500,
+  "use_mcp": true,
+  "available_tools": "*"
+}
+```
+
+#### MCP Chat Streaming
+```http
+POST /api/chat/mcp/stream
+Content-Type: application/json
+Accept: text/event-stream
 
 {
   "message": "Search for documents about machine learning",
