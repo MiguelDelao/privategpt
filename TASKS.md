@@ -14,6 +14,7 @@
 | Streaming Chat Support | ✅ Complete | 100% |
 | MCP Integration | ✅ Complete | 100% |
 | Advanced Chat Features | ✅ Complete | 95% |
+| Token Tracking & Context Management | ✅ Complete | 100% |
 | Developer Testing Interface | ✅ Complete | 100% |
 | RAG Functionality | 🔄 In Progress | 80% |
 | Production Gateway APIs | ✅ Complete | 95% |
@@ -82,6 +83,19 @@
 - [x] Model usage tracking and analytics
 - [x] Tool call execution history
 - [x] User session and authentication state
+- [x] **Token tracking with conversation-level aggregation (total_tokens)**
+- [x] **Message-level token counting for usage analytics**
+
+### Token Tracking & Context Management System (Jun 22, 2025)
+- [x] **ChatResponse dataclass with input/output/total token tracking**
+- [x] **Provider-specific token counting (tiktoken for OpenAI, estimation for Ollama)**
+- [x] **Real-time context limit validation before LLM requests**
+- [x] **ChatContextLimitError with detailed error messages and suggestions**
+- [x] **Conversation total_tokens field with running totals**
+- [x] **Database schema migration for token tracking support**
+- [x] **End-to-end token tracking from API to database**
+- [x] **HTTP 413 error responses with context limit information**
+- [x] **GATEWAY.md documentation updated with token tracking API contract**
 
 ### Developer Testing Interface
 - [x] Simplified single-page dashboard
@@ -180,8 +194,8 @@
 - **~~Session Management~~**: ✅ Token persistence with verification on load
 
 ### Database Layer  
-- **SQLAlchemy Async Issues**: Some conversation creation may have async session management issues
-- **Migration Strategy**: Need proper database schema migration approach
+- **SQLAlchemy Async Issues**: ✅ **Fixed** - Conversation creation working with token tracking
+- **Schema Updates**: ✅ **Completed** - Manual migration for total_tokens field
 - **Connection Pooling**: Database connections not optimally managed
 
 ### Performance

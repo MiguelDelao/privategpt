@@ -10,14 +10,15 @@ This document serves as the definitive API contract between the PrivateGPT backe
 
 1. [Authentication & Authorization](#authentication--authorization)
 2. [Chat & Conversations](#chat--conversations)
-3. [Model Management](#model-management)
-4. [Tool Management](#tool-management)
-5. [Document & RAG Management](#document--rag-management)
-6. [Admin & Settings](#admin--settings)
-7. [Real-time & Streaming](#real-time--streaming)
-8. [Error Handling](#error-handling)
-9. [Data Models](#data-models)
-10. [Frontend Implementation Guidelines](#frontend-implementation-guidelines)
+3. [Token Tracking & Usage Analytics](#token-tracking--usage-analytics)
+4. [Model Management](#model-management)
+5. [Tool Management](#tool-management)
+6. [Document & RAG Management](#document--rag-management)
+7. [Admin & Settings](#admin--settings)
+8. [Real-time & Streaming](#real-time--streaming)
+9. [Error Handling](#error-handling)
+10. [Data Models](#data-models)
+11. [Frontend Implementation Guidelines](#frontend-implementation-guidelines)
 
 ---
 
@@ -25,7 +26,7 @@ This document serves as the definitive API contract between the PrivateGPT backe
 
 ### Authentication Flow
 
-**Current Status**: Authentication is temporarily disabled for debugging. Enable via `DISABLE_AUTH=false` environment variable.
+**Current Status**: Authentication is **temporarily disabled** for debugging and development. Most chat endpoints use a demo user (ID: 1) for testing. Auth can be re-enabled by removing the debug comments in `gateway/main.py`.
 
 #### Login
 ```http
@@ -107,8 +108,10 @@ interface AuthState {
 ### Core Chat Architecture
 
 PrivateGPT uses a conversation-based chat system where:
-- **Conversations** are persistent chat sessions with metadata
-- **Messages** belong to conversations and include rich content (text, tool calls, thinking)
+- **Conversations** are persistent chat sessions with metadata and token tracking
+- **Messages** belong to conversations and include rich content (text, tool calls, thinking) with individual token counts
+- **Token Tracking** monitors usage at both message and conversation levels for analytics and billing
+- **Context Management** enforces model context limits and provides clear error messages when exceeded
 - **Streaming** is supported for real-time response generation
 - **Tool Integration** allows AI to execute tools and display results
 
@@ -145,7 +148,8 @@ Content-Type: application/json
   },
   "created_at": "2024-12-20T10:30:00Z",
   "updated_at": "2024-12-20T10:30:00Z",
-  "message_count": 0
+  "message_count": 0,
+  "total_tokens": 0
 }
 ```
 
@@ -166,26 +170,23 @@ Authorization: Bearer {access_token}
 
 **Response (200)**:
 ```json
-{
-  "conversations": [
-    {
-      "id": "conv_uuid",
-      "title": "Chat about AI",
-      "status": "active",
-      "model_name": "tinydolphin:latest",
-      "system_prompt": "You are a helpful assistant.",
-      "data": {},
-      "created_at": "2024-12-20T10:30:00Z",
-      "updated_at": "2024-12-20T10:35:00Z",
-      "message_count": 5,
-      "last_message_at": "2024-12-20T10:35:00Z",
-      "preview": "Latest message preview..."
-    }
-  ],
-  "total": 150,
-  "has_more": true
-}
+[
+  {
+    "id": "conv_uuid",
+    "title": "Chat about AI",
+    "status": "active",
+    "model_name": "tinydolphin:latest",
+    "system_prompt": "You are a helpful assistant.",
+    "data": {},
+    "created_at": "2024-12-20T10:30:00Z",
+    "updated_at": "2024-12-20T10:35:00Z",
+    "message_count": 5,
+    "total_tokens": 1250
+  }
+]
 ```
+
+**Note**: Returns array directly. Pagination metadata not implemented in current version.
 
 #### Get Conversation
 ```http
@@ -218,6 +219,116 @@ Authorization: Bearer {access_token}
 
 **Response (204)**: No content
 
+---
+
+## Token Tracking & Usage Analytics
+
+### Overview
+
+PrivateGPT implements comprehensive token tracking to monitor usage at both message and conversation levels. This enables usage analytics, billing, and context management.
+
+### Key Features
+
+- **Message-level token counting**: Each message stores its token count
+- **Conversation-level aggregation**: Running total of all tokens used in a conversation
+- **Context limit validation**: Prevents exceeding model context windows
+- **Real-time token usage**: Returns actual token counts from LLM APIs
+- **Provider-specific counting**: Uses appropriate tokenization for each LLM provider
+
+### Token Information in Responses
+
+All chat responses include detailed token usage information:
+
+```json
+{
+  "conversation_id": "conv_uuid",
+  "message": {
+    "id": "msg_user_uuid",
+    "conversation_id": "conv_uuid", 
+    "role": "user",
+    "content": "Hello! What can you help me with?",
+    "token_count": 15,
+    "created_at": "2024-12-20T10:40:00Z"
+  },
+  "response": {
+    "id": "msg_assistant_uuid",
+    "conversation_id": "conv_uuid",
+    "role": "assistant", 
+    "content": "Hello! I'm here to help you with a wide variety of tasks...",
+    "token_count": 28,
+    "data": {
+      "model": "tinyllama:1.1b",
+      "input_tokens": 15,
+      "output_tokens": 28, 
+      "total_tokens": 43,
+      "response_time_ms": 1250
+    },
+    "created_at": "2024-12-20T10:40:03Z"
+  }
+}
+```
+
+### Context Limit Management
+
+When a conversation approaches or exceeds the model's context limit, the API returns detailed error information:
+
+#### Context Limit Exceeded Error (HTTP 413)
+```json
+{
+  "detail": {
+    "error": "context_limit_exceeded",
+    "message": "Adding this message would exceed context limit. Current conversation: 3800 tokens, new message: 250 tokens, total would be 4050 tokens, but model tinyllama:1.1b only supports 4096 tokens.",
+    "current_tokens": 3800,
+    "limit": 4096,
+    "model_name": "tinyllama:1.1b",
+    "suggestions": [
+      "Start a new conversation",
+      "Use a model with larger context (current: 4096 tokens)",
+      "Shorten your message"
+    ]
+  }
+}
+```
+
+### Token Tracking in Conversations
+
+Conversations maintain a running total of all tokens used:
+
+```json
+{
+  "id": "conv_uuid",
+  "title": "AI Discussion",
+  "status": "active",
+  "model_name": "tinyllama:1.1b",
+  "total_tokens": 1547,
+  "message_count": 12,
+  "created_at": "2024-12-20T10:30:00Z",
+  "updated_at": "2024-12-20T10:45:00Z"
+}
+```
+
+### Debug Endpoints (Development Only)
+
+For testing and debugging token tracking:
+
+#### Test Token Tracking
+```http
+GET /test-token-system/{conversation_id}
+```
+
+**Response (200)**:
+```json
+{
+  "success": true,
+  "conversation_id": "conv_uuid",
+  "user_tokens": 15,
+  "assistant_tokens": 28,
+  "assistant_content": "Hello! I'm here to help you..."
+}
+```
+
+---
+
 ### Message Management
 
 #### List Messages
@@ -236,53 +347,39 @@ Authorization: Bearer {access_token}
 
 **Response (200)**:
 ```json
-{
-  "messages": [
-    {
-      "id": "msg_uuid",
-      "conversation_id": "conv_uuid",
-      "role": "user",
-      "content": "What is machine learning?",
-      "raw_content": null,
-      "token_count": 15,
-      "data": {},
-      "created_at": "2024-12-20T10:30:00Z",
-      "updated_at": "2024-12-20T10:30:00Z"
+[
+  {
+    "id": "msg_uuid",
+    "conversation_id": "conv_uuid",
+    "role": "user",
+    "content": "What is machine learning?",
+    "raw_content": null,
+    "token_count": 15,
+    "data": {},
+    "created_at": "2024-12-20T10:30:00Z",
+    "updated_at": "2024-12-20T10:30:00Z"
+  },
+  {
+    "id": "msg_uuid_2",
+    "conversation_id": "conv_uuid",
+    "role": "assistant", 
+    "content": "Machine learning is a subset of artificial intelligence...",
+    "raw_content": null,
+    "token_count": 150,
+    "data": {
+      "model": "tinyllama:1.1b",
+      "input_tokens": 15,
+      "output_tokens": 150,
+      "total_tokens": 165,
+      "response_time_ms": 1250
     },
-    {
-      "id": "msg_uuid_2",
-      "conversation_id": "conv_uuid",
-      "role": "assistant",
-      "content": "Machine learning is a subset of artificial intelligence...",
-      "raw_content": "<thinking>The user is asking about ML basics...</thinking>\n\nMachine learning is...",
-      "token_count": 150,
-      "thinking_content": "The user is asking about ML basics...",
-      "tool_calls": [
-        {
-          "id": "tool_call_uuid",
-          "tool_name": "search_documents",
-          "arguments": {
-            "query": "machine learning definition",
-            "limit": 5
-          },
-          "result": "{\n  \"results\": [...]\n}",
-          "success": true,
-          "execution_time_ms": 250
-        }
-      ],
-      "data": {
-        "model_used": "tinydolphin:latest",
-        "temperature": 0.7,
-        "response_time_ms": 1250
-      },
-      "created_at": "2024-12-20T10:30:05Z",
-      "updated_at": "2024-12-20T10:30:05Z"
-    }
-  ],
-  "total": 2,
-  "has_more": false
-}
+    "created_at": "2024-12-20T10:30:05Z",
+    "updated_at": "2024-12-20T10:30:05Z"
+  }
+]
 ```
+
+**Note**: Returns array directly. Tool calls and thinking content not yet implemented in current version.
 
 ### Direct Chat (Stateless)
 
@@ -323,15 +420,13 @@ Accept: text/event-stream
 ```json
 {
   "text": "Hello! I'm doing well, thank you for asking. How can I help you today?",
-  "model": "tinydolphin:latest",
+  "model": "tinyllama:1.1b",
   "response_time_ms": 1250.5,
-  "tools_used": false,
-  "token_count": {
-    "input": 15,
-    "output": 28
-  }
+  "tools_used": false
 }
 ```
+
+**Note**: Direct chat responses in current implementation don't include token counts. Use conversation chat for token tracking.
 
 #### MCP Chat (With Tools)
 ```http
@@ -418,32 +513,27 @@ Content-Type: application/json
     "conversation_id": "conv_uuid",
     "role": "user",
     "content": "Explain quantum computing",
-    "created_at": "2024-12-20T10:40:00Z"
+    "raw_content": null,
+    "token_count": 25,
+    "data": {},
+    "created_at": "2024-12-20T10:40:00Z",
+    "updated_at": "2024-12-20T10:40:00Z"
   },
   "response": {
     "id": "msg_assistant_uuid",
     "conversation_id": "conv_uuid",
     "role": "assistant",
     "content": "Quantum computing is a revolutionary computing paradigm...",
-    "thinking_content": "The user wants to understand quantum computing basics...",
-    "tool_calls": [
-      {
-        "tool_name": "search_documents",
-        "arguments": {
-          "query": "quantum computing basics",
-          "limit": 3
-        },
-        "result": "{\n  \"results\": [...]\n}",
-        "success": true,
-        "execution_time_ms": 320
-      }
-    ],
+    "raw_content": null,
+    "token_count": 185,
     "data": {
-      "model_used": "tinydolphin:latest",
-      "temperature": 0.8,
-      "response_time_ms": 2500
+      "model": "tinyllama:1.1b",
+      "input_tokens": 25,
+      "output_tokens": 185,
+      "total_tokens": 210
     },
-    "created_at": "2024-12-20T10:40:03Z"
+    "created_at": "2024-12-20T10:40:03Z",
+    "updated_at": "2024-12-20T10:40:03Z"
   }
 }
 ```
@@ -1150,10 +1240,16 @@ Authorization: Bearer {access_token}
   "llm": {
     "provider": "ollama",
     "base_url": "http://ollama:11434",
-    "default_model": "tinydolphin:latest",
+    "default_model": "tinyllama:1.1b",
     "max_tokens": 2000,
     "temperature": 0.7,
-    "timeout_seconds": 180
+    "timeout_seconds": 180,
+    "recommended_models": [
+      "tinyllama:1.1b",
+      "gemma2:2b",
+      "phi3:mini"
+    ],
+    "note": "Use lighter models like tinyllama:1.1b for development due to memory constraints"
   },
   "rag": {
     "embedding_model": "BAAI/bge-small-en-v1.5",
@@ -1371,6 +1467,7 @@ All API errors follow this format:
 | `UNSUPPORTED_FILE_TYPE` | File type not supported |
 | `PROCESSING_FAILED` | Document processing failed |
 | `MODEL_UNAVAILABLE` | LLM model not available |
+| `CONTEXT_LIMIT_EXCEEDED` | Conversation exceeds model context limit |
 | `TOOL_EXECUTION_FAILED` | MCP tool execution failed |
 | `SERVICE_UNAVAILABLE` | Backend service unavailable |
 | `QUOTA_EXCEEDED` | Usage quota exceeded |
@@ -1405,6 +1502,7 @@ interface Conversation {
   created_at: string;
   updated_at: string;
   message_count: number;
+  total_tokens: number;
   last_message_at?: string;
   preview?: string;
 }

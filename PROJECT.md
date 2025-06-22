@@ -3,7 +3,7 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
-**Current Phase**: Production-ready microservices system with multi-provider LLM support, streaming chat, MCP tool integration, and comprehensive configuration management. Authentication temporarily disabled for debugging. Multi-provider (Ollama, OpenAI, Anthropic) architecture with dynamic model discovery and routing.
+**Current Phase**: Production-ready microservices system with multi-provider LLM support, streaming chat, MCP tool integration, comprehensive token tracking system, and configuration management. Authentication temporarily disabled for debugging. Multi-provider (Ollama, OpenAI, Anthropic) architecture with dynamic model discovery and routing.
 
 ## Architecture
 
@@ -22,10 +22,11 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Port**: 8000
 - **Responsibilities**:
   - JWT token validation via Keycloak integration
-  - Conversation and message management
+  - Conversation and message management with token tracking
   - MCP (Model Context Protocol) client integration
   - System prompt management with XML parsing
   - User session and chat history persistence
+  - Real-time token usage monitoring and context limit management
 - **Authentication Endpoints**:
   - `POST /api/auth/login` - Email/password authentication
   - `POST /api/auth/verify` - Token verification
@@ -35,9 +36,10 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 
 **Key Components**:
 - `main.py`: FastAPI application with middleware stack
-- `api/chat_router.py`: Conversation and message endpoints with streaming support
+- `api/chat_router.py`: Conversation and message endpoints with streaming support and token tracking
 - `api/prompt_router.py`: System prompt management
-- `core/chat_service.py`: Conversation logic and LLM integration
+- `core/chat_service.py`: Conversation logic, LLM integration, and token management
+- `core/exceptions.py`: Custom exceptions including ChatContextLimitError
 - `core/mcp_client.py`: MCP client for tool execution
 - `core/xml_parser.py`: Thinking brackets and UI tag parsing
 - `core/prompt_manager.py`: Dynamic system prompt loading
@@ -72,6 +74,8 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Multi-Provider Architecture**: `core/model_registry.py` - Central registry managing Ollama, OpenAI, and Anthropic providers
 - **Provider Factory**: `core/provider_factory.py` - Dynamic provider creation from configuration
 - **Adapters**: Provider-specific implementations (`ollama_adapter.py`, `openai_adapter.py`, `anthropic_adapter.py`)
+- **Token Tracking**: `ChatResponse` dataclass with real-time token usage from all providers
+- **Context Management**: Provider-specific context limits and validation (`get_context_limit()`, `count_tokens()`)
 - **Model Discovery**: Automatic model discovery from all enabled providers with conflict resolution
 - **Request Routing**: Intelligent routing based on model names to appropriate providers
 - **Streaming Support**: Server-Sent Events across all providers with 600s timeout
