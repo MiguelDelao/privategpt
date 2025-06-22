@@ -73,16 +73,16 @@ class ModelResponse(BaseModel):
 async def generate(data: GenerateRequest):
     """Generate a single response to a prompt."""
     try:
-        kwargs = {k: v for k, v in data.model_dump().items() if v is not None and k not in ["prompt", "model"]}
+        kwargs = {k: v for k, v in data.model_dump().items() if v is not None and k not in ["messages", "model"]}
         model_name = data.model or settings.llm_default_model
         
         # Convert prompt to messages format for model registry
         messages = [{"role": "user", "content": data.prompt}]
-        text = await model_registry.chat(model_name, messages, **kwargs)
+        chat_response = await model_registry.chat(model_name, messages, **kwargs)
         
         return GenerateResponse(
-            text=text,
-            model=model_name
+            text=chat_response.content,
+            model=chat_response.model
         )
     except Exception as e:
         logger.error(f"Generate error: {e}")
@@ -129,10 +129,10 @@ async def chat(data: ChatRequest):
         model_name = data.model or settings.llm_default_model
         messages = [{"role": msg.role, "content": msg.content} for msg in data.messages]
         
-        text = await model_registry.chat(model_name, messages, **kwargs)
+        chat_response = await model_registry.chat(model_name, messages, **kwargs)
         return GenerateResponse(
-            text=text,
-            model=model_name
+            text=chat_response.content,
+            model=chat_response.model
         )
     except Exception as e:
         logger.error(f"Chat error: {e}")

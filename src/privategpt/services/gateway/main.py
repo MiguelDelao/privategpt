@@ -92,26 +92,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Authentication middleware for API routes - DISABLED FOR DEBUGGING
-print("AUTH MIDDLEWARE DISABLED FOR DEBUGGING")
-# app.add_middleware(
-#     KeycloakAuthMiddleware,
-#     protected_paths=["/api/"],
-#     excluded_paths=[
-#         "/health",
-#         "/docs", 
-#         "/openapi.json",
-#         "/api/auth/keycloak/config",
-#         "/api/auth/login",  # Login endpoint doesn't need auth
-#         "/api/auth/verify",  # Let the route handle auth
-#         "/api/users",  # User endpoints handle their own auth
-#         # Basic LLM endpoints for simple testing (TODO: add auth when core features work)
-#         "/api/llm/models",     # Model listing for basic connectivity testing
-#         "/api/llm/chat",       # Direct LLM chat for basic functionality testing
-#         "/api/chat/direct",    # Simple direct chat endpoint
-#         "/api/chat/mcp",       # Simple MCP chat endpoint
-#     ]
-# )
+# Authentication middleware for API routes
+from privategpt.shared.settings import settings
+if settings.disable_auth:
+    print("AUTH MIDDLEWARE DISABLED VIA DISABLE_AUTH=true")
+else:
+    print("AUTH MIDDLEWARE ENABLED")
+    app.add_middleware(
+        KeycloakAuthMiddleware,
+        protected_paths=["/api/"],
+        excluded_paths=[
+            "/health",
+            "/docs", 
+            "/openapi.json",
+            "/api/auth/keycloak/config",
+            "/api/auth/login",  # Login endpoint doesn't need auth
+            "/api/auth/verify",  # Let the route handle auth
+            "/api/users",  # User endpoints handle their own auth
+            # Test endpoints for debugging
+            "/api/test/",  # All test endpoints bypass auth
+        ]
+    )
 
 # Request logging middleware
 app.add_middleware(RequestLogMiddleware)

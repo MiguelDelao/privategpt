@@ -95,6 +95,7 @@ class _CoreSettings(BaseSettings):
     anthropic_model: str = Field("claude-3-5-sonnet-20241022", env="ANTHROPIC_MODEL")
     
     # KEYCLOAK / AUTHENTICATION -----------------------------------
+    disable_auth: bool = Field(False, env="DISABLE_AUTH")
     keycloak_url: str = Field("http://keycloak:8080", env="KEYCLOAK_URL")
     keycloak_realm: str = Field("privategpt", env="KEYCLOAK_REALM")
     keycloak_client_id: str = Field("privategpt-ui", env="KEYCLOAK_CLIENT_ID")

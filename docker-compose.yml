@@ -112,6 +112,7 @@ services:
       RAG_SERVICE_URL: http://rag-service:8000
       LLM_SERVICE_URL: http://llm-service:8000
       OLLAMA_URL: http://ollama:11434
+      DISABLE_AUTH: "true"  # Set to "false" to enable authentication
       SERVICE_NAME: gateway
     ports:
       - "8000:8000"
