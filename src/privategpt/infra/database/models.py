@@ -88,10 +88,11 @@ class Conversation(Base):
     id = Column(String(255), primary_key=True, index=True)  # UUID
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
-    status = Column(Enum(ConversationStatus), nullable=False, default=ConversationStatus.ACTIVE)
+    status = Column(String(20), nullable=False, default="active")
     model_name = Column(String(100), nullable=True)  # LLM model used
     system_prompt = Column(Text, nullable=True)  # Custom system prompt
     data = Column(JSON, nullable=True, default=dict)  # Conversation metadata
+    total_tokens = Column(Integer, nullable=False, default=0)  # Total tokens used in conversation
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

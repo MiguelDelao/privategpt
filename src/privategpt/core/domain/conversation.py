@@ -20,6 +20,7 @@ class Conversation:
     system_prompt: Optional[str] = None
     data: Dict[str, Any] = field(default_factory=dict)
     messages: List[Message] = field(default_factory=list)
+    total_tokens: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -28,13 +29,17 @@ class Conversation:
         self.messages.append(message)
         self.updated_at = datetime.utcnow()
     
+    def add_message_tokens(self, tokens: int) -> None:
+        """Add tokens to the conversation total"""
+        self.total_tokens += tokens
+    
     def get_message_count(self) -> int:
         """Get total number of messages in conversation"""
         return len(self.messages)
     
     def get_total_tokens(self) -> int:
-        """Calculate total tokens used in conversation"""
-        return sum(msg.token_count or 0 for msg in self.messages)
+        """Get total tokens used in conversation (from stored total)"""
+        return self.total_tokens
     
     def get_last_message(self) -> Optional[Message]:
         """Get the most recent message"""
