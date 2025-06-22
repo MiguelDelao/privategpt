@@ -18,6 +18,7 @@ from privategpt.infra.database.message_repository import SqlMessageRepository
 from privategpt.services.gateway.core.mcp_client import get_mcp_client, MCPClientError
 from privategpt.services.gateway.core.xml_parser import parse_ai_content
 from privategpt.services.gateway.core.prompt_manager import PromptManager
+from privategpt.services.gateway.core.exceptions import ChatContextLimitError
 from privategpt.services.llm.core.model_registry import get_model_registry
 from privategpt.shared.settings import settings
 
@@ -58,6 +59,47 @@ class ChatService:
         
         return await self.conversation_repo.create(conversation)
     
+    async def _ensure_user_exists(self, user_id: int) -> None:
+        """Ensure user exists in database for foreign key constraint"""
+        # For debugging with auth disabled, we'll just use user_id=1
+        # In production, proper users would exist from the auth system
+        if user_id == 1:
+            from sqlalchemy import select, text
+            from privategpt.infra.database.models import User
+            
+            # Use raw SQL to avoid session management issues
+            try:
+                result = await self.session.execute(
+                    text("SELECT id FROM users WHERE id = :user_id"), 
+                    {"user_id": user_id}
+                )
+                existing_user = result.scalar_one_or_none()
+                
+                if not existing_user:
+                    # Create demo user with raw SQL
+                    await self.session.execute(
+                        text("""
+                            INSERT INTO users (id, keycloak_id, email, username, first_name, last_name, role, is_active, created_at, updated_at)
+                            VALUES (:user_id, :keycloak_id, :email, :username, :first_name, :last_name, :role, :is_active, :created_at, :updated_at)
+                        """),
+                        {
+                            "user_id": user_id,
+                            "keycloak_id": f"demo-user-{user_id}",
+                            "email": "admin@admin.com",
+                            "username": "admin",
+                            "first_name": "Demo",
+                            "last_name": "User",
+                            "role": "admin",
+                            "is_active": True,
+                            "created_at": datetime.utcnow(),
+                            "updated_at": datetime.utcnow()
+                        }
+                    )
+                    logger.info(f"Created demo user {user_id} for testing")
+            except Exception as e:
+                # User might already exist from another request, ignore the error
+                logger.debug(f"User creation may have failed (user might exist): {e}")
+    
     async def get_conversation(self, conversation_id: str, user_id: int) -> Optional[Conversation]:
         """Get a conversation, ensuring user owns it"""
         conversation = await self.conversation_repo.get(conversation_id)
@@ -83,45 +125,62 @@ class ChatService:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
     ) -> tuple[Message, Message]:
-        """Send a message and get LLM response"""
+        """Send a message and get LLM response with token tracking"""
         
         # Verify conversation exists and user owns it
         conversation = await self.get_conversation(conversation_id, user_id)
         if not conversation:
             raise ValueError("Conversation not found or access denied")
         
-        # Create user message
-        user_message = Message(
-            id=str(uuid.uuid4()),
-            conversation_id=conversation_id,
-            role="user",
-            content=message_content,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
+        # Determine model to use
+        model_to_use = model_name or conversation.model_name or settings.ollama_model
         
-        user_message = await self.message_repo.create(user_message)
+        # Get context limit for the model
+        context_limit = await self.model_registry.get_context_limit(model_to_use)
         
-        # Get conversation context (recent messages)
-        recent_messages = await self.message_repo.get_latest_by_conversation(
-            conversation_id, count=20
-        )
+        # Get provider for token estimation
+        provider_name = self.model_registry.get_provider_for_model(model_to_use)
+        if not provider_name:
+            raise ValueError(f"Model {model_to_use} not available from any provider")
+        provider = self.model_registry.providers[provider_name]
         
-        # Get appropriate system prompt
+        # Estimate tokens for new user message
+        user_message_tokens = provider.count_tokens(message_content, model_to_use)
+        
+        # Get system prompt and estimate its tokens
         system_prompt = await self.prompt_manager.get_prompt_for_model(
-            model_name or conversation.model_name or settings.ollama_model,
-            conversation_id
+            model_to_use, conversation_id
+        )
+        system_prompt_tokens = 0
+        if system_prompt:
+            system_prompt_tokens = provider.count_tokens(system_prompt, model_to_use)
+        
+        # Reserve tokens for response
+        response_reserve = 1000
+        
+        # Check if adding this message would exceed context limit
+        total_estimated_tokens = (
+            conversation.total_tokens +
+            user_message_tokens +
+            system_prompt_tokens +
+            response_reserve
         )
         
-        # Get MCP tools if enabled
-        tools = []
-        if settings.mcp_enabled:
-            try:
-                if not self.mcp_client:
-                    self.mcp_client = await get_mcp_client()
-                tools = self.mcp_client.format_tools_for_ollama()
-            except MCPClientError as e:
-                logger.warning(f"MCP not available: {e}")
+        if total_estimated_tokens > context_limit:
+            raise ChatContextLimitError(
+                f"Adding this message would exceed context limit. "
+                f"Current conversation: {conversation.total_tokens} tokens, "
+                f"new message: {user_message_tokens} tokens, "
+                f"system prompt: {system_prompt_tokens} tokens, "
+                f"total would be {total_estimated_tokens} tokens, "
+                f"but model {model_to_use} only supports {context_limit} tokens.",
+                current_tokens=conversation.total_tokens,
+                limit=context_limit,
+                model_name=model_to_use
+            )
+        
+        # Get all conversation messages for context
+        all_messages = await self.message_repo.get_by_conversation(conversation_id)
         
         # Prepare messages for LLM
         llm_messages = []
@@ -131,8 +190,8 @@ class ChatService:
                 "content": system_prompt
             })
         
-        # Add recent conversation history
-        for msg in recent_messages:
+        # Add conversation history
+        for msg in all_messages:
             llm_messages.append({
                 "role": msg.role,
                 "content": msg.content
@@ -146,31 +205,35 @@ class ChatService:
         
         # Call LLM through model registry
         try:
-            response_text = await self.model_registry.chat(
-                model_name=model_name or conversation.model_name or settings.ollama_model,
+            chat_response = await self.model_registry.chat(
+                model_name=model_to_use,
                 messages=llm_messages,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            
-            llm_response = {
-                "text": response_text,
-                "model": model_name or conversation.model_name or settings.ollama_model,
-                "response_time_ms": 0  # TODO: Add timing
-            }
         except Exception as e:
             logger.error(f"LLM request failed: {e}")
             raise Exception(f"Failed to get response from LLM: {e}")
         
-        # TODO: Tool calls will be handled by MCP integration in future updates
-        
         # Parse AI response content
         parsed_content = parse_ai_content(
-            llm_response["text"], 
+            chat_response.content, 
             settings.enable_thinking_mode
         )
         
-        # Create assistant message
+        # Create user message with actual input tokens (from chat response)
+        user_message = Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation_id,
+            role="user",
+            content=message_content,
+            token_count=user_message_tokens,  # Use estimation for user message
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        user_message = await self.message_repo.create(user_message)
+        
+        # Create assistant message with actual output tokens
         assistant_message = Message(
             id=str(uuid.uuid4()),
             conversation_id=conversation_id,
@@ -178,19 +241,21 @@ class ChatService:
             content=parsed_content.processed_content,
             raw_content=parsed_content.raw_content,
             thinking_content=parsed_content.thinking_content,
+            token_count=chat_response.output_tokens,
             data={
-                "model": llm_response["model"],
-                "response_time_ms": llm_response.get("response_time_ms"),
-                "ui_tags": parsed_content.ui_tags,
-                "has_tool_calls": "tool_calls" in llm_response
+                "model": chat_response.model,
+                "input_tokens": chat_response.input_tokens,
+                "output_tokens": chat_response.output_tokens,
+                "total_tokens": chat_response.total_tokens,
+                "ui_tags": parsed_content.ui_tags
             },
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
-        
         assistant_message = await self.message_repo.create(assistant_message)
         
-        # Update conversation timestamp
+        # Update conversation with actual token usage and timestamp
+        conversation.add_message_tokens(chat_response.total_tokens)
         conversation.updated_at = datetime.utcnow()
         await self.conversation_repo.update(conversation)
         
