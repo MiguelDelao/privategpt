@@ -30,8 +30,14 @@ logger = logging.getLogger(__name__)
 async def get_user_safe(request: Request) -> Dict[str, Any]:
     """Get current user, handling auth disabled case"""
     try:
-        return await get_current_user(request)
-    except HTTPException:
+        # Check if auth middleware set user in request state
+        user = getattr(request.state, 'user', None)
+        if user:
+            return user
+        else:
+            # Auth is disabled, return dummy user
+            return {"user_id": None, "email": "admin@admin.com", "username": "admin"}
+    except Exception:
         # Auth is disabled, return dummy user
         return {"user_id": None, "email": "admin@admin.com", "username": "admin"}
 
@@ -201,16 +207,18 @@ async def create_conversation(
 
 @router.get("/conversations", response_model=List[ConversationResponse])
 async def list_conversations(
+    request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     status_filter: Optional[str] = Query(None, pattern="^(active|archived|deleted)$"),
-    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """List user's conversations"""
     chat_service = ChatService(session)
     
     try:
+        # Get user safely (handles auth disabled case)
+        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -241,13 +249,15 @@ async def list_conversations(
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(
     conversation_id: str,
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Get a specific conversation"""
     chat_service = ChatService(session)
     
     try:
+        # Get user safely (handles auth disabled case)
+        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -274,13 +284,15 @@ async def get_conversation(
 async def update_conversation(
     conversation_id: str,
     update_data: ConversationUpdate,
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Update a conversation"""
     chat_service = ChatService(session)
     
     try:
+        # Get user safely (handles auth disabled case)
+        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -324,13 +336,15 @@ async def update_conversation(
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
     conversation_id: str,
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Delete a conversation"""
     chat_service = ChatService(session)
     
     try:
+        # Get user safely (handles auth disabled case)
+        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -355,13 +369,15 @@ async def list_messages(
     conversation_id: str,
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Get messages for a conversation"""
     chat_service = ChatService(session)
     
     try:
+        # Get user safely (handles auth disabled case)
+        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -397,13 +413,15 @@ async def list_messages(
 async def create_message(
     conversation_id: str,
     message_data: MessageCreate,
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Add a message to a conversation"""
     chat_service = ChatService(session)
     
     try:
+        # Get user safely (handles auth disabled case)
+        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -530,7 +548,7 @@ async def chat_with_conversation(
 async def stream_chat_with_conversation(
     conversation_id: str,
     chat_request: ChatRequest,
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Stream chat response for a conversation"""
@@ -539,6 +557,8 @@ async def stream_chat_with_conversation(
         chat_service = ChatService(session)
         
         try:
+            # Get user safely (handles auth disabled case)
+            user = await get_user_safe(request)
             # Ensure user exists in database (auto-create if needed)
             user_id = await ensure_user_exists(session, user)
             
@@ -583,7 +603,7 @@ async def stream_chat_with_conversation(
 @router.post("/quick-chat", response_model=ChatResponse)
 async def quick_chat(
     chat_request: ChatRequest,
-    user: Dict[str, Any] = Depends(get_current_user),
+    request: Request,
     session: AsyncSession = Depends(get_async_session)
 ):
     """Quick chat that automatically creates a conversation"""
@@ -595,7 +615,17 @@ async def quick_chat(
     raise HTTPException(status_code=501, detail="Quick chat implementation pending")
 
 
-# Test endpoint for token tracking - NO AUTH
+# Test endpoints for debugging - NO AUTH
+@router.get("/debug/conversations")
+async def debug_list_conversations(session: AsyncSession = Depends(get_async_session)):
+    """Debug conversations list without auth"""
+    chat_service = ChatService(session)
+    try:
+        conversations = await chat_service.list_user_conversations(user_id=1, limit=50, offset=0)
+        return [{"id": c.id, "title": c.title, "status": c.status} for c in conversations]
+    finally:
+        await chat_service.close()
+
 @router.post("/conversations/{conversation_id}/test-chat")
 async def test_chat_with_conversation(
     conversation_id: str,
