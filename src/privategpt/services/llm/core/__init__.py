@@ -24,12 +24,22 @@ class ModelInfo:
             self.capabilities = []
 
 
+@dataclass
+class ChatResponse:
+    """Response from LLM chat with token usage information"""
+    content: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
 class LLMPort(Protocol):
     async def get_available_models(self) -> List[ModelInfo]:
         """Get list of models available from this provider."""
         ...
     
-    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> str:
+    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> ChatResponse:
         """Generate response for a conversation using specified model."""
         ...
         
@@ -55,4 +65,12 @@ class LLMPort(Protocol):
     
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable this provider."""
+        ...
+    
+    def count_tokens(self, text: str, model_name: str) -> int:
+        """Count tokens for this provider's tokenization (for estimation only)."""
+        ...
+    
+    async def get_context_limit(self, model_name: str) -> int:
+        """Get context limit for a specific model."""
         ... 

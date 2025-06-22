@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Optional, AsyncIterator, Any
 from datetime import datetime
 
-from privategpt.services.llm.core import LLMPort, ModelInfo
+from privategpt.services.llm.core import LLMPort, ModelInfo, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class ModelRegistry:
         """Get the provider name that handles the specified model."""
         return self.model_to_provider.get(model_name)
     
-    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> str:
+    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> ChatResponse:
         """Route a chat request to the appropriate provider."""
         provider_name = self.get_provider_for_model(model_name)
         if not provider_name:
@@ -215,6 +215,25 @@ class ModelRegistry:
             "total_models": len(self.model_to_provider),
             "last_refresh": self.last_refresh.isoformat() if self.last_refresh else None
         }
+    
+    async def get_context_limit(self, model_name: str) -> int:
+        """Get context limit for a specific model."""
+        provider_name = self.get_provider_for_model(model_name)
+        if not provider_name:
+            # Try refreshing models in case it's a new model
+            await self.refresh_models()
+            provider_name = self.get_provider_for_model(model_name)
+            
+        if not provider_name:
+            # Fallback to conservative default
+            return 4096
+            
+        provider = self.providers[provider_name]
+        try:
+            return await provider.get_context_limit(model_name)
+        except Exception as e:
+            logger.warning(f"Failed to get context limit for {model_name}: {e}")
+            return 4096
 
 
 # Global registry instance
