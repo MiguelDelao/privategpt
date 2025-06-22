@@ -9,8 +9,8 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY src/privategpt_ui/sandbox-ui/package*.json ./
 
-# Install dependencies as root first
-RUN npm ci --no-fund --no-audit
+# Install dependencies with legacy peer deps for compatibility
+RUN npm install --legacy-peer-deps --no-fund --no-audit
 
 # Copy source code before changing ownership
 COPY src/privategpt_ui/sandbox-ui .

@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build
+.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build build-ui dev-ui restart-ui start-ui-only stop-ui rebuild-ui start-with-nextjs logs-nextjs ui-shell ui-install ui-clean
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -28,8 +28,16 @@ help:
 	@echo ""
 	@echo "UI Development:"
 	@echo "make build-ui - Build Next.js UI service"
-	@echo "make dev-ui - Start development UI with hot reload"
+	@echo "make dev-ui - Start full development environment with UI"
+	@echo "make restart-ui - Restart just the UI service"
+	@echo "make start-ui-only - Start only the UI container"
+	@echo "make stop-ui - Stop the UI service"
+	@echo "make rebuild-ui - Rebuild UI from scratch (no cache)"
 	@echo "make start-with-nextjs - Start system with Next.js UI as primary"
+	@echo "make logs-nextjs - Follow Next.js UI logs"
+	@echo "make ui-shell - Open shell in UI container"
+	@echo "make ui-install - Install/update UI dependencies"
+	@echo "make ui-clean - Clean and reinstall UI dependencies"
 	@echo ""
 	@echo "Logs:"
 	@echo "make logs - Show logs for all services"
@@ -394,13 +402,47 @@ hard-build:
 
 # Next.js UI Development Commands
 build-ui:
+	@echo "🔨 Building Next.js UI..."
 	$(DC) build nextjs-ui
 
 dev-ui:
-	$(DC) up --build nextjs-ui gateway-service llm-service db redis
+	@echo "🚀 Starting UI development environment..."
+	$(DC) up --build nextjs-ui gateway-service llm-service db redis keycloak
+
+restart-ui:
+	@echo "🔄 Restarting Next.js UI service..."
+	$(DC) restart nextjs-ui
+
+start-ui-only:
+	@echo "🖥️  Starting just the UI service..."
+	$(DC) up -d nextjs-ui
+
+stop-ui:
+	@echo "⏹️  Stopping UI service..."
+	$(DC) stop nextjs-ui
+
+rebuild-ui:
+	@echo "🔄 Rebuilding UI from scratch..."
+	$(DC) build --no-cache nextjs-ui
+	$(DC) up -d nextjs-ui
 
 start-with-nextjs:
-	$(DC) up -d db keycloak gateway-service llm-service nextjs-ui
+	@echo "🚀 Starting system with Next.js UI..."
+	$(DC) up -d db keycloak-db keycloak redis ollama gateway-service llm-service rag-service nextjs-ui
 
 logs-nextjs:
+	@echo "📋 Next.js UI logs:"
 	$(DC) logs -f nextjs-ui
+
+ui-shell:
+	@echo "🐚 Opening shell in UI container..."
+	$(DC) exec nextjs-ui sh
+
+ui-install:
+	@echo "📦 Installing UI dependencies..."
+	$(DC) exec nextjs-ui npm install
+
+ui-clean:
+	@echo "🧹 Cleaning UI node_modules and .next..."
+	$(DC) exec nextjs-ui rm -rf node_modules .next
+	$(DC) exec nextjs-ui npm install
