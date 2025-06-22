@@ -6,7 +6,7 @@ from typing import AsyncIterator, Dict, Any, List, Optional
 
 import httpx
 from datetime import datetime
-from privategpt.services.llm.core import LLMPort, ModelInfo
+from privategpt.services.llm.core import LLMPort, ModelInfo, ChatResponse
 from privategpt.shared.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class OllamaAdapter(LLMPort):
         self.client = httpx.AsyncClient(timeout=timeout)
         
             
-    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> str:
+    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> ChatResponse:
         """Generate response for a conversation using specified model."""
         try:
             response = await self.client.post(
@@ -43,7 +43,19 @@ class OllamaAdapter(LLMPort):
             )
             response.raise_for_status()
             result = response.json()
-            return result.get("message", {}).get("content", "")
+            
+            content = result.get("message", {}).get("content", "")
+            input_tokens = result.get("prompt_eval_count", 0)
+            output_tokens = result.get("eval_count", 0)
+            total_tokens = input_tokens + output_tokens
+            
+            return ChatResponse(
+                content=content,
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens
+            )
             
         except httpx.HTTPError as e:
             logger.error(f"Ollama chat error: {e}")
@@ -131,6 +143,30 @@ class OllamaAdapter(LLMPort):
         """Enable or disable this provider."""
         self.enabled = enabled
         logger.info(f"Ollama provider {'enabled' if enabled else 'disabled'}")
+    
+    def count_tokens(self, text: str, model_name: str) -> int:
+        """Count tokens for this provider's tokenization (estimation only)."""
+        # Ollama doesn't have a tokenization API, so we use a simple estimation
+        # Roughly 4 characters per token for most models
+        return len(text) // 4 + 1
+    
+    async def get_context_limit(self, model_name: str) -> int:
+        """Get context limit for a specific model."""
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/api/show",
+                json={"name": model_name}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                context_length = data.get("details", {}).get("context_length")
+                if context_length:
+                    return context_length
+        except Exception as e:
+            logger.warning(f"Failed to get context limit for {model_name}: {e}")
+        
+        # Fallback to conservative default
+        return 4096
             
     def _extract_parameter_size(self, model_name: str) -> Optional[str]:
         """Extract parameter size from model name (e.g., 'llama3.2:7b' -> '7B')."""

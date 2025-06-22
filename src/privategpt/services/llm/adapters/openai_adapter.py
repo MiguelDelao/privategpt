@@ -6,7 +6,7 @@ from typing import AsyncIterator, Dict, Any, List, Optional
 
 import httpx
 from datetime import datetime
-from privategpt.services.llm.core import LLMPort, ModelInfo
+from privategpt.services.llm.core import LLMPort, ModelInfo, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class OpenAIAdapter(LLMPort):
             }
         )
         
-    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> str:
+    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> ChatResponse:
         """Generate response for a conversation using specified model."""
         try:
             payload = {
@@ -53,9 +53,23 @@ class OpenAIAdapter(LLMPort):
             
             choices = result.get("choices", [])
             if not choices:
-                return ""
+                content = ""
+            else:
+                content = choices[0].get("message", {}).get("content", "")
             
-            return choices[0].get("message", {}).get("content", "")
+            # Extract token usage
+            usage = result.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+            
+            return ChatResponse(
+                content=content,
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens
+            )
             
         except httpx.HTTPError as e:
             logger.error(f"OpenAI chat error: {e}")
@@ -155,6 +169,37 @@ class OpenAIAdapter(LLMPort):
         """Enable or disable this provider."""
         self.enabled = enabled
         logger.info(f"OpenAI provider {'enabled' if enabled else 'disabled'}")
+    
+    def count_tokens(self, text: str, model_name: str) -> int:
+        """Count tokens for this provider's tokenization."""
+        try:
+            import tiktoken
+            encoding = tiktoken.encoding_for_model(model_name)
+            return len(encoding.encode(text))
+        except Exception:
+            # Fallback estimation if tiktoken not available
+            return len(text) // 4 + 1
+    
+    async def get_context_limit(self, model_name: str) -> int:
+        """Get context limit for a specific model."""
+        # Known OpenAI model context limits
+        context_limits = {
+            "gpt-4": 8192,
+            "gpt-4-turbo": 128000,
+            "gpt-4-turbo-preview": 128000,
+            "gpt-3.5-turbo": 4096,
+            "gpt-3.5-turbo-16k": 16384,
+            "o1-preview": 128000,
+            "o1-mini": 128000
+        }
+        
+        # Find exact match or partial match
+        for model_prefix, limit in context_limits.items():
+            if model_name.startswith(model_prefix):
+                return limit
+        
+        # Default fallback
+        return 4096
             
     def _extract_parameter_size(self, model_name: str) -> Optional[str]:
         """Extract parameter size from model name."""
