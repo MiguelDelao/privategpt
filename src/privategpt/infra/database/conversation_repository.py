@@ -56,10 +56,11 @@ class SqlConversationRepository(ConversationRepository):
             id=conversation.id,
             user_id=conversation.user_id,
             title=conversation.title,
-            status=ConversationStatus(conversation.status),
+            status=conversation.status,
             model_name=conversation.model_name,
             system_prompt=conversation.system_prompt,
             data=conversation.data,
+            total_tokens=conversation.total_tokens,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at
         )
@@ -84,10 +85,11 @@ class SqlConversationRepository(ConversationRepository):
         
         # Update fields
         db_conversation.title = conversation.title
-        db_conversation.status = ConversationStatus(conversation.status)
+        db_conversation.status = conversation.status
         db_conversation.model_name = conversation.model_name
         db_conversation.system_prompt = conversation.system_prompt
         db_conversation.data = conversation.data
+        db_conversation.total_tokens = conversation.total_tokens
         db_conversation.updated_at = conversation.updated_at
         
         try:
@@ -179,6 +181,7 @@ class SqlConversationRepository(ConversationRepository):
             system_prompt=db_conversation.system_prompt,
             data=db_conversation.data or {},
             messages=messages,
+            total_tokens=db_conversation.total_tokens,
             created_at=db_conversation.created_at,
             updated_at=db_conversation.updated_at
         )
