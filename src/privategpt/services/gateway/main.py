@@ -161,6 +161,12 @@ async def simple_test():
     return {"message": "This works!"}
 
 
+@app.get("/simple-debug/{test_id}")
+async def simple_debug(test_id: str):
+    """Simple debug endpoint."""
+    return {"test_id": test_id, "message": "Debug endpoint works!"}
+
+
 @app.get("/test-llm-direct")
 async def test_llm_direct():
     """Direct test of LLM service."""
@@ -171,6 +177,48 @@ async def test_llm_direct():
             return response.json()
         except Exception as e:
             return {"error": str(e)}
+
+
+@app.get("/test-token-system/{conversation_id}")
+async def test_token_system(conversation_id: str):
+    """Test the token tracking system end-to-end"""
+    from privategpt.infra.database.async_session import get_async_session_context
+    from privategpt.services.gateway.core.chat_service import ChatService
+    
+    try:
+        async with get_async_session_context() as session:
+            chat_service = ChatService(session)
+            
+            # Test sending a message
+            user_message, assistant_message = await chat_service.send_message(
+                conversation_id=conversation_id,
+                user_id=1,
+                message_content="Hello! What model are you?",
+                model_name="dolphin-phi:2.7b"
+            )
+            
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "user_message": {
+                    "id": user_message.id,
+                    "content": user_message.content,
+                    "token_count": user_message.token_count
+                },
+                "assistant_message": {
+                    "id": assistant_message.id,
+                    "content": assistant_message.content,
+                    "token_count": assistant_message.token_count,
+                    "data": assistant_message.data
+                }
+            }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 
 if __name__ == "__main__":
