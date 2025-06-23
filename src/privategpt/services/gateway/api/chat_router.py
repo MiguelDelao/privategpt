@@ -20,7 +20,12 @@ from fastapi import Depends
 from typing import Optional
 from privategpt.infra.database.async_session import get_async_session
 from privategpt.services.gateway.core.chat_service import ChatService
-from privategpt.services.gateway.core.exceptions import ChatContextLimitError
+from privategpt.services.gateway.core.exceptions import (
+    ChatContextLimitError,
+    ServiceUnavailableError,
+    ModelNotAvailableError,
+    ValidationError as ServiceValidationError
+)
 from privategpt.infra.database.models import User
 from sqlalchemy import select
 
@@ -525,26 +530,22 @@ async def chat_with_conversation(
             )
         )
     except ChatContextLimitError as e:
-        raise HTTPException(
-            status_code=413,  # Payload Too Large
-            detail={
-                "error": "context_limit_exceeded",
-                "message": str(e),
-                "current_tokens": e.current_tokens,
-                "limit": e.limit,
-                "model_name": e.model_name,
-                "suggestions": [
-                    "Start a new conversation",
-                    f"Use a model with larger context (current: {e.limit} tokens)",
-                    "Shorten your message"
-                ]
-            }
-        )
+        # Re-raise - will be handled by error handler
+        raise
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=str(e))
+        raise ServiceValidationError(message=str(e))
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process chat request")
+        # Try to determine more specific error type
+        error_msg = str(e).lower()
+        if "connection" in error_msg or "unavailable" in error_msg:
+            raise ServiceUnavailableError("LLM Service", str(e))
+        elif "model" in error_msg and "not" in error_msg:
+            raise ModelNotAvailableError(chat_request.model_name or "unknown")
+        # Generic error
+        raise
     finally:
         await chat_service.close()
 
@@ -804,10 +805,14 @@ async def direct_chat(chat_request: SimpleChatRequest):
             
     except httpx.HTTPError as e:
         logger.error(f"LLM service error: {e}")
-        raise HTTPException(status_code=503, detail="LLM service unavailable")
+        raise ServiceUnavailableError("LLM Service", f"HTTP error: {e}")
     except Exception as e:
         logger.error(f"Direct chat error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        # Check for specific error patterns
+        error_msg = str(e).lower()
+        if "model" in error_msg and ("not found" in error_msg or "not available" in error_msg):
+            raise ModelNotAvailableError(chat_request.model or "unknown")
+        raise
 
 
 @router.post("/mcp", response_model=SimpleChatResponse)
@@ -831,7 +836,7 @@ async def mcp_chat(chat_request: SimpleChatRequest):
         
     except Exception as e:
         logger.error(f"MCP chat error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise ServiceUnavailableError("MCP Service", str(e))
 
 
 @router.post("/direct/stream")
@@ -899,7 +904,16 @@ async def direct_chat_stream(chat_request: SimpleChatRequest):
                 
             except Exception as e:
                 logger.error(f"Direct chat stream error: {e}")
-                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                # Send error in streaming format
+                error_event = {
+                    'type': 'error',
+                    'error': {
+                        'type': 'stream_error',
+                        'message': 'Stream interrupted',
+                        'details': {'reason': str(e)}
+                    }
+                }
+                yield f"data: {json.dumps(error_event)}\n\n"
         
         return StreamingResponse(
             stream_generator(),
@@ -913,7 +927,7 @@ async def direct_chat_stream(chat_request: SimpleChatRequest):
         
     except Exception as e:
         logger.error(f"Direct chat stream setup error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise ServiceUnavailableError("Streaming Service", str(e))
 
 
 @router.post("/mcp/stream")
@@ -930,7 +944,7 @@ async def mcp_chat_stream(chat_request: SimpleChatRequest):
         
     except Exception as e:
         logger.error(f"MCP chat stream error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise ServiceUnavailableError("MCP Streaming Service", str(e))
 
 
 @router.post("/test-token-tracking/{conversation_id}")
