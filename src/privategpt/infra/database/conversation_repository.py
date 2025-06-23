@@ -20,7 +20,7 @@ class SqlConversationRepository(ConversationRepository):
         """Get conversation by ID"""
         stmt = (
             select(Conversation)
-            .options(selectinload(Conversation.messages))
+            .options(selectinload(Conversation.messages))  # Eager load messages to avoid lazy loading
             .where(Conversation.id == conversation_id)
         )
         result = await self.session.execute(stmt)
@@ -35,10 +35,11 @@ class SqlConversationRepository(ConversationRepository):
         """Get conversations for a specific user"""
         stmt = (
             select(Conversation)
+            .options(selectinload(Conversation.messages))  # Eager load messages to avoid lazy loading
             .where(
                 and_(
                     Conversation.user_id == user_id,
-                    Conversation.status != ConversationStatus.DELETED
+                    Conversation.status != ConversationStatus.DELETED.value
                 )
             )
             .order_by(desc(Conversation.updated_at))
@@ -131,11 +132,12 @@ class SqlConversationRepository(ConversationRepository):
         # Search in conversation titles and message content
         stmt = (
             select(Conversation)
+            .options(selectinload(Conversation.messages))  # Eager load messages to avoid lazy loading
             .outerjoin(Message)
             .where(
                 and_(
                     Conversation.user_id == user_id,
-                    Conversation.status != ConversationStatus.DELETED,
+                    Conversation.status != ConversationStatus.DELETED.value,
                     or_(
                         Conversation.title.ilike(f"%{query}%"),
                         Message.content.ilike(f"%{query}%")
@@ -156,27 +158,30 @@ class SqlConversationRepository(ConversationRepository):
         from privategpt.core.domain.message import Message as DomainMessage
         
         messages = []
-        if hasattr(db_conversation, 'messages') and db_conversation.messages:
-            messages = [
-                DomainMessage(
-                    id=msg.id,
-                    conversation_id=msg.conversation_id,
-                    role=msg.role.value,
-                    content=msg.content,
-                    raw_content=msg.raw_content,
-                    token_count=msg.token_count,
-                    data=msg.data or {},
-                    created_at=msg.created_at,
-                    updated_at=msg.updated_at
-                )
-                for msg in db_conversation.messages
-            ]
+        # Check if messages were eagerly loaded (to avoid lazy loading)
+        if hasattr(db_conversation, '__dict__') and 'messages' in db_conversation.__dict__:
+            # Messages were eagerly loaded, safe to access
+            if db_conversation.messages:
+                messages = [
+                    DomainMessage(
+                        id=msg.id,
+                        conversation_id=msg.conversation_id,
+                        role=msg.role.value,
+                        content=msg.content,
+                        raw_content=msg.raw_content,
+                        token_count=msg.token_count,
+                        data=msg.data or {},
+                        created_at=msg.created_at,
+                        updated_at=msg.updated_at
+                    )
+                    for msg in db_conversation.messages
+                ]
         
         return DomainConversation(
             id=db_conversation.id,
             user_id=db_conversation.user_id,
             title=db_conversation.title,
-            status=db_conversation.status.value,
+            status=db_conversation.status,  # Status is already a string, not an enum
             model_name=db_conversation.model_name,
             system_prompt=db_conversation.system_prompt,
             data=db_conversation.data or {},
