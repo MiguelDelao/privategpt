@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,19 +27,7 @@ from sqlalchemy import select
 logger = logging.getLogger(__name__)
 
 
-async def get_user_safe(request: Request) -> Dict[str, Any]:
-    """Get current user, handling auth disabled case"""
-    try:
-        # Check if auth middleware set user in request state
-        user = getattr(request.state, 'user', None)
-        if user:
-            return user
-        else:
-            # Auth is disabled, return dummy user
-            return {"user_id": None, "email": "admin@admin.com", "username": "admin"}
-    except Exception:
-        # Auth is disabled, return dummy user
-        return {"user_id": None, "email": "admin@admin.com", "username": "admin"}
+# Authentication helper functions removed - using proper auth dependencies now
 
 
 async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any]) -> int:
@@ -72,36 +60,54 @@ async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any])
         
         return 1
     
-    user_id = user_claims.get("user_id")
+    keycloak_user_id = user_claims.get("user_id")  # This is the Keycloak UUID from 'sub'
+    logger.info(f"Looking up user with keycloak_id: {keycloak_user_id}")
     
-    # Check if user exists
-    stmt = select(User).where(User.id == user_id)
+    # Check if user exists by keycloak_id
+    stmt = select(User).where(User.keycloak_id == keycloak_user_id)
     result = await session.execute(stmt)
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
+        logger.info(f"Found existing user: {existing_user.id} ({existing_user.email})")
         return existing_user.id
     
-    # Create new user
-    new_user = User(
-        id=user_id,
-        keycloak_id=user_claims.get("sub"),
-        email=user_claims.get("email"),
-        username=user_claims.get("preferred_username"),
-        first_name=user_claims.get("given_name"),
-        last_name=user_claims.get("family_name"),
-        role="user",
-        is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
-    
-    session.add(new_user)
-    await session.commit()
-    await session.refresh(new_user)
-    
-    logger.info(f"Created new user: {new_user.id} ({new_user.email})")
-    return new_user.id
+    # Create new user (let database auto-assign integer ID)
+    try:
+        new_user = User(
+            keycloak_id=keycloak_user_id,
+            email=user_claims.get("email"),
+            username=user_claims.get("preferred_username"),
+            first_name=user_claims.get("given_name"),
+            last_name=user_claims.get("family_name"),
+            role="user",
+            is_active=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        session.add(new_user)
+        await session.commit()
+        await session.refresh(new_user)
+        
+        logger.info(f"Created new user: {new_user.id} ({new_user.email})")
+        return new_user.id
+        
+    except Exception as e:
+        logger.error(f"Failed to create user: {e}")
+        await session.rollback()
+        
+        # Check if user was created by another request (race condition)
+        stmt = select(User).where(User.keycloak_id == keycloak_user_id)
+        result = await session.execute(stmt)
+        existing_user = result.scalar_one_or_none()
+        
+        if existing_user:
+            logger.info(f"User found after creation failure: {existing_user.id} ({existing_user.email})")
+            return existing_user.id
+        
+        # If still not found, re-raise the error
+        raise
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -173,56 +179,66 @@ class ChatResponse(BaseModel):
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     conversation_data: ConversationCreate,
-    session: AsyncSession = Depends(get_async_session)
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Create a new conversation"""
-    chat_service = ChatService(session)
+    from privategpt.infra.database.async_session import get_async_session_context
+    from privategpt.core.domain.conversation import Conversation
+    from privategpt.infra.database.conversation_repository import SqlConversationRepository
+    import uuid
+    from datetime import datetime
     
-    try:
-        # Use demo user ID 1 when auth is disabled
-        user_id = 1
+    async with get_async_session_context() as session:
+        # Ensure user exists in database (auto-create if needed)
+        user_id = await ensure_user_exists(session, user)
         
-        conversation = await chat_service.create_conversation(
+        # Create domain conversation
+        conversation = Conversation(
+            id=str(uuid.uuid4()),
             user_id=user_id,
             title=conversation_data.title,
+            status="active",
             model_name=conversation_data.model_name,
             system_prompt=conversation_data.system_prompt,
-            data=conversation_data.data
+            data=conversation_data.data,
+            total_tokens=0,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
         
+        repo = SqlConversationRepository(session)
+        created_conversation = await repo.create(conversation)
+        
         return ConversationResponse(
-            id=conversation.id,
-            title=conversation.title,
-            status=conversation.status,
-            model_name=conversation.model_name,
-            system_prompt=conversation.system_prompt,
-            data=conversation.data,
-            created_at=conversation.created_at,
-            updated_at=conversation.updated_at,
-            message_count=len(conversation.messages)
+            id=created_conversation.id,
+            title=created_conversation.title,
+            status=created_conversation.status,
+            model_name=created_conversation.model_name,
+            system_prompt=created_conversation.system_prompt,
+            data=created_conversation.data,
+            created_at=created_conversation.created_at,
+            updated_at=created_conversation.updated_at,
+            message_count=len(created_conversation.messages)
         )
-    finally:
-        await chat_service.close()
 
 
 @router.get("/conversations", response_model=List[ConversationResponse])
 async def list_conversations(
-    request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     status_filter: Optional[str] = Query(None, pattern="^(active|archived|deleted)$"),
-    session: AsyncSession = Depends(get_async_session)
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """List user's conversations"""
-    chat_service = ChatService(session)
+    from privategpt.infra.database.async_session import get_async_session_context
+    from privategpt.infra.database.conversation_repository import SqlConversationRepository
     
-    try:
-        # Get user safely (handles auth disabled case)
-        user = await get_user_safe(request)
+    async with get_async_session_context() as session:
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
-        conversations = await chat_service.list_user_conversations(
+        repo = SqlConversationRepository(session)
+        conversations = await repo.get_by_user(
             user_id=user_id,
             limit=limit,
             offset=offset
@@ -242,22 +258,18 @@ async def list_conversations(
             )
             for conv in conversations
         ]
-    finally:
-        await chat_service.close()
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(
     conversation_id: str,
-    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Get a specific conversation"""
     chat_service = ChatService(session)
     
     try:
-        # Get user safely (handles auth disabled case)
-        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -284,21 +296,22 @@ async def get_conversation(
 async def update_conversation(
     conversation_id: str,
     update_data: ConversationUpdate,
-    request: Request,
-    session: AsyncSession = Depends(get_async_session)
+    user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Update a conversation"""
-    chat_service = ChatService(session)
+    from privategpt.infra.database.async_session import get_async_session_context
+    from privategpt.infra.database.conversation_repository import SqlConversationRepository
+    from datetime import datetime
     
-    try:
-        # Get user safely (handles auth disabled case)
-        user = await get_user_safe(request)
+    async with get_async_session_context() as session:
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
+        repo = SqlConversationRepository(session)
+        
         # Get existing conversation
-        conversation = await chat_service.get_conversation(conversation_id, user_id)
-        if not conversation:
+        conversation = await repo.get(conversation_id)
+        if not conversation or conversation.user_id != user_id:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
         # Update fields if provided
@@ -316,7 +329,7 @@ async def update_conversation(
         conversation.updated_at = datetime.utcnow()
         
         # Update in database
-        updated_conversation = await chat_service.conversation_repo.update(conversation)
+        updated_conversation = await repo.update(conversation)
         
         return ConversationResponse(
             id=updated_conversation.id,
@@ -329,22 +342,18 @@ async def update_conversation(
             updated_at=updated_conversation.updated_at,
             message_count=len(updated_conversation.messages)
         )
-    finally:
-        await chat_service.close()
 
 
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
     conversation_id: str,
-    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Delete a conversation"""
     chat_service = ChatService(session)
     
     try:
-        # Get user safely (handles auth disabled case)
-        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -369,15 +378,13 @@ async def list_messages(
     conversation_id: str,
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Get messages for a conversation"""
     chat_service = ChatService(session)
     
     try:
-        # Get user safely (handles auth disabled case)
-        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -413,15 +420,13 @@ async def list_messages(
 async def create_message(
     conversation_id: str,
     message_data: MessageCreate,
-    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Add a message to a conversation"""
     chat_service = ChatService(session)
     
     try:
-        # Get user safely (handles auth disabled case)
-        user = await get_user_safe(request)
         # Ensure user exists in database (auto-create if needed)
         user_id = await ensure_user_exists(session, user)
         
@@ -468,7 +473,7 @@ async def create_message(
 async def chat_with_conversation(
     conversation_id: str,
     chat_request: ChatRequest,
-    # user: Dict[str, Any] = Depends(get_user_safe),  # Auth disabled for testing
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Send a message and get LLM response within a conversation"""
@@ -481,8 +486,8 @@ async def chat_with_conversation(
     chat_service = ChatService(session)
     
     try:
-        # Use hardcoded user ID for testing (auth disabled)
-        user_id = 1
+        # Ensure user exists in database (auto-create if needed)
+        user_id = await ensure_user_exists(session, user)
         
         # Send message and get response using ChatService
         user_message, assistant_message = await chat_service.send_message(
@@ -548,7 +553,7 @@ async def chat_with_conversation(
 async def stream_chat_with_conversation(
     conversation_id: str,
     chat_request: ChatRequest,
-    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Stream chat response for a conversation"""
@@ -557,8 +562,6 @@ async def stream_chat_with_conversation(
         chat_service = ChatService(session)
         
         try:
-            # Get user safely (handles auth disabled case)
-            user = await get_user_safe(request)
             # Ensure user exists in database (auto-create if needed)
             user_id = await ensure_user_exists(session, user)
             
@@ -603,7 +606,7 @@ async def stream_chat_with_conversation(
 @router.post("/quick-chat", response_model=ChatResponse)
 async def quick_chat(
     chat_request: ChatRequest,
-    request: Request,
+    user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """Quick chat that automatically creates a conversation"""
@@ -616,15 +619,94 @@ async def quick_chat(
 
 
 # Test endpoints for debugging - NO AUTH
-@router.get("/debug/conversations")
-async def debug_list_conversations(session: AsyncSession = Depends(get_async_session)):
-    """Debug conversations list without auth"""
-    chat_service = ChatService(session)
+@router.get("/debug/simple")
+async def debug_simple():
+    """Simple debug endpoint with no dependencies"""
+    return {"status": "ok", "message": "Simple endpoint works"}
+
+@router.get("/debug/session")
+async def debug_session():
+    """Debug session creation using context manager (recommended pattern)"""
     try:
-        conversations = await chat_service.list_user_conversations(user_id=1, limit=50, offset=0)
-        return [{"id": c.id, "title": c.title, "status": c.status} for c in conversations]
-    finally:
-        await chat_service.close()
+        from privategpt.infra.database.async_session import get_async_session_context
+        async with get_async_session_context() as session:
+            from sqlalchemy import select
+            from privategpt.infra.database.models import Conversation
+            
+            stmt = select(Conversation).limit(1)
+            result = await session.execute(stmt)
+            conversations = result.scalars().all()
+            
+            return {"success": True, "count": len(conversations), "message": "Context manager pattern works!"}
+    except Exception as e:
+        import traceback
+        logger.error(f"Debug session error: {e}")
+        return {"error": str(e), "type": type(e).__name__, "traceback": traceback.format_exc()}
+
+@router.get("/debug/conversations")
+async def debug_list_conversations():
+    """Debug conversations list using context manager instead of dependency injection"""
+    try:
+        from privategpt.infra.database.async_session import get_async_session_context
+        from privategpt.infra.database.conversation_repository import SqlConversationRepository
+        
+        async with get_async_session_context() as session:
+            repo = SqlConversationRepository(session)
+            conversations = await repo.get_by_user(user_id=1, limit=50, offset=0)
+            
+            return {
+                "success": True, 
+                "count": len(conversations),
+                "conversations": [{"id": c.id, "title": c.title, "status": c.status} for c in conversations],
+                "message": "Fixed using context manager pattern!"
+            }
+    except Exception as e:
+        import traceback
+        logger.error(f"Debug endpoint error: {e}")
+        return {"error": str(e), "type": type(e).__name__, "traceback": traceback.format_exc()}
+
+@router.post("/debug/create-conversation")
+async def debug_create_conversation():
+    """Debug conversation creation using context manager"""
+    try:
+        from privategpt.infra.database.async_session import get_async_session_context
+        from privategpt.core.domain.conversation import Conversation
+        from privategpt.infra.database.conversation_repository import SqlConversationRepository
+        import uuid
+        from datetime import datetime
+        
+        async with get_async_session_context() as session:
+            # Create a test conversation
+            conversation = Conversation(
+                id=str(uuid.uuid4()),
+                user_id=1,
+                title="Debug Test Conversation",
+                status="active",
+                model_name="dolphin-phi:2.7b",
+                system_prompt=None,
+                data={},
+                total_tokens=0,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            
+            repo = SqlConversationRepository(session)
+            created_conversation = await repo.create(conversation)
+            
+            return {
+                "success": True,
+                "conversation": {
+                    "id": created_conversation.id,
+                    "title": created_conversation.title,
+                    "status": created_conversation.status,
+                    "created_at": created_conversation.created_at.isoformat()
+                },
+                "message": "Conversation created successfully!"
+            }
+    except Exception as e:
+        import traceback
+        logger.error(f"Debug create conversation error: {e}")
+        return {"error": str(e), "type": type(e).__name__, "traceback": traceback.format_exc()}
 
 @router.post("/conversations/{conversation_id}/test-chat")
 async def test_chat_with_conversation(
