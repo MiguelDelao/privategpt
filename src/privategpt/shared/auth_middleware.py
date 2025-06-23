@@ -41,30 +41,16 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request through authentication middleware."""
-        print(f"=== AUTH MIDDLEWARE: Processing path {request.url.path} ===")
-        logger.error(f"AUTH MIDDLEWARE: Processing path {request.url.path}")
         
         # Check if path requires authentication
         if not self._requires_auth(request.url.path):
-            print(f"=== AUTH MIDDLEWARE: Path {request.url.path} does not require auth ===")
-            logger.error(f"AUTH MIDDLEWARE: Path {request.url.path} does not require auth")
             return await call_next(request)
-        
-        print(f"=== AUTH MIDDLEWARE: Path {request.url.path} requires auth ===")
-        logger.error(f"AUTH MIDDLEWARE: Path {request.url.path} requires auth")
         
         # Extract and validate token
         authorization = request.headers.get("Authorization")
-        print(f"=== AUTH MIDDLEWARE: Authorization header: {authorization[:50] + '...' if authorization else 'None'} ===")
-        logger.error(f"AUTH MIDDLEWARE: Authorization header: {authorization[:50] + '...' if authorization else 'None'}")
-        
         user_claims = await validate_bearer_token(authorization)
-        print(f"=== AUTH MIDDLEWARE: Token validation result: {'Success' if user_claims else 'Failed'} ===")
-        logger.error(f"AUTH MIDDLEWARE: Token validation result: {'Success' if user_claims else 'Failed'}")
         
         if not user_claims:
-            print("=== AUTH MIDDLEWARE: Raising 401 ===")
-            logger.error("AUTH MIDDLEWARE: Raising 401")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or missing authentication token",
@@ -81,10 +67,6 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
         # Add user info to request state
         request.state.user = user_claims
         
-        # Log successful authentication
-        print(f"=== AUTH MIDDLEWARE: Authentication successful for user {user_claims.get('username')} ===")
-        logger.error(f"AUTH MIDDLEWARE: Authentication successful for user {user_claims.get('username')}")
-        
         return await call_next(request)
     
     def _requires_auth(self, path: str) -> bool:
@@ -92,16 +74,13 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
         # Check excluded paths first
         for excluded in self.excluded_paths:
             if path.startswith(excluded):
-                logger.info(f"Path {path} excluded from auth (matches {excluded})")
                 return False
         
         # Check if path matches protected patterns
         for protected in self.protected_paths:
             if path.startswith(protected):
-                logger.info(f"Path {path} requires auth (matches {protected})")
                 return True
         
-        logger.info(f"Path {path} does not match any auth rules")
         return False
     
     def _has_required_role(self, user_claims: dict, required_roles: List[str]) -> bool:

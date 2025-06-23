@@ -119,6 +119,11 @@
 
 ### Production Hardening (High Priority)  
 - [x] Re-enable authentication with full Keycloak integration
+- [x] Remove debug code from authentication middleware (prints and excessive logging)
+- [ ] **CRITICAL: Secure debug endpoints** - Remove authentication bypass for `/api/chat/debug/` and `/api/test/`
+- [ ] **CRITICAL: Remove hardcoded values** - User ID 1 in testing scenarios, magic numbers
+- [ ] **CRITICAL: Implement secret management** - Move API keys to environment variables
+- [ ] **CRITICAL: Remove default admin credentials** from hardcoded config
 - [ ] Implement proper error boundaries and fallbacks
 - [ ] Add comprehensive input validation and API key validation
 - [ ] Security audit and vulnerability testing
@@ -126,6 +131,14 @@
 - [ ] Rate limiting for external API providers
 - [ ] Cost tracking and usage monitoring for cloud providers
 - [ ] Increase Docker memory allocation for larger models
+
+### Technical Debt Cleanup (Medium Priority)
+- [ ] **Session Management**: Standardize on context manager pattern vs dependency injection
+- [ ] **Error Handling**: Implement consistent error response format across all endpoints
+- [ ] **Code Quality**: Remove hardcoded magic numbers (timeouts: 180s, 600s; limits: 1000, 4096)
+- [ ] **TODO Completion**: Complete MCP integration implementation (remove TODO comments)
+- [ ] **API Consistency**: Implement quick-chat endpoint (currently returns 501)
+- [ ] **Database Patterns**: Remove raw SQL from business logic, use ORM consistently
 
 ### RAG Functionality (Medium Priority)
 - [x] Connect RAG service to API gateway
@@ -137,13 +150,16 @@
 
 ## ⏳ Planned
 
-### Test Coverage Implementation (High Priority)
-- [ ] Implement comprehensive unit test suite (domain, infrastructure, services)
-- [ ] Add integration tests for multi-provider LLM system
-- [ ] Create test fixtures for all providers (Ollama, OpenAI, Anthropic)
-- [ ] End-to-end workflow testing with Docker Compose
-- [ ] Performance and load testing for streaming endpoints
-- [ ] Security testing for authentication and API key handling
+### Test Coverage Implementation (Medium Priority)
+**Focus Areas Based on Architecture Review:**
+- [ ] **Core Conversation Management Tests** - Create, read, update, delete operations with database
+- [ ] **JWT Authentication Flow Tests** - Token validation, user creation, role checking
+- [ ] **Database Repository Integration Tests** - SQLAlchemy async session patterns
+- [ ] **Multi-provider LLM Integration Tests** - Ollama, OpenAI, Anthropic provider switching
+- [ ] **API Error Handling Tests** - Consistent error response format validation
+- [ ] **Security Tests** - Authentication bypass prevention, input validation
+- [ ] Performance and load testing for streaming endpoints (lower priority)
+- [ ] End-to-end workflow testing with Docker Compose (lower priority)
 
 ### Next.js UI Chat Features (High Priority)
 - [ ] Real-time chat interface integration with backend
