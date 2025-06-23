@@ -84,7 +84,7 @@ async def sample_conversation():
 class TestConversationCRUD:
     """Test basic CRUD operations for conversations."""
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_create_conversation(self, conversation_repo, sample_conversation):
         """Test creating a new conversation."""
         # Act
@@ -101,7 +101,7 @@ class TestConversationCRUD:
         assert created.total_tokens == 0
         assert len(created.messages) == 0
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_get_conversation_by_id(self, conversation_repo, sample_conversation):
         """Test retrieving a conversation by ID."""
         # Arrange
@@ -116,7 +116,7 @@ class TestConversationCRUD:
         assert retrieved.title == created.title
         assert retrieved.user_id == created.user_id
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_get_nonexistent_conversation(self, conversation_repo):
         """Test retrieving a conversation that doesn't exist."""
         # Act
@@ -125,7 +125,7 @@ class TestConversationCRUD:
         # Assert
         assert result is None
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_update_conversation(self, conversation_repo, sample_conversation):
         """Test updating an existing conversation."""
         # Arrange
@@ -142,7 +142,7 @@ class TestConversationCRUD:
         assert updated.status == "archived"
         assert updated.id == created.id
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_update_nonexistent_conversation(self, conversation_repo, sample_conversation):
         """Test updating a conversation that doesn't exist."""
         # Arrange
@@ -152,7 +152,7 @@ class TestConversationCRUD:
         with pytest.raises(ValueError, match="Conversation nonexistent-id not found"):
             await conversation_repo.update(sample_conversation)
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_delete_conversation(self, conversation_repo, sample_conversation):
         """Test soft deleting a conversation."""
         # Arrange
@@ -169,7 +169,7 @@ class TestConversationCRUD:
         assert retrieved is not None
         assert retrieved.status == "deleted"
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_delete_nonexistent_conversation(self, conversation_repo):
         """Test deleting a conversation that doesn't exist."""
         # Act
@@ -182,7 +182,7 @@ class TestConversationCRUD:
 class TestConversationQueries:
     """Test conversation query operations."""
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_get_conversations_by_user(self, conversation_repo, async_session):
         """Test retrieving conversations for a specific user."""
         # Arrange - Create multiple conversations
@@ -212,7 +212,7 @@ class TestConversationQueries:
             assert conv.user_id == 1
             assert conv.status != "deleted"
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_get_conversations_excludes_deleted(self, conversation_repo):
         """Test that get_by_user excludes deleted conversations."""
         # Arrange
@@ -254,7 +254,7 @@ class TestConversationQueries:
         assert len(user_conversations) == 1
         assert user_conversations[0].title == "Active Conversation"
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_get_conversations_pagination(self, conversation_repo):
         """Test pagination in get_by_user."""
         # Arrange - Create 5 conversations
@@ -286,7 +286,7 @@ class TestConversationQueries:
         page2_ids = {conv.id for conv in page2}
         assert page1_ids.isdisjoint(page2_ids)
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_search_conversations(self, conversation_repo):
         """Test searching conversations by title and content."""
         # Arrange
@@ -332,7 +332,7 @@ class TestConversationQueries:
 class TestAsyncSessionHandling:
     """Test async session handling patterns."""
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_eager_loading_prevents_lazy_loading(self, async_session):
         """Test that eager loading with selectinload prevents lazy loading issues."""
         # Arrange
@@ -378,7 +378,7 @@ class TestAsyncSessionHandling:
         assert retrieved.messages[0].content == "Test message"
         assert retrieved.messages[0].token_count == 10
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_repository_handles_session_correctly(self, async_session):
         """Test that repository handles async session without context issues."""
         # Arrange
@@ -433,7 +433,7 @@ class TestAsyncSessionHandling:
 class TestDomainModelConversion:
     """Test conversion between database and domain models."""
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_to_domain_conversion_with_messages(self, conversation_repo, async_session):
         """Test that _to_domain correctly converts database models including messages."""
         # Arrange
@@ -506,7 +506,7 @@ class TestDomainModelConversion:
         assert assistant_msg.token_count == 25
         assert assistant_msg.data == {"model": "test"}
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_enum_status_handling(self, conversation_repo):
         """Test that status field is handled correctly (string vs enum)."""
         # Arrange
@@ -538,7 +538,7 @@ class TestDomainModelConversion:
 class TestErrorHandling:
     """Test error handling in repository operations."""
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_create_conversation_with_invalid_user(self, conversation_repo):
         """Test creating conversation with non-existent user."""
         # Arrange
@@ -560,7 +560,7 @@ class TestErrorHandling:
         with pytest.raises(Exception, match="Failed to create conversation"):
             await conversation_repo.create(conv)
     
-    @pytest_asyncio.async_test
+    @pytest.mark.asyncio
     async def test_create_conversation_with_duplicate_id(self, conversation_repo, sample_conversation):
         """Test creating conversation with duplicate ID."""
         # Arrange

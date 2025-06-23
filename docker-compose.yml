@@ -118,10 +118,12 @@ services:
     labels:
       - logging.service=gateway
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`localhost`) && PathPrefix(`/api`)
-      - traefik.http.routers.api.entrypoints=web
-      - traefik.http.routers.api.priority=300
-      - traefik.http.services.api.loadbalancer.server.port=8000
+      - traefik.docker.exposedbydefault=false
+      - traefik.http.routers.gateway-api.rule=Host(`localhost`) && PathPrefix(`/api`)
+      - traefik.http.routers.gateway-api.entrypoints=web
+      - traefik.http.routers.gateway-api.priority=9999
+      - traefik.http.routers.gateway-api.service=gateway-api
+      - traefik.http.services.gateway-api.loadbalancer.server.port=8000
 
   rag-service:
     build:
@@ -314,8 +316,7 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--api.dashboard=true"
-      - "--api.insecure=true"  # dashboard exposed under /dashboard/
+      - "--api=false"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -326,10 +327,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.traefik.rule=Host(`localhost`) && PathPrefix(`/dashboard`)
-      - traefik.http.routers.traefik.entrypoints=web
-      - traefik.http.routers.traefik.service=api@internal
       - logging.service=traefik
 
   ollama:

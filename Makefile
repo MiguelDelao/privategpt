@@ -12,9 +12,13 @@ help:
 	@echo "make build-base - Build (or rebuild) the common base image"
 	@echo "make clean   - Remove containers (preserves Ollama models)"
 	@echo "make clean-all - Remove containers and ALL volumes (including models)"
-	@echo "make test    - Run unit + integration tests inside host environment"
-	@echo "make test-unit - Run unit tests"
-	@echo "make test-api - Run API tests"
+	@echo "Testing:"
+	@echo "make test         - Run all tests (unit + integration)"
+	@echo "make test-unit    - Run unit tests only"
+	@echo "make test-integration - Run integration tests only"
+	@echo "make test-conversation - Run conversation management tests"
+	@echo "make test-auth    - Run authentication tests"
+	@echo "make test-quick   - Run core tests (conversation + auth)"
 	@echo "make stack-logs - Start Elasticsearch, Kibana, and Filebeat"
 	@echo "make import-dashboard - Import a Kibana dashboard"
 	@echo "make status - Show the status of all containers"
@@ -106,15 +110,36 @@ clean-all:
 ## ADD TEST TARGETS ##
 
 test:
-	docker compose run --rm tests
-
+	@echo "🧪 Running all tests..."
+	$(DC) build tests
+	$(DC) run --rm tests pytest tests -v
 
 test-unit:
-	pytest -q tests/unit
+	@echo "🧪 Running unit tests..."
+	$(DC) build tests
+	$(DC) run --rm tests pytest tests/unit -v
 
+test-integration:
+	@echo "🧪 Running integration tests..."
+	$(DC) build tests
+	$(DC) run --rm tests pytest tests/integration -v
 
-test-api:
-	docker compose run --rm tests
+test-conversation:
+	@echo "🧪 Running conversation management tests..."
+	$(DC) build tests
+	$(DC) run --rm tests pytest tests/unit/conversation tests/integration/test_conversation_management.py -v
+
+test-auth:
+	@echo "🧪 Running authentication tests..."
+	$(DC) build tests
+	$(DC) run --rm tests pytest tests/integration/test_auth_integration.py tests/integration/test_jwt_keycloak_flow.py -v
+
+test-quick:
+	@echo "🧪 Running quick test suite (conversation + JWT)..."
+	$(DC) build tests
+	$(DC) run --rm tests pytest tests/unit/conversation tests/integration/test_conversation_management.py tests/integration/test_jwt_keycloak_flow.py -v
+
+test-api: test-integration
 
 # -------------------------------------------------------------------
 # Observability helpers
