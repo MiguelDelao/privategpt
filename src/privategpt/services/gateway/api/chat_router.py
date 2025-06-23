@@ -167,11 +167,16 @@ class MessageResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     stream: bool = Field(default=False)
-    model_name: Optional[str] = None
+    model: Optional[str] = None  # Changed from model_name for consistency
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0)
     use_mcp: bool = Field(default=True)
     available_tools: str = Field(default="*")  # "*", "", or "tool1,tool2"
+    
+    # Backward compatibility
+    @property
+    def model_name(self) -> Optional[str]:
+        return self.model
 
 
 class ChatResponse(BaseModel):
