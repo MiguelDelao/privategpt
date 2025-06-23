@@ -133,6 +133,11 @@
 - [ ] Increase Docker memory allocation for larger models
 
 ### Technical Debt Cleanup (Medium Priority)
+- [ ] **CRITICAL: Fix Traefik Routing** - Gateway service not discoverable through Traefik proxy
+  - Frontend currently requires direct gateway access (localhost:8000/api) 
+  - Production should use clean URLs through proxy (localhost/api)
+  - Traefik labels configured but service discovery failing
+  - **Impact**: Different routing in dev vs production, hardcoded ports in frontend
 - [ ] **Session Management**: Standardize on context manager pattern vs dependency injection
 - [ ] **Error Handling**: Implement consistent error response format across all endpoints
 - [ ] **Code Quality**: Remove hardcoded magic numbers (timeouts: 180s, 600s; limits: 1000, 4096)
@@ -238,9 +243,13 @@
 - **Tool Configuration**: Current hardcoded approach maintained while exploring UX for dynamic tool selection
 
 ### Technical Debt
+- **CRITICAL: Traefik Routing Issue**: Gateway service not discoverable through Traefik proxy
+  - Current: Frontend must use direct gateway (localhost:8000/api)
+  - Target: Clean proxy URLs (localhost/api) for production parity
+  - Impact: Dev/prod environment mismatch, hardcoded ports in frontend
 - **Next.js Production Builds**: Currently configured for development mode only, needs production optimization
 - **Provider Error Handling**: Need consistent error handling across all LLM providers
-- **Test Coverage**: Minimal test coverage across the entire codebase
+- **Test Coverage**: ✅ **Improved** - Added comprehensive conversation/auth tests, need provider/RAG coverage
 - **Code Documentation**: Multi-provider architecture needs comprehensive documentation
 - **Configuration Validation**: Limited validation of provider API keys and endpoints
 - **Performance Monitoring**: No metrics collection for provider response times and costs
