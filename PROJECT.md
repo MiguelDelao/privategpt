@@ -89,12 +89,15 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Location**: `src/privategpt_ui/sandbox-ui/`
 - **URL**: `http://localhost` (via Traefik)
 - **Framework**: Next.js 15 + TypeScript + Tailwind CSS
+- **Documentation**: See `src/privategpt_ui/sandbox-ui/PROJECT.md` for comprehensive UI documentation
 - **Features**:
   - Full authentication integration with Keycloak
   - Zustand state management with persistence
   - Protected routes with AuthWrapper component
-  - API client with token management
+  - Custom API client with automatic token management
+  - Real-time streaming chat with SSE support
   - Development hot reload via Docker volumes
+  - Admin panel and document management
 
 **Streamlit UI (Legacy)**  
 - **Service**: `ui-service`
@@ -469,6 +472,13 @@ services:
    - Verify Keycloak is running: `make logs-keycloak`
    - Check port 8180 is accessible: `curl http://localhost:8180/health/ready`
    - Check Docker network connectivity
+
+3. **"Network error: Failed to fetch" in UI**:
+   - Verify API URL configuration in `docker-compose.yml`
+   - Ensure base URL doesn't include `/api` suffix: `NEXT_PUBLIC_API_URL=http://localhost:8000`
+   - Check that API endpoints in frontend include `/api` prefix (e.g., `/api/auth/login`)
+   - Test backend directly: `curl -X POST http://localhost:8000/api/auth/login -H "Content-Type: application/json" -d '{"email":"admin@admin.com","password":"admin"}'`
+   - See `src/privategpt_ui/sandbox-ui/PROJECT.md` for detailed UI troubleshooting
 
 #### Service Connectivity
 - Verify Docker network and health checks: `make status`
