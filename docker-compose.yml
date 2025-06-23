@@ -118,12 +118,18 @@ services:
     labels:
       - logging.service=gateway
       - traefik.enable=true
-      - traefik.docker.exposedbydefault=false
       - traefik.http.routers.gateway-api.rule=Host(`localhost`) && PathPrefix(`/api`)
       - traefik.http.routers.gateway-api.entrypoints=web
-      - traefik.http.routers.gateway-api.priority=9999
+      - traefik.http.routers.gateway-api.priority=10000
       - traefik.http.routers.gateway-api.service=gateway-api
       - traefik.http.services.gateway-api.loadbalancer.server.port=8000
+      - traefik.http.routers.gateway-api.middlewares=gateway-cors
+      - traefik.http.middlewares.gateway-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH
+      - traefik.http.middlewares.gateway-cors.headers.accesscontrolallowheaders=*
+      - traefik.http.middlewares.gateway-cors.headers.accesscontrolalloworiginlist=http://localhost,http://localhost:3000,http://localhost:80
+      - traefik.http.middlewares.gateway-cors.headers.accesscontrolmaxage=100
+      - traefik.http.middlewares.gateway-cors.headers.addvaryheader=true
+      - traefik.http.middlewares.gateway-cors.headers.accesscontrolallowcredentials=true
 
   rag-service:
     build:
@@ -200,6 +206,9 @@ services:
       gateway-service:
         condition: service_started
     environment:
+      # For SSR: Use internal Docker service names
+      API_URL_INTERNAL: http://gateway-service:8000/api
+      # For browser: Use external URLs (direct gateway access for now)
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_WS_URL: ws://localhost:8000
       NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8180
@@ -316,7 +325,7 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--api=false"
+      - "--api.dashboard=false"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
