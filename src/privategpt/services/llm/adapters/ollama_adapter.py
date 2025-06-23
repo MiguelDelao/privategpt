@@ -59,6 +59,20 @@ class OllamaAdapter(LLMPort):
             
         except httpx.HTTPError as e:
             logger.error(f"Ollama chat error: {e}")
+            # Parse specific error types from Ollama
+            if hasattr(e, 'response') and e.response:
+                status_code = e.response.status_code
+                if status_code == 404:
+                    raise RuntimeError(f"Model not found: {model_name}")
+                elif status_code == 500:
+                    # Try to parse Ollama error message
+                    try:
+                        error_data = e.response.json()
+                        error_msg = error_data.get('error', str(e))
+                        if 'out of memory' in error_msg.lower() or 'oom' in error_msg.lower():
+                            raise RuntimeError(f"Out of memory: {error_msg}")
+                    except:
+                        pass
             raise RuntimeError(f"Failed to generate chat response: {e}")
             
     async def chat_stream(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> AsyncIterator[str]:
@@ -89,6 +103,11 @@ class OllamaAdapter(LLMPort):
                             
         except httpx.HTTPError as e:
             logger.error(f"Ollama chat stream error: {e}")
+            # Parse specific error types
+            if hasattr(e, 'response') and e.response:
+                status_code = e.response.status_code
+                if status_code == 404:
+                    raise RuntimeError(f"Model not found: {model_name}")
             raise RuntimeError(f"Failed to stream chat response: {e}")
             
     async def get_available_models(self) -> List[ModelInfo]:
@@ -117,6 +136,8 @@ class OllamaAdapter(LLMPort):
             
         except httpx.HTTPError as e:
             logger.error(f"Ollama models error: {e}")
+            # Return empty list but log the actual error
+            logger.warning(f"Failed to get Ollama models: {e}")
             return []
             
     async def is_enabled(self) -> bool:
