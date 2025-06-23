@@ -14,8 +14,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from privategpt.infra.http.log_middleware import RequestLogMiddleware
+from privategpt.infra.http.request_id_middleware import RequestIDMiddleware
 from privategpt.shared.auth_middleware import KeycloakAuthMiddleware
 from privategpt.services.gateway.api.gateway_router import router as gateway_router
 from privategpt.services.gateway.api.user_router import router as user_router
@@ -25,6 +27,13 @@ from privategpt.services.gateway.api.auth_router import router as auth_router
 from privategpt.services.gateway.core.proxy import get_proxy
 from privategpt.infra.database.models import Base
 from privategpt.infra.database.async_session import engine
+from privategpt.services.gateway.core.error_handler import (
+    service_error_handler,
+    http_exception_handler,
+    validation_error_handler,
+    generic_exception_handler
+)
+from privategpt.services.gateway.core.exceptions import BaseServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +92,11 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8501",  # Streamlit UI
-        "http://localhost:3000",  # Future React UI
-        "http://localhost",       # General localhost
+        "http://localhost",
+        "http://localhost:80", 
+        "http://localhost:3000",
+        "http://localhost:8501",
+        "null"  # For local file access
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -111,6 +122,9 @@ app.add_middleware(
     ]
 )
 
+# Request ID middleware (should be first to ensure all logs have request ID)
+app.add_middleware(RequestIDMiddleware)
+
 # Request logging middleware
 app.add_middleware(RequestLogMiddleware)
 
@@ -121,25 +135,11 @@ app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(prompt_router)
 
-# Error handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handle HTTP exceptions with proper logging."""
-    import traceback
-    logger.warning(
-        f"HTTP exception in gateway - path: {request.url.path}, detail: {exc.detail}",
-        extra={
-            "status_code": exc.status_code,
-            "detail": exc.detail,
-            "path": request.url.path,
-            "method": request.method,
-            "traceback": traceback.format_exc()
-        }
-    )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail}
-    )
+# Register error handlers
+app.add_exception_handler(BaseServiceError, service_error_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 # Root endpoint
 @app.get("/")
