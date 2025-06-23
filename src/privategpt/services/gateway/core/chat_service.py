@@ -213,7 +213,24 @@ class ChatService:
             )
         except Exception as e:
             logger.error(f"LLM request failed: {e}")
-            raise Exception(f"Failed to get response from LLM: {e}")
+            # Parse the error to provide better feedback
+            error_msg = str(e).lower()
+            if "model not found" in error_msg or "unknown model" in error_msg:
+                from privategpt.services.gateway.core.exceptions import ModelNotAvailableError
+                raise ModelNotAvailableError(model_name=model_to_use)
+            elif "out of memory" in error_msg or "oom" in error_msg:
+                from privategpt.services.gateway.core.exceptions import ResourceExhaustedError
+                raise ResourceExhaustedError(
+                    message="Model ran out of memory processing your request",
+                    resource_type="memory",
+                    model_name=model_to_use
+                )
+            elif "timeout" in error_msg:
+                from privategpt.services.gateway.core.exceptions import ServiceUnavailableError
+                raise ServiceUnavailableError("LLM Service", "Request timed out")
+            # Re-raise as service unavailable for other errors
+            from privategpt.services.gateway.core.exceptions import ServiceUnavailableError
+            raise ServiceUnavailableError("LLM Service", str(e))
         
         # Parse AI response content
         parsed_content = parse_ai_content(
