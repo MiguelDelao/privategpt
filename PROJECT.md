@@ -39,7 +39,8 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - `api/chat_router.py`: Conversation and message endpoints with streaming support and token tracking
 - `api/prompt_router.py`: System prompt management
 - `core/chat_service.py`: Conversation logic, LLM integration, and token management
-- `core/exceptions.py`: Custom exceptions including ChatContextLimitError
+- `core/exceptions.py`: Comprehensive error handling with BaseServiceError hierarchy
+- `core/error_handler.py`: Centralized error response formatting and security
 - `core/mcp_client.py`: MCP client for tool execution
 - `core/xml_parser.py`: Thinking brackets and UI tag parsing
 - `core/prompt_manager.py`: Dynamic system prompt loading
@@ -254,6 +255,8 @@ class Chunk:
 - **Session Management**: Simplified session-based approach in UI, no external token validation
 - **Authentication Flow**: Gateway validates tokens, UI manages local session state
 - **Architecture**: Backend exclusively handles real Keycloak authentication, frontend provides demo mode for offline development
+- **Request Tracking**: `RequestIDMiddleware` adds unique IDs to all requests for tracing
+- **Error Security**: Production mode hides internal error details, development shows full context
 
 ## Development Workflow
 
@@ -345,8 +348,35 @@ make remove-model MODEL=llama3.2:1b
 ## API Documentation
 
 ### Gateway Endpoints
+
+#### Error Handling
+All API endpoints now return standardized error responses:
+```json
+{
+  "error": {
+    "type": "error_category",
+    "code": "ERROR_CODE",
+    "message": "User-friendly message",
+    "details": { /* optional structured details */ },
+    "suggestions": [ /* helpful suggestions */ ],
+    "request_id": "uuid",
+    "timestamp": "ISO-8601"
+  }
+}
 ```
-# Authentication (currently disabled for debugging)
+
+Error Categories:
+- `context_limit_error` (413) - Token limit exceeded
+- `resource_error` (503) - Memory/compute exhausted  
+- `model_error` (404) - Model not available
+- `validation_error` (400) - Invalid input
+- `rate_limit_error` (429) - Rate limit exceeded
+- `service_unavailable` (503) - Downstream service issues
+- `configuration_error` (500) - Missing configuration
+- `auth_error` (401/403) - Authentication/authorization failures
+
+```
+# Authentication
 POST /api/auth/login          # User authentication
 POST /api/auth/verify         # Token validation
 GET  /api/auth/me            # Current user profile
@@ -483,9 +513,22 @@ curl http://localhost:8000/status
 
 ### Testing Strategy
 - **Unit Tests**: Domain logic testing
+  - Conversation repository with async session handling
+  - Message CRUD operations with eager loading
+  - Domain model conversions
 - **Integration Tests**: Service interaction testing
+  - JWT authentication flow with Keycloak
+  - Conversation management API endpoints
+  - User auto-creation from Keycloak claims
 - **End-to-End Tests**: Full workflow validation
 - **Authentication Tests**: Token validation flows
+- **Test Commands**:
+  ```bash
+  make test              # Run all tests
+  make test-conversation # Run conversation tests
+  make test-auth        # Run authentication tests
+  make test-integration # Run integration tests
+  ```
 
 ### Security Considerations
 - **Input Validation**: Pydantic models for data validation
