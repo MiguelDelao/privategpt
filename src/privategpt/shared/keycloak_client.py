@@ -34,6 +34,9 @@ class KeycloakClient:
         self.realm_url = f"{self.keycloak_url.rstrip('/')}/realms/{realm}"
         self._jwks_cache: Optional[Dict] = None
         self._client = httpx.AsyncClient(timeout=30.0)
+        
+        # External issuer URL (what appears in tokens)
+        self.external_issuer = f"http://localhost:8180/realms/{realm}"
     
     async def get_jwks(self) -> Dict[str, Any]:
         """Fetch and cache JSON Web Key Set from Keycloak."""
@@ -70,16 +73,26 @@ class KeycloakClient:
             Decoded token claims if valid, None if invalid
         """
         try:
+            logger.info(f"Starting token validation for token length: {len(token)}")
+            logger.info(f"Token starts with: {token[:100]}...")
+            logger.info(f"Token ends with: ...{token[-20:]}")
+            
             # Get the key ID from token header
+            logger.info(f"About to call jwt.get_unverified_header")
             unverified_header = jwt.get_unverified_header(token)
+            logger.info(f"Token header: {unverified_header}")
             kid = unverified_header.get('kid')
             
             if not kid:
                 logger.warning("Token missing key ID")
                 return None
             
+            logger.info(f"Token kid: {kid}")
+            
             # Get JWKS and find matching key
             jwks = await self.get_jwks()
+            logger.info(f"Available JWK kids: {[k.get('kid') for k in jwks.get('keys', [])]}")
+            
             key = None
             for jwk_key in jwks.get('keys', []):
                 if jwk_key.get('kid') == kid:
@@ -90,17 +103,20 @@ class KeycloakClient:
                 logger.warning(f"No matching key found for kid: {kid}")
                 return None
             
-            # Verify and decode token
-            # Use external issuer URL for validation since tokens are issued with external URL
-            external_issuer = f"http://localhost:8080/realms/{self.realm}"
+            logger.info(f"Found matching key for kid: {kid}")
+            
+            # Verify and decode token using external issuer URL
+            # Note: Keycloak tokens use "account" as audience, not the client_id
+            logger.info(f"Decoding with issuer: {self.external_issuer}")
             claims = jwt.decode(
                 token,
                 key,
                 algorithms=['RS256'],
-                audience=self.client_id,
-                issuer=external_issuer
+                audience="account",
+                issuer=self.external_issuer
             )
             
+            logger.info(f"Token validation successful. Claims: {claims}")
             return claims
             
         except JWTError as e:
