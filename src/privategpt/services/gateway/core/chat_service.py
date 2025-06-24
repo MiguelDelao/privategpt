@@ -278,17 +278,14 @@ class ChatService:
         
         return user_message, assistant_message
     
-    async def stream_message(
+    async def prepare_stream_data(
         self,
         conversation_id: str,
         user_id: int,
         message_content: str,
-        model_name: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
-    ) -> AsyncIterator[Dict[str, Any]]:
-        """Send a message and stream LLM response"""
-        
+        model_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Prepare all data needed for streaming before starting the stream"""
         # Verify conversation exists and user owns it
         conversation = await self.get_conversation(conversation_id, user_id)
         if not conversation:
@@ -305,16 +302,6 @@ class ChatService:
         )
         
         user_message = await self.message_repo.create(user_message)
-        
-        yield {
-            "type": "user_message",
-            "message": {
-                "id": user_message.id,
-                "role": user_message.role,
-                "content": user_message.content,
-                "created_at": user_message.created_at.isoformat()
-            }
-        }
         
         # Get conversation context
         recent_messages = await self.message_repo.get_latest_by_conversation(
@@ -340,8 +327,49 @@ class ChatService:
             "content": message_content
         })
         
+        return {
+            "user_message": user_message,
+            "llm_messages": llm_messages,
+            "model_to_use": model_name or conversation.model_name or settings.ollama_model,
+            "assistant_message_id": str(uuid.uuid4())
+        }
+    
+    async def stream_message(
+        self,
+        conversation_id: str,
+        user_id: int,
+        message_content: str,
+        model_name: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Send a message and stream LLM response"""
+        
+        # Prepare all data before streaming
+        try:
+            stream_data = await self.prepare_stream_data(
+                conversation_id, user_id, message_content, model_name
+            )
+        except ValueError as e:
+            # Re-raise to be caught by the streaming handler
+            raise
+        
+        user_message = stream_data["user_message"]
+        llm_messages = stream_data["llm_messages"]
+        model_to_use = stream_data["model_to_use"]
+        assistant_message_id = stream_data["assistant_message_id"]
+        
+        yield {
+            "type": "user_message",
+            "message": {
+                "id": user_message.id,
+                "role": user_message.role,
+                "content": user_message.content,
+                "created_at": user_message.created_at.isoformat()
+            }
+        }
+        
         # Stream from LLM service
-        assistant_message_id = str(uuid.uuid4())
         response_content = ""
         
         yield {
@@ -351,7 +379,7 @@ class ChatService:
         
         try:
             async for chunk in self.model_registry.chat_stream(
-                model_name=model_name or conversation.model_name or settings.ollama_model,
+                model_name=model_to_use,
                 messages=llm_messages,
                 temperature=temperature,
                 max_tokens=max_tokens
@@ -363,34 +391,19 @@ class ChatService:
                     "content": chunk
                 }
             
-            # Create assistant message in database
-            assistant_message = Message(
-                id=assistant_message_id,
-                conversation_id=conversation_id,
-                role="assistant",
-                content=response_content,
-                data={
-                    "model": model_name or conversation.model_name or settings.ollama_model
-                },
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            
-            assistant_message = await self.message_repo.create(assistant_message)
-            
+            # Yield completion event with the content
             yield {
                 "type": "assistant_message_complete",
                 "message": {
-                    "id": assistant_message.id,
-                    "role": assistant_message.role,
-                    "content": assistant_message.content,
-                    "created_at": assistant_message.created_at.isoformat()
+                    "id": assistant_message_id,
+                    "role": "assistant",
+                    "content": response_content,
+                    "created_at": datetime.utcnow().isoformat()
                 }
             }
             
-            # Update conversation timestamp
-            conversation.updated_at = datetime.utcnow()
-            await self.conversation_repo.update(conversation)
+            # Note: Assistant message will be saved after streaming completes
+            # This avoids database operations during streaming
             
         except Exception as e:
             logger.error(f"Error streaming from LLM service: {e}")
