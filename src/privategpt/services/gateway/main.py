@@ -103,26 +103,11 @@ streaming_app.add_middleware(
     allow_headers=["*"],
 )
 
-# Security middleware
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*"]  # Configure based on deployment
-)
+# Request ID middleware (should be first to ensure all logs have request ID)
+app.add_middleware(RequestIDMiddleware)
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://localhost:80", 
-        "http://localhost:3000",
-        "http://localhost:8501",
-        "null"  # For local file access
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["*"],
-)
+# Request logging middleware
+app.add_middleware(RequestLogMiddleware)
 
 # Authentication middleware for API routes
 app.add_middleware(
@@ -148,11 +133,26 @@ app.add_middleware(
     ]
 )
 
-# Request ID middleware (should be first to ensure all logs have request ID)
-app.add_middleware(RequestIDMiddleware)
+# CORS middleware - MUST be after auth middleware to ensure CORS headers on auth errors
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:80", 
+        "http://localhost:3000",
+        "http://localhost:8501",
+        "null"  # For local file access
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["*"],
+)
 
-# Request logging middleware
-app.add_middleware(RequestLogMiddleware)
+# Security middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["localhost", "127.0.0.1", "*"]  # Configure based on deployment
+)
 
 # Include routers
 app.include_router(gateway_router)

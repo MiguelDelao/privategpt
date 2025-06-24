@@ -48,11 +48,17 @@ async def service_error_handler(request: Request, exc: BaseServiceError) -> JSON
         }
     )
     
-    # Return standardized error response
-    return JSONResponse(
+    # Return standardized error response with CORS headers
+    response = JSONResponse(
         status_code=exc.status_code,
         content=exc.to_dict(request_id)
     )
+    
+    # Add CORS headers to ensure they're always present
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -117,10 +123,16 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             "Verify you have access to this resource"
         ]
     
-    return JSONResponse(
+    response = JSONResponse(
         status_code=exc.status_code,
         content=error_dict
     )
+    
+    # Add CORS headers to ensure they're always present
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -155,10 +167,16 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         constraints={"errors": errors}
     )
     
-    return JSONResponse(
+    response = JSONResponse(
         status_code=validation_exc.status_code,
         content=validation_exc.to_dict(request_id)
     )
+    
+    # Add CORS headers to ensure they're always present
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -210,11 +228,17 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         }
     )
     
-    # Return standardized error response
-    return JSONResponse(
+    # Return standardized error response with CORS headers
+    response = JSONResponse(
         status_code=service_exc.status_code,
         content=service_exc.to_dict(request_id)
     )
+    
+    # Add CORS headers to ensure they're always present
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("origin", "*")
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 
 def should_hide_error_details() -> bool:
