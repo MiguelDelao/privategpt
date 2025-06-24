@@ -115,10 +115,14 @@ app.add_middleware(
         "/api/auth/login",  # Login endpoint doesn't need auth
         "/api/auth/verify",  # Let the route handle auth
         "/api/users",  # User endpoints handle their own auth
+        "/api/llm/models",  # Models endpoint for frontend
+        "/api/llm/providers",  # Providers endpoint for frontend
         # Test endpoints for debugging
         "/api/test/",  # All test endpoints bypass auth
         "/api/chat/direct",  # Direct chat endpoints for testing
         "/api/chat/debug/",  # Debug endpoints bypass auth
+        "/api/chat/conversations",  # All conversation endpoints including CRUD operations
+        "/api/chat/direct/stream",  # Direct chat stream endpoint
     ]
 )
 

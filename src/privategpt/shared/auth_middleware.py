@@ -75,11 +75,15 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
     
     def _requires_auth(self, path: str) -> bool:
         """Check if path requires authentication."""
-        # Check excluded paths first
+        # Special case for conversation endpoints - exclude all operations
+        if path.startswith("/api/chat/conversations"):
+            return False
+            
+        # Check excluded paths
         for excluded in self.excluded_paths:
             if path.startswith(excluded):
                 return False
-        
+            
         # Check if path matches protected patterns
         for protected in self.protected_paths:
             if path.startswith(protected):
