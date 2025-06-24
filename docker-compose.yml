@@ -92,6 +92,23 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
 
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/gateway/Dockerfile
+    command: celery -A privategpt.infra.tasks.celery_app worker --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://privategpt:secret@db:5432/privategpt
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_NAME: celery-worker
+    labels:
+      - logging.service=celery-worker
+
   gateway-service:
     build:
       context: .

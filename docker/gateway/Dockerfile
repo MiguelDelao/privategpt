@@ -10,7 +10,7 @@ COPY src/ src/
 RUN pip install -e .
 
 # Add required dependencies for gateway
-RUN pip install python-jose[cryptography] httpx psycopg2-binary pyjwt asyncpg
+RUN pip install python-jose[cryptography] httpx psycopg2-binary pyjwt asyncpg celery redis
 
 # Expose port
 EXPOSE 8000
