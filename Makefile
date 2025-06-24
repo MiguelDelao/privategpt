@@ -58,6 +58,7 @@ help:
 	@echo "make logs-ui - UI service logs"
 	@echo "make logs-ollama - Ollama logs"
 	@echo "make logs-mcp - MCP service logs"
+	@echo "make logs-celery - Celery worker logs"
 	@echo "make logs-keycloak - Keycloak authentication logs"
 	@echo "make logs-db - Database logs"
 	@echo "... (and more: logs-redis, logs-weaviate, etc.)"
@@ -339,11 +340,15 @@ logs-llm:
 
 logs-ui:
 	@echo "📋 UI service logs:"
-	$(DC) logs --tail=100 ui-service
+	$(DC) logs --tail=100 nextjs-ui 
 
 logs-mcp:
 	@echo "📋 MCP service logs:"
 	$(DC) logs --tail=100 mcp-service
+
+logs-celery:
+	@echo "📋 Celery worker logs:"
+	$(DC) logs --tail=100 celery-worker
 
 # Infrastructure services
 logs-db:
