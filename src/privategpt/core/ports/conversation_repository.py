@@ -30,7 +30,7 @@ class ConversationRepository(ABC):
         pass
     
     @abstractmethod
-    async def delete(self, conversation_id: str) -> bool:
+    async def delete(self, conversation_id: str, hard_delete: bool = False) -> bool:
         """Delete a conversation"""
         pass
     

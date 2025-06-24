@@ -101,8 +101,13 @@ class SqlConversationRepository(ConversationRepository):
             await self.session.rollback()
             raise Exception(f"Failed to update conversation: {e}")
     
-    async def delete(self, conversation_id: str) -> bool:
-        """Delete a conversation (soft delete by setting status)"""
+    async def delete(self, conversation_id: str, hard_delete: bool = False) -> bool:
+        """Delete a conversation
+        
+        Args:
+            conversation_id: ID of conversation to delete
+            hard_delete: If True, permanently delete from database. If False, soft delete by setting status.
+        """
         stmt = select(Conversation).where(Conversation.id == conversation_id)
         result = await self.session.execute(stmt)
         db_conversation = result.scalar_one_or_none()
@@ -110,7 +115,13 @@ class SqlConversationRepository(ConversationRepository):
         if not db_conversation:
             return False
         
-        db_conversation.status = ConversationStatus.DELETED
+        if hard_delete:
+            # Hard delete - removes conversation and all messages due to cascade
+            await self.session.delete(db_conversation)
+        else:
+            # Soft delete - just update status
+            db_conversation.status = ConversationStatus.DELETED.value
+        
         await self.session.commit()
         return True
     
@@ -123,7 +134,7 @@ class SqlConversationRepository(ConversationRepository):
         if not db_conversation:
             return False
         
-        db_conversation.status = ConversationStatus.ARCHIVED
+        db_conversation.status = ConversationStatus.ARCHIVED.value
         await self.session.commit()
         return True
     
