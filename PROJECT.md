@@ -150,7 +150,8 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Configuration**:
   - Uses Redis as broker and backend
   - Runs from gateway Dockerfile with Celery command
-  - Async task execution with asyncio support
+  - Uses synchronous database operations to avoid event loop conflicts
+  - Separate sync repositories for reliable background processing
 
 #### Reverse Proxy (Traefik)
 - **Service**: `traefik`

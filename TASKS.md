@@ -32,6 +32,7 @@
 - [x] **Fixed assistant message persistence** - Added missing celery-worker service to docker-compose.yml
 - [x] **Enhanced CORS support** - Reordered middleware and added explicit CORS headers to all error handlers
 - [x] **Removed non-existent endpoint** - Removed `/api/llm/providers` from documentation (not implemented)
+- [x] **Fixed Celery asyncio conflicts** - Implemented sync database operations for Celery tasks to resolve event loop errors
 
 ### Two-Phase Streaming Architecture & API Enhancements (Jun 24, 2025)
 - [x] **Redis integration for stream session storage**
