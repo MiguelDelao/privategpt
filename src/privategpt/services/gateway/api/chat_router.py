@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +28,7 @@ from privategpt.services.gateway.core.exceptions import (
 )
 from privategpt.infra.database.models import User
 from sqlalchemy import select
-from privategpt.core.domain.message import Message
+from privategpt.infra.database.models import Message, MessageRole
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any]) -> int:
     """Ensure user exists in database, create if not found"""
     # Handle case when auth is disabled (for debugging)
-    if not user_claims or user_claims.get("user_id") is None:
+    if not user_claims or (user_claims.get("sub") is None and user_claims.get("user_id") is None):
         logger.warning("Auth disabled or invalid user claims, using demo user")
         # Create/use demo user with ID 1
         stmt = select(User).where(User.id == 1)
@@ -66,7 +66,7 @@ async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any])
         
         return 1
     
-    keycloak_user_id = user_claims.get("user_id")  # This is the Keycloak UUID from 'sub'
+    keycloak_user_id = user_claims.get("sub") or user_claims.get("user_id")  # Keycloak UUID from 'sub' field
     logger.info(f"Looking up user with keycloak_id: {keycloak_user_id}")
     
     # Check if user exists by keycloak_id
@@ -116,6 +116,42 @@ async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any])
         raise
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+# Test endpoint without any database operations
+@router.post("/debug/test-stream-prepare")
+async def test_stream_prepare(authorization: str = Header(None)):
+    """Test endpoint to verify streaming works without database operations"""
+    logger.info("=== TEST STREAM PREPARE ENDPOINT ===")
+    
+    try:
+        from privategpt.services.gateway.core.stream_session import StreamSessionManager
+        
+        logger.info("Creating stream manager")
+        stream_manager = StreamSessionManager()
+        
+        logger.info("Creating test stream session")
+        stream_session = await stream_manager.create_session(
+            conversation_id="test-conv",
+            user_id=1,
+            user_message_id="test-user-msg",
+            llm_messages=[{"role": "user", "content": "test message"}],
+            model_name="tinyllama:1.1b"
+        )
+        
+        logger.info(f"Test stream session created: {stream_session.token}")
+        
+        return {
+            "stream_token": stream_session.token,
+            "stream_url": f"/stream/{stream_session.token}",
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Test stream prepare failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Test failed: {str(e)}")
 
 
 # Pydantic models for API
@@ -358,10 +394,15 @@ async def update_conversation(
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
     conversation_id: str,
+    hard_delete: bool = Query(False, description="If true, permanently delete. If false, soft delete by marking as deleted."),
     user: Dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
-    """Delete a conversation"""
+    """Delete a conversation
+    
+    By default performs a soft delete (marks as deleted but keeps data).
+    Set hard_delete=true to permanently remove the conversation and all its messages.
+    """
     chat_service = ChatService(session)
     
     try:
@@ -373,8 +414,8 @@ async def delete_conversation(
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
-        # Soft delete by updating status
-        success = await chat_service.conversation_repo.delete(conversation_id)
+        # Delete conversation (soft or hard based on parameter)
+        success = await chat_service.conversation_repo.delete(conversation_id, hard_delete=hard_delete)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete conversation")
             
@@ -447,7 +488,7 @@ async def create_message(
             raise HTTPException(status_code=404, detail="Conversation not found")
         
         # Create domain message
-        from privategpt.core.domain.message import Message as DomainMessage
+        from privategpt.infra.database.models import Message, MessageRole as DomainMessage
         
         message = DomainMessage(
             id=str(uuid.uuid4()),
@@ -654,7 +695,7 @@ async def stream_chat_with_conversation(
 class PrepareStreamRequest(BaseModel):
     """Request to prepare a streaming session"""
     message: str = Field(..., min_length=1, description="The user's message")
-    model: Optional[str] = Field(None, description="Model to use for generation")
+    model: str = Field(..., description="Model to use for generation (required)")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, gt=0)
 
@@ -667,96 +708,126 @@ class PrepareStreamResponse(BaseModel):
     assistant_message_id: str = Field(..., description="ID for the assistant message")
 
 
-@router.post("/conversations/{conversation_id}/messages/prepare", response_model=PrepareStreamResponse)
+@router.post("/conversations/{conversation_id}/prepare-stream", response_model=PrepareStreamResponse)
 async def prepare_stream(
     conversation_id: str,
     request: PrepareStreamRequest,
-    user: Dict[str, Any] = Depends(get_current_user),
-    session: AsyncSession = Depends(get_async_session)
+    user: Dict[str, Any] = Depends(get_current_user_flexible)
 ):
     """
     Prepare a streaming session by creating the user message and returning a stream token.
     This endpoint handles all database operations before streaming.
     """
-    from privategpt.services.gateway.core.stream_session import StreamSessionManager
-    
-    chat_service = ChatService(session)
-    stream_manager = StreamSessionManager()
+    logger.info("=== PREPARE STREAM ENDPOINT (FIXED) ===")
     
     try:
-        # Ensure user exists in database
-        user_id = await ensure_user_exists(session, user)
+        logger.info("Starting prepare stream operation")
         
-        # Verify conversation exists and user owns it
-        conversation = await chat_service.get_conversation(conversation_id, user_id)
-        if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
-        # Create user message in database
-        user_message = Message(
-            id=str(uuid.uuid4()),
-            conversation_id=conversation_id,
-            role="user",
-            content=request.message,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        
-        created_message = await chat_service.message_repo.create(user_message)
-        
-        # Get conversation context for LLM
-        recent_messages = await chat_service.message_repo.get_latest_by_conversation(
-            conversation_id, count=20
-        )
-        
-        # Prepare messages for LLM
+        # Database operations - done completely before any Redis operations
+        user_message_id = None
+        user_id = None
         llm_messages = []
+        model_name = None
+        system_prompt = None
         
-        # Add system prompt if available
-        system_prompt = conversation.system_prompt or await chat_service.prompt_manager.get_prompt_for_model(
-            request.model or conversation.model_name or settings.ollama_model,
-            conversation_id
-        )
+        from privategpt.infra.database.async_session import get_async_session_context
         
-        if system_prompt:
-            llm_messages.append({
-                "role": "system",
-                "content": system_prompt
-            })
-        
-        # Add conversation history
-        for msg in recent_messages:
-            if msg.id != created_message.id:  # Skip the message we just created
+        logger.info("Starting database operations")
+        async with get_async_session_context() as session:
+            logger.info("Database session created")
+            chat_service = ChatService(session)
+            
+            # Ensure user exists in database
+            logger.info("Ensuring user exists")
+            user_id = await ensure_user_exists(session, user)
+            logger.info(f"User ID: {user_id}")
+            
+            # Verify conversation exists and user owns it
+            logger.info("Getting conversation")
+            conversation = await chat_service.get_conversation(conversation_id, user_id)
+            if not conversation:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            logger.info("Conversation found")
+            
+            # Create user message in database using direct SQLAlchemy
+            logger.info("Creating user message")
+            user_message_id = str(uuid.uuid4())
+            user_message = Message(
+                id=user_message_id,
+                conversation_id=conversation_id,
+                role=MessageRole.USER,
+                content=request.message,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            
+            session.add(user_message)
+            logger.info(f"User message created: {user_message_id}")
+            
+            # Get conversation context for LLM using direct SQLAlchemy
+            logger.info("Getting recent messages")
+            from sqlalchemy import select
+            stmt = select(Message).where(
+                Message.conversation_id == conversation_id
+            ).order_by(Message.created_at.desc()).limit(20)
+            result = await session.execute(stmt)
+            recent_messages = result.scalars().all()
+            logger.info(f"Found {len(recent_messages)} recent messages")
+            
+            # Prepare messages for LLM
+            system_prompt = conversation.system_prompt or "You are a helpful AI assistant."
+            model_name = request.model  # Always use the model from the request
+            
+            if system_prompt:
                 llm_messages.append({
-                    "role": msg.role,
-                    "content": msg.content
+                    "role": "system",
+                    "content": system_prompt
                 })
+            
+            # Add conversation history
+            for msg in recent_messages:
+                if msg.id != user_message_id:  # Skip the message we just created
+                    llm_messages.append({
+                        "role": msg.role,
+                        "content": msg.content
+                    })
+            
+            # Add the new user message
+            llm_messages.append({
+                "role": "user",
+                "content": request.message
+            })
+            
+            logger.info(f"Prepared {len(llm_messages)} LLM messages")
+            
+            # Commit the transaction
+            logger.info("Committing database transaction")
+            await session.commit()
+            logger.info("Database transaction committed")
         
-        # Add the new user message
-        llm_messages.append({
-            "role": "user",
-            "content": request.message
-        })
+        # ALL database operations complete - now do Redis operations
+        logger.info("Database operations complete, starting Redis operations")
         
-        # Create stream session in Redis
+        from privategpt.services.gateway.core.stream_session import StreamSessionManager
+        stream_manager = StreamSessionManager()
+        
+        logger.info("Creating stream session in Redis")
         stream_session = await stream_manager.create_session(
             conversation_id=conversation_id,
             user_id=user_id,
-            user_message_id=created_message.id,
+            user_message_id=user_message_id,
             llm_messages=llm_messages,
-            model_name=request.model or conversation.model_name or settings.ollama_model,
+            model_name=model_name,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             system_prompt=system_prompt
         )
-        
-        # Commit the transaction
-        await session.commit()
+        logger.info(f"Stream session created: {stream_session.token}")
         
         return PrepareStreamResponse(
             stream_token=stream_session.token,
-            stream_url=f"/api/chat/stream/{stream_session.token}",
-            user_message_id=created_message.id,
+            stream_url=f"/stream/{stream_session.token}",
+            user_message_id=user_message_id,
             assistant_message_id=stream_session.assistant_message_id
         )
         
@@ -764,36 +835,42 @@ async def prepare_stream(
         raise
     except Exception as e:
         logger.error(f"Error preparing stream: {e}")
-        await session.rollback()
         raise HTTPException(status_code=500, detail="Failed to prepare streaming session")
-    finally:
-        await chat_service.close()
 
 
-@router.get("/stream/{stream_token}")
+@router.get("/live-stream/{stream_token}")
 async def stream_conversation(
-    stream_token: str,
-    user: Optional[Dict[str, Any]] = Depends(get_current_user_flexible)
+    stream_token: str
 ):
     """
     Stream the LLM response using a pre-created stream session.
     No database operations occur during streaming.
+    The stream token itself provides authentication for this session.
     """
-    from privategpt.services.gateway.core.stream_session import StreamSessionManager
-    from privategpt.services.llm.core.model_registry import get_model_registry
-    from privategpt.services.gateway.core.xml_parser import parse_ai_content
-    
-    stream_manager = StreamSessionManager()
-    
-    # Validate stream token
-    stream_session = await stream_manager.get_session(stream_token)
-    if not stream_session:
-        raise HTTPException(status_code=404, detail="Invalid or expired stream token")
-    
-    # Optional: Verify user owns this session
-    if user and "user_id" in user:
-        if not await stream_manager.validate_session(stream_token, user["user_id"]):
-            raise HTTPException(status_code=403, detail="Access denied")
+    try:
+        from privategpt.services.gateway.core.stream_session import StreamSessionManager
+        from privategpt.services.llm.core.model_registry import get_model_registry
+        from privategpt.services.gateway.core.xml_parser import parse_ai_content
+        
+        logger.info(f"Stream endpoint called with token: {stream_token}")
+        
+        stream_manager = StreamSessionManager()
+        
+        # Validate stream token (this is the security mechanism)
+        logger.info("Getting stream session...")
+        stream_session = await stream_manager.get_session(stream_token)
+        if not stream_session:
+            logger.error(f"Stream session not found for token: {stream_token}")
+            raise HTTPException(status_code=404, detail="Invalid or expired stream token")
+        
+        logger.info(f"Stream session found for conversation: {stream_session.conversation_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in stream endpoint setup: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Stream setup error: {str(e)}")
     
     async def event_stream():
         import json
@@ -997,6 +1074,42 @@ async def debug_stream_test(chat_request: ChatRequest):
             "Access-Control-Allow-Origin": "*",
         }
     )
+
+@router.get("/debug/simple-test/{token}")
+async def debug_simple_test(token: str):
+    """Ultra-simple test endpoint"""
+    return {"message": "Simple test works!", "token": token}
+
+
+@router.get("/debug/stream-session/{stream_token}")
+async def debug_stream_session(stream_token: str):
+    """Debug endpoint to check stream session data"""
+    from privategpt.services.gateway.core.stream_session import StreamSessionManager
+    
+    try:
+        stream_manager = StreamSessionManager()
+        stream_session = await stream_manager.get_session(stream_token)
+        
+        if not stream_session:
+            return {"error": "Stream session not found", "token": stream_token}
+        
+        return {
+            "success": True,
+            "session": {
+                "token": stream_session.token,
+                "conversation_id": stream_session.conversation_id,
+                "user_id": stream_session.user_id,
+                "model_name": stream_session.model_name,
+                "created_at": stream_session.created_at.isoformat() if stream_session.created_at else None
+            }
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 
 @router.get("/debug/session")
 async def debug_session():
@@ -1348,3 +1461,49 @@ async def test_token_tracking(
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# Debug endpoints
+@router.post("/debug/test-conversation", response_model=ConversationResponse)
+async def debug_create_conversation(
+    conversation_data: ConversationCreate
+):
+    """Create a test conversation without auth for debugging"""
+    from privategpt.infra.database.async_session import get_async_session_context
+    from privategpt.core.domain.conversation import Conversation
+    from privategpt.infra.database.conversation_repository import SqlConversationRepository
+    import uuid
+    from datetime import datetime
+    
+    async with get_async_session_context() as session:
+        # Use demo user (ID 1) for testing
+        user_id = 1
+        
+        # Create domain conversation
+        conversation = Conversation(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            title=conversation_data.title,
+            status="active",
+            model_name=conversation_data.model_name,
+            system_prompt=conversation_data.system_prompt,
+            data=conversation_data.data,
+            total_tokens=0,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        repo = SqlConversationRepository(session)
+        created_conversation = await repo.create(conversation)
+        
+        return ConversationResponse(
+            id=created_conversation.id,
+            title=created_conversation.title,
+            status=created_conversation.status,
+            model_name=created_conversation.model_name,
+            system_prompt=created_conversation.system_prompt,
+            data=created_conversation.data,
+            created_at=created_conversation.created_at,
+            updated_at=created_conversation.updated_at,
+            message_count=len(created_conversation.messages)
+        )
