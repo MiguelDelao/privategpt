@@ -25,12 +25,16 @@ class RedisClient:
     async def connect(self):
         """Connect to Redis"""
         if not self.redis:
-            self.redis = await aioredis.from_url(
-                self.redis_url,
-                encoding="utf-8",
-                decode_responses=True
-            )
-            logger.info("Connected to Redis")
+            try:
+                self.redis = await aioredis.from_url(
+                    self.redis_url,
+                    encoding="utf-8",
+                    decode_responses=True
+                )
+                logger.info("Connected to Redis")
+            except Exception as e:
+                logger.error(f"Failed to connect to Redis: {e}")
+                raise
     
     async def close(self):
         """Close Redis connection"""
