@@ -42,6 +42,10 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request through authentication middleware."""
         
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        
         # Check if path requires authentication
         if not self._requires_auth(request.url.path):
             return await call_next(request)
