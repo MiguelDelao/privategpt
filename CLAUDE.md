@@ -5,7 +5,7 @@
 
 ## Key Guidelines
 1. **Always read PROJECT.md** before starting any work to understand the architecture
-2. **Make frequent small commits** - commit after completing discrete changes or fixes
+2. **Make frequent small commits** - commit after completing discrete changes or fixes, but only after verifying that the feature works and with user approval. 
 3. **Track progress in TASKS.md** - update task status as you work
 4. **Follow existing patterns** - this is a well-architected microservices system
 
