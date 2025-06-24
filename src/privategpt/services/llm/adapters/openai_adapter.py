@@ -20,13 +20,15 @@ class OpenAIAdapter(LLMPort):
         base_url: str = "https://api.openai.com/v1",
         default_model: Optional[str] = None,
         timeout: float = 30.0,
-        enabled: bool = True
+        enabled: bool = True,
+        available_models: Optional[List[str]] = None
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.default_model = default_model or "gpt-4"
         self.timeout = timeout
         self.enabled = enabled
+        self.available_models = available_models or []
         self.client = httpx.AsyncClient(
             timeout=timeout,
             headers={
@@ -113,6 +115,25 @@ class OpenAIAdapter(LLMPort):
             
     async def get_available_models(self) -> List[ModelInfo]:
         """Get list of models available from OpenAI."""
+        # If models are configured in config, use those instead of API discovery
+        if self.available_models:
+            models = []
+            for model_name in self.available_models:
+                model_info = ModelInfo(
+                    name=model_name,
+                    provider="openai",
+                    type="api",
+                    available=True,
+                    description=f"OpenAI model: {model_name}",
+                    parameter_size=self._extract_parameter_size(model_name),
+                    capabilities=["chat", "completion", "streaming"],
+                    cost_per_token=self._get_model_cost(model_name),
+                    last_checked=datetime.utcnow()
+                )
+                models.append(model_info)
+            return models
+        
+        # Fallback to API discovery if no models configured
         try:
             response = await self.client.get(f"{self.base_url}/models")
             response.raise_for_status()

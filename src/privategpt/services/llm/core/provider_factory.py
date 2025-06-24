@@ -47,7 +47,8 @@ class LLMProviderFactory:
                 base_url=config.get("base_url", "https://api.openai.com/v1"),
                 default_model=config.get("default_model", "gpt-4"),
                 timeout=config.get("timeout", 30.0),
-                enabled=config.get("enabled", True)
+                enabled=config.get("enabled", True),
+                available_models=config.get("available_models", [])
             )
         except Exception as e:
             logger.error(f"Failed to create OpenAI provider: {e}")
@@ -67,7 +68,8 @@ class LLMProviderFactory:
                 base_url=config.get("base_url", "https://api.anthropic.com"),
                 default_model=config.get("default_model", "claude-3-5-sonnet-20241022"),
                 timeout=config.get("timeout", 30.0),
-                enabled=config.get("enabled", True)
+                enabled=config.get("enabled", True),
+                available_models=config.get("available_models", [])
             )
         except Exception as e:
             logger.error(f"Failed to create Anthropic provider: {e}")
@@ -91,6 +93,7 @@ class LLMProviderFactory:
                 "api_key": settings.openai_api_key,
                 "base_url": settings.openai_base_url,
                 "default_model": settings.openai_model,
+                "available_models": settings.openai_models,
                 "timeout": 30.0
             },
             "anthropic": {
@@ -98,6 +101,7 @@ class LLMProviderFactory:
                 "api_key": settings.anthropic_api_key,
                 "base_url": settings.anthropic_base_url,
                 "default_model": settings.anthropic_model,
+                "available_models": settings.anthropic_models,
                 "timeout": 30.0
             }
         }

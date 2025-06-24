@@ -87,12 +87,14 @@ class _CoreSettings(BaseSettings):
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
     openai_base_url: str = Field("https://api.openai.com/v1", env="OPENAI_BASE_URL")
     openai_model: str = Field("gpt-4", env="OPENAI_MODEL")
+    openai_models: list[str] = Field([], env="OPENAI_MODELS")
     
     # Anthropic (Claude API)  
     anthropic_enabled: bool = Field(False, env="ANTHROPIC_ENABLED")
     anthropic_api_key: str = Field("", env="ANTHROPIC_API_KEY")
     anthropic_base_url: str = Field("https://api.anthropic.com", env="ANTHROPIC_BASE_URL")
     anthropic_model: str = Field("claude-3-5-sonnet-20241022", env="ANTHROPIC_MODEL")
+    anthropic_models: list[str] = Field([], env="ANTHROPIC_MODELS")
     
     # KEYCLOAK / AUTHENTICATION -----------------------------------
     keycloak_url: str = Field("http://keycloak:8080", env="KEYCLOAK_URL")
