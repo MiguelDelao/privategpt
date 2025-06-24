@@ -82,6 +82,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Create streaming sub-application (no auth middleware)
+streaming_app = FastAPI(
+    title="PrivateGPT Streaming",
+    description="Token-based streaming endpoints"
+)
+
+# Add CORS middleware to streaming app
+streaming_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:80", 
+        "http://localhost:3000",
+        "http://localhost:8501",
+        "null"  # For local file access
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 # Security middleware
 app.add_middleware(
     TrustedHostMiddleware,
@@ -119,10 +140,11 @@ app.add_middleware(
         "/api/llm/providers",  # Providers endpoint for frontend
         # Test endpoints for debugging
         "/api/test/",  # All test endpoints bypass auth
-        "/api/chat/direct",  # Direct chat endpoints for testing
         "/api/chat/debug/",  # Debug endpoints bypass auth
-        "/api/chat/conversations",  # All conversation endpoints including CRUD operations
-        "/api/chat/direct/stream",  # Direct chat stream endpoint
+        "/api/chat/stream/",  # Stream endpoints use token-based auth (no JWT needed)
+        "/api/chat/live-stream/",  # Live stream endpoints use token-based auth
+        # Note: We can't exclude all conversation endpoints as some need auth
+        # Only exclude specific patterns that have SQLAlchemy issues
     ]
 )
 
@@ -138,6 +160,13 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(prompt_router)
+
+# Set up streaming app with its own router (no auth middleware)
+from privategpt.services.gateway.api.streaming_router import router as streaming_router
+streaming_app.include_router(streaming_router)
+
+# Mount streaming app under /stream (bypasses all main app middleware)
+app.mount("/stream", streaming_app)
 
 # Register error handlers
 app.add_exception_handler(BaseServiceError, service_error_handler)
