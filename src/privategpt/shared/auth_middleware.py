@@ -7,7 +7,7 @@ FastAPI middleware for Keycloak authentication and authorization.
 import logging
 from typing import Optional, List, Callable
 
-from fastapi import Request, Response, HTTPException, status
+from fastapi import Request, Response, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -75,20 +75,22 @@ class KeycloakAuthMiddleware(BaseHTTPMiddleware):
     
     def _requires_auth(self, path: str) -> bool:
         """Check if path requires authentication."""
-        # Special case for conversation endpoints - exclude all operations
-        if path.startswith("/api/chat/conversations"):
-            return False
-            
-        # Check excluded paths
+        logger.info(f"Checking auth requirement for path: {path}")
+        logger.info(f"Excluded paths: {self.excluded_paths}")
+        
+        # Check excluded paths first
         for excluded in self.excluded_paths:
             if path.startswith(excluded):
+                logger.info(f"Path {path} matches excluded pattern {excluded}, skipping auth")
                 return False
             
         # Check if path matches protected patterns
         for protected in self.protected_paths:
             if path.startswith(protected):
+                logger.info(f"Path {path} matches protected pattern {protected}, requiring auth")
                 return True
         
+        logger.info(f"Path {path} doesn't match any patterns, no auth required")
         return False
     
     def _has_required_role(self, user_claims: dict, required_roles: List[str]) -> bool:
@@ -115,6 +117,64 @@ async def get_current_user(request: Request) -> dict:
             detail="Authentication required"
         )
     return user
+
+
+async def get_current_user_flexible(
+    request: Request,
+    token: Optional[str] = None  # Can be provided via query param
+) -> dict:
+    """
+    Flexible authentication dependency that works with streaming endpoints.
+    
+    Checks authentication in the following order:
+    1. User already validated by middleware (in request.state)
+    2. Authorization header in the request
+    3. Token provided as query parameter (for EventSource compatibility)
+    
+    Usage:
+        @app.post("/stream")
+        async def stream_endpoint(
+            user: dict = Depends(get_current_user_flexible),
+            token: Optional[str] = Query(None)  # For EventSource
+        ):
+            return StreamingResponse(...)
+    """
+    # First check if middleware already validated
+    user = getattr(request.state, 'user', None)
+    if user:
+        logger.debug("User found in request state from middleware")
+        return user
+    
+    # Check Authorization header
+    authorization = request.headers.get("Authorization")
+    if authorization:
+        logger.debug("Attempting to validate Authorization header")
+        user_claims = await validate_bearer_token(authorization)
+        if user_claims:
+            logger.info("User authenticated via Authorization header", 
+                       extra={"user_id": user_claims.get("sub")})
+            return user_claims
+    
+    # Check query parameter token (for EventSource compatibility)
+    if token:
+        logger.debug("Attempting to validate query parameter token")
+        # Add Bearer prefix if not present
+        if not token.startswith("Bearer "):
+            token = f"Bearer {token}"
+        user_claims = await validate_bearer_token(token)
+        if user_claims:
+            logger.info("User authenticated via query parameter", 
+                       extra={"user_id": user_claims.get("sub")})
+            return user_claims
+    
+    # No valid authentication found
+    logger.warning("No valid authentication found for request", 
+                  extra={"path": request.url.path})
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def get_admin_user(request: Request) -> dict:
