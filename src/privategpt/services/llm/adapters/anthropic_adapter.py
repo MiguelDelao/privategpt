@@ -6,7 +6,7 @@ from typing import AsyncIterator, Dict, Any, List, Optional
 
 import httpx
 from datetime import datetime
-from privategpt.services.llm.core import LLMPort, ModelInfo
+from privategpt.services.llm.core import LLMPort, ModelInfo, ChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +20,15 @@ class AnthropicAdapter(LLMPort):
         base_url: str = "https://api.anthropic.com",
         default_model: Optional[str] = None,
         timeout: float = 30.0,
-        enabled: bool = True
+        enabled: bool = True,
+        available_models: Optional[List[str]] = None
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.default_model = default_model or "claude-3-5-sonnet-20241022"
         self.timeout = timeout
         self.enabled = enabled
+        self.available_models = available_models or []
         self.client = httpx.AsyncClient(
             timeout=timeout,
             headers={
@@ -36,7 +38,7 @@ class AnthropicAdapter(LLMPort):
             }
         )
         
-    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> str:
+    async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> ChatResponse:
         """Generate response for a conversation using specified model."""
         try:
             # Convert messages to Anthropic format
@@ -60,11 +62,25 @@ class AnthropicAdapter(LLMPort):
             response.raise_for_status()
             result = response.json()
             
-            content = result.get("content", [])
-            if content and isinstance(content, list) and len(content) > 0:
-                return content[0].get("text", "")
+            # Extract content
+            content = ""
+            content_blocks = result.get("content", [])
+            if content_blocks and isinstance(content_blocks, list) and len(content_blocks) > 0:
+                content = content_blocks[0].get("text", "")
             
-            return ""
+            # Extract token usage
+            usage = result.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            total_tokens = input_tokens + output_tokens
+            
+            return ChatResponse(
+                content=content,
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens
+            )
             
         except httpx.HTTPError as e:
             logger.error(f"Anthropic chat error: {e}")
@@ -114,52 +130,51 @@ class AnthropicAdapter(LLMPort):
             raise RuntimeError(f"Failed to stream chat response: {e}")
             
     async def get_available_models(self) -> List[ModelInfo]:
-        """Get list of models available from Anthropic."""
-        # Anthropic doesn't have a public models endpoint, so we return known models
-        known_models = [
-            {
-                "name": "claude-3-5-sonnet-20241022",
-                "parameter_size": "Unknown",
-                "cost_per_token": 0.003,
-                "description": "Latest Claude 3.5 Sonnet model"
+        """Get list of models available from Anthropic based on configuration."""
+        # If no models configured, return empty list
+        if not self.available_models:
+            return []
+        
+        # Model metadata for cost and descriptions
+        model_metadata = {
+            "claude-3-5-sonnet-20241022": {
+                "description": "Latest Claude 3.5 Sonnet model",
+                "cost_per_token": 0.003
             },
-            {
-                "name": "claude-3-5-haiku-20241022",
-                "parameter_size": "Unknown", 
-                "cost_per_token": 0.00025,
-                "description": "Fast and efficient Claude 3.5 Haiku model"
+            "claude-3-5-haiku-20241022": {
+                "description": "Fast and efficient Claude 3.5 Haiku model",
+                "cost_per_token": 0.00025
             },
-            {
-                "name": "claude-3-opus-20240229",
-                "parameter_size": "Unknown",
-                "cost_per_token": 0.015,
-                "description": "Most capable Claude 3 Opus model"
+            "claude-3-opus-20240229": {
+                "description": "Most capable Claude 3 Opus model",
+                "cost_per_token": 0.015
             },
-            {
-                "name": "claude-3-sonnet-20240229",
-                "parameter_size": "Unknown",
-                "cost_per_token": 0.003,
-                "description": "Balanced Claude 3 Sonnet model"
+            "claude-3-sonnet-20240229": {
+                "description": "Balanced Claude 3 Sonnet model",
+                "cost_per_token": 0.003
             },
-            {
-                "name": "claude-3-haiku-20240307",
-                "parameter_size": "Unknown",
-                "cost_per_token": 0.00025,
-                "description": "Fast Claude 3 Haiku model"
+            "claude-3-haiku-20240307": {
+                "description": "Fast Claude 3 Haiku model",
+                "cost_per_token": 0.00025
             }
-        ]
+        }
         
         models = []
-        for model_data in known_models:
+        for model_name in self.available_models:
+            metadata = model_metadata.get(model_name, {
+                "description": f"Anthropic model: {model_name}",
+                "cost_per_token": 0.003  # Default cost
+            })
+            
             model_info = ModelInfo(
-                name=model_data["name"],
+                name=model_name,
                 provider="anthropic",
                 type="api",
                 available=True,
-                description=model_data["description"],
-                parameter_size=model_data["parameter_size"],
+                description=metadata["description"],
+                parameter_size="Unknown",
                 capabilities=["chat", "completion", "streaming"],
-                cost_per_token=model_data["cost_per_token"] / 1000,  # Convert to per-token
+                cost_per_token=metadata["cost_per_token"] / 1000,  # Convert to per-token
                 last_checked=datetime.utcnow()
             )
             models.append(model_info)
