@@ -27,12 +27,12 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - System prompt management with XML parsing
   - User session and chat history persistence
   - Real-time token usage monitoring and context limit management
-- **Authentication Endpoints**:
-  - `POST /api/auth/login` - Email/password authentication
-  - `POST /api/auth/verify` - Token verification
-  - `POST /api/auth/refresh` - Token refresh
-  - `POST /api/auth/logout` - User logout
-  - `GET /api/auth/keycloak/config` - Frontend configuration
+- **Core Endpoints**:
+  - Authentication: Login, logout, token refresh/verify
+  - User Management: Profile, preferences, admin operations
+  - Conversation Management: CRUD operations with streaming support
+  - System Prompts: Dynamic prompt management
+  - Health Monitoring: Service status and health checks
 
 **Key Components**:
 - `main.py`: FastAPI application with middleware stack
@@ -47,11 +47,12 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - `core/stream_session.py`: Redis-based streaming session management
 
 **Streaming Architecture (Two-Phase Approach)**:
-- **Phase 1**: `/api/chat/conversations/{id}/messages/prepare` - Create user message, return stream token
-- **Phase 2**: `/api/chat/stream/{token}` - Pure streaming without database operations
+- **Phase 1**: `/api/chat/conversations/{id}/prepare-stream` - Create user message, return stream token
+- **Phase 2**: `/stream/{token}` - Pure streaming without database operations (mounted sub-app, no auth)
 - **Persistence**: Celery task saves assistant message after streaming completes
 - **Session Storage**: Redis caching with 5-minute TTL for stream sessions
-- **Legacy Endpoints**: `/api/chat/direct/stream`, `/api/chat/mcp/stream` (without persistence)
+- **Security**: Stream tokens are self-contained authentication (no JWT needed for phase 2)
+- **Model Selection**: Model must be specified in prepare-stream request (required parameter)
 
 #### 2. RAG Service (`rag-service`)
 **Purpose**: Document processing, embedding, and retrieval
@@ -184,31 +185,42 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Monitoring**: Health check endpoints across all services
 - **Logging**: Structured JSON logging with correlation IDs
 
-## Streaming Architecture (v2.1)
+## Streaming Architecture (v2.2)
 
 ### Two-Phase Streaming with Conversation Persistence
 
 The system implements a two-phase streaming approach to solve SQLAlchemy async context limitations while maintaining conversation persistence:
 
-#### Phase 1: Preparation (`/api/chat/conversations/{id}/messages/prepare`)
+#### Phase 1: Preparation (`/api/chat/conversations/{id}/prepare-stream`)
 - Creates user message in database
 - Retrieves conversation history
 - Generates unique stream token
 - Stores session data in Redis (5-minute TTL)
 - Returns stream token and URLs
+- **Required**: Model must be specified in request (no defaults)
 
-#### Phase 2: Streaming (`/api/chat/stream/{token}`)
+#### Phase 2: Streaming (`/stream/{token}`)
+- Mounted as sub-application (bypasses auth middleware)
 - No database operations during streaming
-- Validates token from Redis
+- Validates token from Redis (token IS the authentication)
 - Streams LLM response via Server-Sent Events
+- Parses XML tags (thinking brackets, UI tags)
 - Queues Celery task to save assistant message
 - Cleans up Redis session after completion
+
+#### Key Implementation Details
+- **Streaming Router**: `src/privategpt/services/gateway/api/streaming_router.py`
+- **No Auth on Stream**: Stream endpoint mounted as sub-app at `/stream` to bypass JWT middleware
+- **Self-Contained Tokens**: Stream tokens contain all necessary auth/session data
+- **Model Requirement**: Model parameter is mandatory in prepare-stream request
+- **XML Parsing**: Supports `<thinking>` tags and UI formatting tags
 
 #### Benefits
 - **Solves SQLAlchemy Issues**: Complete separation of DB operations from streaming
 - **Conversation Persistence**: All messages saved properly
 - **Token Tracking**: Accurate token counting for usage analytics
-- **Security**: Token-based access with user validation
+- **Security**: Stream tokens provide authentication without JWT complexity
+- **Frontend Friendly**: Works with EventSource API without auth headers
 - **Scalability**: Redis-based sessions with automatic expiration
 - **Reliability**: Celery ensures messages are saved even if client disconnects
 
@@ -423,11 +435,38 @@ Error Categories:
 - `auth_error` (401/403) - Authentication/authorization failures
 
 ```
+# Health & Status
+GET  /                        # API root/welcome message
+GET  /health                  # Gateway health check
+GET  /health/{service}        # Check health of specific service
+GET  /status                  # Detailed gateway status with services
+
 # Authentication
 POST /api/auth/login          # User authentication
 POST /api/auth/verify         # Token validation
-GET  /api/auth/me            # Current user profile
+POST /api/auth/refresh        # Token refresh
+POST /api/auth/logout         # User logout
+GET  /api/auth/me            # Current user profile (deprecated, use /api/users/me)
 GET  /api/auth/keycloak/config # Frontend Keycloak config
+
+# User Management
+GET  /api/users/me            # Get current user profile
+PUT  /api/users/me            # Update current user profile
+GET  /api/users/me/preferences # Get user preferences
+PUT  /api/users/me/preferences # Update user preferences
+GET  /api/users               # List all users (admin only)
+GET  /api/users/{user_id}     # Get specific user (admin only)
+DELETE /api/users/{user_id}   # Delete user (admin only)
+
+# System Prompts
+GET  /api/prompts             # List all prompts
+GET  /api/prompts/{prompt_id} # Get specific prompt
+POST /api/prompts             # Create new prompt
+PATCH /api/prompts/{prompt_id} # Update prompt
+DELETE /api/prompts/{prompt_id} # Delete prompt
+GET  /api/prompts/for-model/{model_name} # Get prompt for specific model
+POST /api/prompts/test        # Test prompt with model
+POST /api/prompts/initialize-defaults # Initialize default prompts
 
 # Chat Endpoints (working with streaming)
 POST /api/chat/direct         # Direct LLM chat without persistence
@@ -438,8 +477,15 @@ POST /api/chat/mcp/stream    # MCP chat with streaming support
 # Conversation Management (with persistence)
 GET  /api/chat/conversations  # List user conversations
 POST /api/chat/conversations  # Create new conversation
-POST /api/chat/conversations/{id}/messages/prepare  # Phase 1: Prepare streaming session
-GET  /api/chat/stream/{token}  # Phase 2: Stream response (no DB operations)
+GET  /api/chat/conversations/{id}  # Get specific conversation
+PATCH /api/chat/conversations/{id}  # Update conversation metadata
+DELETE /api/chat/conversations/{id}  # Delete conversation
+GET  /api/chat/conversations/{id}/messages  # List messages in conversation
+POST /api/chat/conversations/{id}/messages  # Create new message
+POST /api/chat/conversations/{id}/chat  # Send message and get response
+POST /api/chat/conversations/{id}/chat/stream  # Send message with streaming response
+POST /api/chat/conversations/{id}/prepare-stream  # Phase 1: Prepare streaming session
+GET  /stream/{token}  # Phase 2: Stream response (no DB operations)
 POST /api/chat/webhooks/stream-completion  # Optional webhook for stream completion
 
 # Model Management (multi-provider)

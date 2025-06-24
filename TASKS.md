@@ -26,17 +26,20 @@
 
 ## ✅ Recently Completed
 
-### Two-Phase Streaming Architecture (Jun 24, 2025)
+### Two-Phase Streaming Architecture & API Enhancements (Jun 24, 2025)
 - [x] **Redis integration for stream session storage**
 - [x] **Stream session manager with TTL-based expiration**
-- [x] **Phase 1 endpoint**: `/api/chat/conversations/{id}/messages/prepare`
-- [x] **Phase 2 endpoint**: `/api/chat/stream/{token}` with no DB operations
+- [x] **Phase 1 endpoint**: `/api/chat/conversations/{id}/prepare-stream`
+- [x] **Phase 2 endpoint**: `/stream/{token}` - Mounted sub-app with no auth
 - [x] **Celery task for saving assistant messages after streaming**
-- [x] **Webhook endpoint for stream completion notifications**
 - [x] **Complete separation of database operations from streaming**
-- [x] **Token-based access control for stream sessions**
+- [x] **Self-contained stream tokens** - Token IS the authentication
 - [x] **Automatic cleanup of expired sessions**
 - [x] **Full conversation persistence with accurate token tracking**
+- [x] **Model parameter required** - No hardcoded defaults
+- [x] **XML parsing support** - Thinking brackets and UI tags
+- [x] **Frontend-friendly design** - Works with EventSource API
+- [x] **Delete conversation endpoint** - Support for soft and hard delete with `?hard_delete=true`
 
 ### Authentication & Database Implementation (Jun 21-23, 2025)
 - [x] **Full authentication flow with Keycloak integration**
