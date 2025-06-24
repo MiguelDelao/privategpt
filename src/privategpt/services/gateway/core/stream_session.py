@@ -61,8 +61,12 @@ class StreamSession:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> StreamSession:
         """Create from dictionary retrieved from Redis"""
-        data["created_at"] = datetime.fromisoformat(data["created_at"])
-        return cls(**data)
+        # Remove created_at from data and use it separately
+        created_at_str = data.pop("created_at", None)
+        instance = cls(**data)
+        if created_at_str:
+            instance.created_at = datetime.fromisoformat(created_at_str)
+        return instance
 
 
 class StreamSessionManager:
