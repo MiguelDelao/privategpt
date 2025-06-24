@@ -26,12 +26,19 @@
 
 ## ✅ Recently Completed
 
+### Bug Fixes and Enhancements (Jun 24, 2025)
+- [x] **Fixed Anthropic adapter bug** - Changed return type from str to ChatResponse with proper token tracking
+- [x] **Added configurable model lists** - External providers now support model arrays in config.json
+- [x] **Fixed assistant message persistence** - Added missing celery-worker service to docker-compose.yml
+- [x] **Enhanced CORS support** - Reordered middleware and added explicit CORS headers to all error handlers
+- [x] **Removed non-existent endpoint** - Removed `/api/llm/providers` from documentation (not implemented)
+
 ### Two-Phase Streaming Architecture & API Enhancements (Jun 24, 2025)
 - [x] **Redis integration for stream session storage**
 - [x] **Stream session manager with TTL-based expiration**
 - [x] **Phase 1 endpoint**: `/api/chat/conversations/{id}/prepare-stream`
 - [x] **Phase 2 endpoint**: `/stream/{token}` - Mounted sub-app with no auth
-- [x] **Celery task for saving assistant messages after streaming**
+- [x] **Celery task for saving assistant messages after streaming** (Fixed: Added celery-worker service)
 - [x] **Complete separation of database operations from streaming**
 - [x] **Self-contained stream tokens** - Token IS the authentication
 - [x] **Automatic cleanup of expired sessions**

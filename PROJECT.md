@@ -3,7 +3,7 @@
 ## Overview
 PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system built with microservices architecture, designed for enterprise deployment with comprehensive authentication, document management, and AI-powered chat capabilities.
 
-**Current Phase**: Production-ready microservices system with multi-provider LLM support, streaming chat, MCP tool integration, comprehensive token tracking system, and configuration management. Full authentication system implemented with Keycloak JWT integration. Complete conversation management APIs with SQLAlchemy async session support. Multi-provider (Ollama, OpenAI, Anthropic) architecture with dynamic model discovery and routing.
+**Current Phase**: Production-ready microservices system with multi-provider LLM support, streaming chat, MCP tool integration, comprehensive token tracking system, and configuration management. Full authentication system implemented with Keycloak JWT integration. Complete conversation management APIs with SQLAlchemy async session support. Multi-provider (Ollama, OpenAI, Anthropic) architecture with dynamic model discovery and routing. Enhanced CORS support for error responses and configurable model lists for external providers.
 
 ## Architecture
 
@@ -139,6 +139,18 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
   - Automatic key expiration with TTL
   - High-performance in-memory storage
   - Pub/sub support for real-time features
+
+#### Celery Worker
+- **Service**: `celery-worker`
+- **Purpose**: Background task processing
+- **Responsibilities**:
+  - Save assistant messages after streaming completes
+  - Document ingestion and processing
+  - Cleanup expired stream sessions
+- **Configuration**:
+  - Uses Redis as broker and backend
+  - Runs from gateway Dockerfile with Celery command
+  - Async task execution with asyncio support
 
 #### Reverse Proxy (Traefik)
 - **Service**: `traefik`
@@ -316,6 +328,7 @@ class Chunk:
 - **Architecture**: Backend exclusively handles real Keycloak authentication, frontend provides demo mode for offline development
 - **Request Tracking**: `RequestIDMiddleware` adds unique IDs to all requests for tracing
 - **Error Security**: Production mode hides internal error details, development shows full context
+- **CORS Handling**: Enhanced CORS middleware ordering and explicit headers in error handlers ensure CORS support for all responses including errors
 
 ## Development Workflow
 
@@ -387,6 +400,7 @@ make remove-model MODEL=llama3.2:1b
 - **Keycloak Realm**: `config/keycloak/realm-export.json` - Pre-configured authentication realm
 - **Environment Variables**: Docker Compose `.env` support for overrides
 - **MCP Tools**: Dynamic tool discovery with configurable availability
+- **Model Lists**: Configurable arrays for OpenAI and Anthropic models via `openai_models` and `anthropic_models` in config.json
 
 #### Default Admin User
 - **Email**: `admin@admin.com` (configurable via `DEFAULT_ADMIN_EMAIL`)
@@ -492,7 +506,6 @@ POST /api/chat/webhooks/stream-completion  # Optional webhook for stream complet
 GET  /api/llm/models         # List models from all enabled providers
 POST /api/llm/generate       # Single text generation with provider routing
 POST /api/llm/chat          # Chat with conversation context and streaming
-GET  /api/llm/providers      # List available providers and health status
 
 # Proxied service endpoints
 /api/rag/*                   # RAG service operations
@@ -520,6 +533,7 @@ services:
   keycloak-db:         # Keycloak database
   db:                  # Application database
   redis:               # Cache and queues
+  celery-worker:       # Background task processing
   weaviate:            # Vector database
 ```
 
