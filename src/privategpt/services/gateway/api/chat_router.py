@@ -455,7 +455,7 @@ async def list_messages(
             MessageResponse(
                 id=msg.id,
                 conversation_id=msg.conversation_id,
-                role=msg.role,
+                role=msg.role.value if hasattr(msg.role, 'value') else msg.role,
                 content=msg.content,
                 raw_content=msg.raw_content,
                 token_count=msg.token_count,
@@ -509,7 +509,7 @@ async def create_message(
         return MessageResponse(
             id=created_message.id,
             conversation_id=created_message.conversation_id,
-            role=created_message.role,
+            role=created_message.role.value if hasattr(created_message.role, 'value') else created_message.role,
             content=created_message.content,
             raw_content=created_message.raw_content,
             token_count=created_message.token_count,
@@ -557,7 +557,7 @@ async def chat_with_conversation(
             message=MessageResponse(
                 id=user_message.id,
                 conversation_id=user_message.conversation_id,
-                role=user_message.role,
+                role=user_message.role.value if hasattr(user_message.role, 'value') else user_message.role,
                 content=user_message.content,
                 raw_content=user_message.raw_content,
                 token_count=user_message.token_count,
@@ -568,7 +568,7 @@ async def chat_with_conversation(
             response=MessageResponse(
                 id=assistant_message.id,
                 conversation_id=assistant_message.conversation_id,
-                role=assistant_message.role,
+                role=assistant_message.role.value if hasattr(assistant_message.role, 'value') else assistant_message.role,
                 content=assistant_message.content,
                 raw_content=assistant_message.raw_content,
                 token_count=assistant_message.token_count,
