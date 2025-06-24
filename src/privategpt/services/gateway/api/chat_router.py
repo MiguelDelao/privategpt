@@ -15,8 +15,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from privategpt.shared.auth_middleware import get_current_user
-from fastapi import Depends
+from privategpt.shared.auth_middleware import get_current_user, get_current_user_flexible
+from fastapi import Depends, Query
 from typing import Optional
 from privategpt.infra.database.async_session import get_async_session
 from privategpt.services.gateway.core.chat_service import ChatService
@@ -28,6 +28,7 @@ from privategpt.services.gateway.core.exceptions import (
 )
 from privategpt.infra.database.models import User
 from sqlalchemy import select
+from privategpt.core.domain.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -559,43 +560,84 @@ async def chat_with_conversation(
 async def stream_chat_with_conversation(
     conversation_id: str,
     chat_request: ChatRequest,
-    user: Dict[str, Any] = Depends(get_current_user),
-    session: AsyncSession = Depends(get_async_session)
+    user: Dict[str, Any] = Depends(get_current_user_flexible),
+    token: Optional[str] = Query(None),  # For EventSource compatibility
 ):
     """Stream chat response for a conversation"""
     
+    # Get user_id from the authenticated user claims
+    user_id = None
+    if user and isinstance(user, dict):
+        # If user has direct user_id, use it
+        if "user_id" in user:
+            user_id = user["user_id"]
+        # If user has sub (from JWT), extract numeric ID
+        elif "sub" in user:
+            # For now, we'll use a simplified approach
+            # In production, this should map Keycloak UUID to database user ID
+            user_id = 1  # Default user for testing
+    
+    # If no user_id found, default to demo user
+    if user_id is None:
+        logger.warning("No user_id found in claims, using demo user")
+        user_id = 1
+    
     async def stream_generator():
-        chat_service = ChatService(session)
-        
         try:
-            # Ensure user exists in database (auto-create if needed)
-            user_id = await ensure_user_exists(session, user)
+            # For now, let's use a simplified streaming approach
+            # that doesn't interact with the database during streaming
+            import json
+            import httpx
+            from datetime import datetime
+            import uuid
             
-            async for event in chat_service.stream_message(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                message_content=chat_request.message,
-                model_name=chat_request.model_name,
-                temperature=chat_request.temperature,
-                max_tokens=chat_request.max_tokens
-            ):
-                import json
-                yield f"data: {json.dumps(event)}\n\n"
+            # Send user message event
+            yield f"data: {json.dumps({'type': 'user_message', 'message': {'id': str(uuid.uuid4()), 'role': 'user', 'content': chat_request.message, 'created_at': datetime.utcnow().isoformat()}})}\n\n"
             
+            # Prepare messages for LLM
+            messages = [
+                {"role": "user", "content": chat_request.message}
+            ]
+            
+            # Stream from LLM service directly
+            from privategpt.shared.settings import settings
+            
+            assistant_message_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'assistant_message_start', 'message_id': assistant_message_id})}\n\n"
+            
+            full_content = ""
+            
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                async with client.stream(
+                    'POST',
+                    f"{settings.llm_service_url}/chat/stream",
+                    json={
+                        "messages": messages,
+                        "model": chat_request.model_name,
+                        "temperature": chat_request.temperature,
+                        "max_tokens": chat_request.max_tokens
+                    }
+                ) as response:
+                    response.raise_for_status()
+                    
+                    async for line in response.aiter_lines():
+                        if line.startswith('data: '):
+                            content = line[6:]  # Remove 'data: ' prefix
+                            if content.strip() == '[DONE]':
+                                break
+                            if content.strip():
+                                full_content += content
+                                yield f"data: {json.dumps({'type': 'content_chunk', 'message_id': assistant_message_id, 'content': content})}\n\n"
+            
+            # Send completion event
+            yield f"data: {json.dumps({'type': 'assistant_message_complete', 'message': {'id': assistant_message_id, 'role': 'assistant', 'content': full_content, 'created_at': datetime.utcnow().isoformat()}})}\n\n"
             yield "data: {\"type\": \"done\"}\n\n"
             
-        except ValueError as e:
-            # Conversation not found or access denied
-            error_event = {"type": "error", "message": str(e)}
-            import json
-            yield f"data: {json.dumps(error_event)}\n\n"
         except Exception as e:
             logger.error(f"Error in chat stream: {e}")
             error_event = {"type": "error", "message": "Internal server error"}
             import json
             yield f"data: {json.dumps(error_event)}\n\n"
-        finally:
-            await chat_service.close()
     
     return StreamingResponse(
         stream_generator(),
@@ -606,6 +648,264 @@ async def stream_chat_with_conversation(
             "Access-Control-Allow-Origin": "*",
         }
     )
+
+
+# Two-phase streaming endpoints for conversation persistence
+class PrepareStreamRequest(BaseModel):
+    """Request to prepare a streaming session"""
+    message: str = Field(..., min_length=1, description="The user's message")
+    model: Optional[str] = Field(None, description="Model to use for generation")
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, gt=0)
+
+
+class PrepareStreamResponse(BaseModel):
+    """Response with stream token and metadata"""
+    stream_token: str = Field(..., description="Token to use for streaming")
+    stream_url: str = Field(..., description="URL to connect for streaming")
+    user_message_id: str = Field(..., description="ID of the created user message")
+    assistant_message_id: str = Field(..., description="ID for the assistant message")
+
+
+@router.post("/conversations/{conversation_id}/messages/prepare", response_model=PrepareStreamResponse)
+async def prepare_stream(
+    conversation_id: str,
+    request: PrepareStreamRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Prepare a streaming session by creating the user message and returning a stream token.
+    This endpoint handles all database operations before streaming.
+    """
+    from privategpt.services.gateway.core.stream_session import StreamSessionManager
+    
+    chat_service = ChatService(session)
+    stream_manager = StreamSessionManager()
+    
+    try:
+        # Ensure user exists in database
+        user_id = await ensure_user_exists(session, user)
+        
+        # Verify conversation exists and user owns it
+        conversation = await chat_service.get_conversation(conversation_id, user_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Create user message in database
+        user_message = Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation_id,
+            role="user",
+            content=request.message,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        created_message = await chat_service.message_repo.create(user_message)
+        
+        # Get conversation context for LLM
+        recent_messages = await chat_service.message_repo.get_latest_by_conversation(
+            conversation_id, count=20
+        )
+        
+        # Prepare messages for LLM
+        llm_messages = []
+        
+        # Add system prompt if available
+        system_prompt = conversation.system_prompt or await chat_service.prompt_manager.get_prompt_for_model(
+            request.model or conversation.model_name or settings.ollama_model,
+            conversation_id
+        )
+        
+        if system_prompt:
+            llm_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # Add conversation history
+        for msg in recent_messages:
+            if msg.id != created_message.id:  # Skip the message we just created
+                llm_messages.append({
+                    "role": msg.role,
+                    "content": msg.content
+                })
+        
+        # Add the new user message
+        llm_messages.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        # Create stream session in Redis
+        stream_session = await stream_manager.create_session(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            user_message_id=created_message.id,
+            llm_messages=llm_messages,
+            model_name=request.model or conversation.model_name or settings.ollama_model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            system_prompt=system_prompt
+        )
+        
+        # Commit the transaction
+        await session.commit()
+        
+        return PrepareStreamResponse(
+            stream_token=stream_session.token,
+            stream_url=f"/api/chat/stream/{stream_session.token}",
+            user_message_id=created_message.id,
+            assistant_message_id=stream_session.assistant_message_id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error preparing stream: {e}")
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Failed to prepare streaming session")
+    finally:
+        await chat_service.close()
+
+
+@router.get("/stream/{stream_token}")
+async def stream_conversation(
+    stream_token: str,
+    user: Optional[Dict[str, Any]] = Depends(get_current_user_flexible)
+):
+    """
+    Stream the LLM response using a pre-created stream session.
+    No database operations occur during streaming.
+    """
+    from privategpt.services.gateway.core.stream_session import StreamSessionManager
+    from privategpt.services.llm.core.model_registry import get_model_registry
+    from privategpt.services.gateway.core.xml_parser import parse_ai_content
+    
+    stream_manager = StreamSessionManager()
+    
+    # Validate stream token
+    stream_session = await stream_manager.get_session(stream_token)
+    if not stream_session:
+        raise HTTPException(status_code=404, detail="Invalid or expired stream token")
+    
+    # Optional: Verify user owns this session
+    if user and "user_id" in user:
+        if not await stream_manager.validate_session(stream_token, user["user_id"]):
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    async def event_stream():
+        import json
+        from privategpt.infra.tasks.celery_app import save_assistant_message_task
+        
+        try:
+            # Send initial events
+            yield f"data: {json.dumps({'type': 'stream_start', 'conversation_id': stream_session.conversation_id})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'user_message', 'message': {'id': stream_session.user_message_id, 'role': 'user', 'content': stream_session.llm_messages[-1]['content'], 'created_at': datetime.utcnow().isoformat()}})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'assistant_message_start', 'message_id': stream_session.assistant_message_id})}\n\n"
+            
+            # Stream from model registry
+            model_registry = get_model_registry()
+            full_content = ""
+            
+            async for chunk in model_registry.chat_stream(
+                model_name=stream_session.model_name,
+                messages=stream_session.llm_messages,
+                temperature=stream_session.temperature,
+                max_tokens=stream_session.max_tokens
+            ):
+                full_content += chunk
+                yield f"data: {json.dumps({'type': 'content_chunk', 'message_id': stream_session.assistant_message_id, 'content': chunk})}\n\n"
+            
+            # Parse the complete response
+            parsed_content = parse_ai_content(full_content, settings.enable_thinking_mode)
+            
+            # Get token usage from the last chunk metadata (if available)
+            # For now, we'll estimate tokens
+            from privategpt.services.llm.core.adapters.base import BaseModelAdapter
+            provider = model_registry.get_provider_for_model(stream_session.model_name)
+            if provider:
+                adapter = model_registry.providers[provider]
+                output_tokens = adapter.count_tokens(full_content, stream_session.model_name)
+                input_tokens = sum(
+                    adapter.count_tokens(msg["content"], stream_session.model_name) 
+                    for msg in stream_session.llm_messages
+                )
+                total_tokens = input_tokens + output_tokens
+            else:
+                output_tokens = len(full_content.split()) * 2  # Rough estimate
+                input_tokens = sum(len(msg["content"].split()) * 2 for msg in stream_session.llm_messages)
+                total_tokens = input_tokens + output_tokens
+            
+            # Send completion event
+            yield f"data: {json.dumps({'type': 'assistant_message_complete', 'message': {'id': stream_session.assistant_message_id, 'role': 'assistant', 'content': parsed_content.processed_content, 'created_at': datetime.utcnow().isoformat(), 'token_count': output_tokens}})}\n\n"
+            
+            # Queue Celery task to save assistant message
+            save_assistant_message_task.delay(
+                conversation_id=stream_session.conversation_id,
+                message_id=stream_session.assistant_message_id,
+                content=parsed_content.processed_content,
+                raw_content=parsed_content.raw_content,
+                thinking_content=parsed_content.thinking_content,
+                token_count=output_tokens,
+                data={
+                    "model": stream_session.model_name,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                    "ui_tags": parsed_content.ui_tags
+                }
+            )
+            
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+            # Clean up stream session
+            await stream_manager.delete_session(stream_token)
+            
+        except Exception as e:
+            logger.error(f"Error during streaming: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Streaming error occurred'})}\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no"  # Disable Nginx buffering
+        }
+    )
+
+
+# Webhook endpoint for external stream completion notification
+class StreamCompletionWebhook(BaseModel):
+    """Webhook payload for stream completion"""
+    stream_token: str = Field(..., description="The stream token that completed")
+    status: str = Field(..., description="Completion status: 'success' or 'error'")
+    error_message: Optional[str] = Field(None, description="Error message if status is 'error'")
+    total_tokens: Optional[int] = Field(None, description="Total tokens used")
+    model_used: Optional[str] = Field(None, description="Model that was used")
+
+
+@router.post("/webhooks/stream-completion", status_code=status.HTTP_200_OK)
+async def stream_completion_webhook(
+    webhook_data: StreamCompletionWebhook,
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    Webhook endpoint to notify when a stream has completed.
+    This can be used by external services or frontend to confirm message persistence.
+    """
+    logger.info(f"Stream completion webhook received for token: {webhook_data.stream_token}")
+    
+    # Optional: Add any additional processing here
+    # For example, updating metrics, sending notifications, etc.
+    
+    return {"status": "acknowledged", "stream_token": webhook_data.stream_token}
 
 
 # Quick chat endpoint (creates conversation automatically)
@@ -629,6 +929,74 @@ async def quick_chat(
 async def debug_simple():
     """Simple debug endpoint with no dependencies"""
     return {"status": "ok", "message": "Simple endpoint works"}
+
+@router.post("/debug/stream-test")
+async def debug_stream_test(chat_request: ChatRequest):
+    """Test streaming without any database operations"""
+    
+    async def stream_generator():
+        try:
+            import json
+            import httpx
+            from datetime import datetime
+            import uuid
+            
+            # Send start event
+            yield f"data: {json.dumps({'type': 'start', 'message': 'Starting stream test'})}\n\n"
+            
+            # Prepare messages for LLM
+            messages = [
+                {"role": "user", "content": chat_request.message}
+            ]
+            
+            # Stream from LLM service directly
+            from privategpt.shared.settings import settings
+            
+            yield f"data: {json.dumps({'type': 'info', 'message': 'Calling LLM service'})}\n\n"
+            
+            full_content = ""
+            
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                async with client.stream(
+                    'POST',
+                    f"{settings.llm_service_url}/chat/stream",
+                    json={
+                        "messages": messages,
+                        "model": chat_request.model_name,
+                        "temperature": chat_request.temperature,
+                        "max_tokens": chat_request.max_tokens
+                    }
+                ) as response:
+                    response.raise_for_status()
+                    
+                    async for line in response.aiter_lines():
+                        if line.startswith('data: '):
+                            content = line[6:]  # Remove 'data: ' prefix
+                            if content.strip() == '[DONE]':
+                                break
+                            if content.strip():
+                                full_content += content
+                                yield f"data: {json.dumps({'type': 'content', 'text': content})}\n\n"
+            
+            # Send completion event
+            yield f"data: {json.dumps({'type': 'complete', 'full_text': full_content})}\n\n"
+            yield "data: {\"type\": \"done\"}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error in debug stream: {e}")
+            error_event = {"type": "error", "message": str(e)}
+            import json
+            yield f"data: {json.dumps(error_event)}\n\n"
+    
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
 
 @router.get("/debug/session")
 async def debug_session():

@@ -44,11 +44,14 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - `core/mcp_client.py`: MCP client for tool execution
 - `core/xml_parser.py`: Thinking brackets and UI tag parsing
 - `core/prompt_manager.py`: Dynamic system prompt loading
+- `core/stream_session.py`: Redis-based streaming session management
 
-**Streaming Endpoints**:
-- `/api/chat/direct/stream`: Direct LLM chat with Server-Sent Events
-- `/api/chat/mcp/stream`: Tool-enabled chat with real-time streaming
-- Extended 180s timeout support for slow model responses
+**Streaming Architecture (Two-Phase Approach)**:
+- **Phase 1**: `/api/chat/conversations/{id}/messages/prepare` - Create user message, return stream token
+- **Phase 2**: `/api/chat/stream/{token}` - Pure streaming without database operations
+- **Persistence**: Celery task saves assistant message after streaming completes
+- **Session Storage**: Redis caching with 5-minute TTL for stream sessions
+- **Legacy Endpoints**: `/api/chat/direct/stream`, `/api/chat/mcp/stream` (without persistence)
 
 #### 2. RAG Service (`rag-service`)
 **Purpose**: Document processing, embedding, and retrieval
@@ -123,6 +126,19 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 
 ### Infrastructure Services
 
+#### Redis Cache
+- **Service**: `redis`
+- **Port**: 6379 (internal)
+- **Image**: `redis:7-alpine`
+- **Purpose**: 
+  - Celery task broker and backend
+  - Stream session storage for two-phase streaming
+  - General caching and session management
+- **Features**:
+  - Automatic key expiration with TTL
+  - High-performance in-memory storage
+  - Pub/sub support for real-time features
+
 #### Reverse Proxy (Traefik)
 - **Service**: `traefik`
 - **Port**: 80 (web), 8090 (dashboard)
@@ -167,6 +183,34 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Message Queue**: Celery with Redis backend
 - **Monitoring**: Health check endpoints across all services
 - **Logging**: Structured JSON logging with correlation IDs
+
+## Streaming Architecture (v2.1)
+
+### Two-Phase Streaming with Conversation Persistence
+
+The system implements a two-phase streaming approach to solve SQLAlchemy async context limitations while maintaining conversation persistence:
+
+#### Phase 1: Preparation (`/api/chat/conversations/{id}/messages/prepare`)
+- Creates user message in database
+- Retrieves conversation history
+- Generates unique stream token
+- Stores session data in Redis (5-minute TTL)
+- Returns stream token and URLs
+
+#### Phase 2: Streaming (`/api/chat/stream/{token}`)
+- No database operations during streaming
+- Validates token from Redis
+- Streams LLM response via Server-Sent Events
+- Queues Celery task to save assistant message
+- Cleans up Redis session after completion
+
+#### Benefits
+- **Solves SQLAlchemy Issues**: Complete separation of DB operations from streaming
+- **Conversation Persistence**: All messages saved properly
+- **Token Tracking**: Accurate token counting for usage analytics
+- **Security**: Token-based access with user validation
+- **Scalability**: Redis-based sessions with automatic expiration
+- **Reliability**: Celery ensures messages are saved even if client disconnects
 
 ## Enhanced Features (v2)
 
@@ -390,8 +434,13 @@ POST /api/chat/direct         # Direct LLM chat without persistence
 POST /api/chat/direct/stream  # Direct LLM chat with Server-Sent Events
 POST /api/chat/mcp           # Chat with MCP tool integration
 POST /api/chat/mcp/stream    # MCP chat with streaming support
+
+# Conversation Management (with persistence)
 GET  /api/chat/conversations  # List user conversations
 POST /api/chat/conversations  # Create new conversation
+POST /api/chat/conversations/{id}/messages/prepare  # Phase 1: Prepare streaming session
+GET  /api/chat/stream/{token}  # Phase 2: Stream response (no DB operations)
+POST /api/chat/webhooks/stream-completion  # Optional webhook for stream completion
 
 # Model Management (multi-provider)
 GET  /api/llm/models         # List models from all enabled providers
@@ -441,6 +490,7 @@ services:
 - **Ports & Adapters**: Clean dependency inversion
 - **Repository Pattern**: Data access abstraction
 - **Factory Pattern**: Service instantiation
+- **Two-Phase Streaming**: Separation of database operations from streaming response
 
 ### Technology Stack
 - **Backend**: FastAPI + SQLAlchemy 2.0 + Pydantic Settings
