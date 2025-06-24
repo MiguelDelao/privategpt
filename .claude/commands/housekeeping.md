@@ -1,0 +1,1 @@
+update the project.md, tasks.md, and make invdividual commits for each feature 

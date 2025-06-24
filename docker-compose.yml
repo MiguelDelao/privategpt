@@ -130,6 +130,21 @@ services:
       - traefik.http.middlewares.gateway-cors.headers.accesscontrolmaxage=100
       - traefik.http.middlewares.gateway-cors.headers.addvaryheader=true
       - traefik.http.middlewares.gateway-cors.headers.accesscontrolallowcredentials=true
+      # Streaming endpoints routing
+      - traefik.http.routers.gateway-stream.rule=Host(`localhost`) && PathPrefix(`/stream`)
+      - traefik.http.routers.gateway-stream.entrypoints=web
+      - traefik.http.routers.gateway-stream.priority=9000
+      - traefik.http.routers.gateway-stream.service=gateway-stream
+      - traefik.http.services.gateway-stream.loadbalancer.server.port=8000
+      - traefik.http.routers.gateway-stream.middlewares=gateway-stream-headers
+      - traefik.http.middlewares.gateway-stream-headers.headers.customresponseheaders.X-Accel-Buffering=no
+      - traefik.http.middlewares.gateway-stream-headers.headers.customresponseheaders.Cache-Control=no-cache
+      # Health endpoint routing (root level)
+      - traefik.http.routers.gateway-health.rule=Host(`localhost`) && Path(`/health`)
+      - traefik.http.routers.gateway-health.entrypoints=web
+      - traefik.http.routers.gateway-health.priority=20000
+      - traefik.http.routers.gateway-health.service=gateway-health
+      - traefik.http.services.gateway-health.loadbalancer.server.port=8000
 
   rag-service:
     build:

@@ -6,6 +6,7 @@ Chat and conversation management API routes for the gateway.
 
 import logging
 import uuid
+import enum
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -784,11 +785,13 @@ async def prepare_stream(
                     "content": system_prompt
                 })
             
-            # Add conversation history
-            for msg in recent_messages:
+            # Add conversation history (reverse order since we got newest first)
+            for msg in reversed(recent_messages):
                 if msg.id != user_message_id:  # Skip the message we just created
+                    role_value = msg.role.value if isinstance(msg.role, enum.Enum) else msg.role
+                    logger.info(f"Processing message {msg.id}: role type={type(msg.role)}, value={role_value}")
                     llm_messages.append({
-                        "role": msg.role,
+                        "role": role_value,
                         "content": msg.content
                     })
             
