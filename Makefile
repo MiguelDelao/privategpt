@@ -8,9 +8,15 @@ help:
 	@echo "======================"
 	@echo "make start   - Start all v2 containers"
 	@echo "make stop    - Stop all v2 containers"
-	@echo "make build   - Build images and start containers"
+	@echo ""
+	@echo "Build Commands:"
+	@echo "make build   - Smart build using Docker cache (FAST, recommended)"
+	@echo "make build-safe - Force rebuild without cache (SLOW, guaranteed clean)"
 	@echo "make build-base - Build (or rebuild) the common base image"
-	@echo "make clean   - Remove containers (preserves Ollama models)"
+	@echo ""
+	@echo "Clean Commands:"
+	@echo "make clean   - Remove containers + dangling images (preserves base images)"
+	@echo "make clean-deep - Remove containers + ALL project images (preserves volumes)"
 	@echo "make clean-all - Remove containers and ALL volumes (including models)"
 	@echo "Testing:"
 	@echo "make test         - Run all tests (unit + integration)"
@@ -71,14 +77,15 @@ build-base:
 	docker build -f docker/base/Dockerfile -t privategpt/base:latest .
 
 
-build: build-base
-	@echo "🧹 Cleaning up any existing containers..."
-	$(DC) down --remove-orphans || true
-	@echo "🔨 Building and starting services..."
-	$(DC) up -d --build --force-recreate
+# Smart build that uses Docker cache effectively (FAST)
+build:
+	@echo "🔨 Building services (using Docker cache)..."
+	$(DC) build
+	@echo "🚀 Starting services..."
+	$(DC) up -d
 	@echo "Setting up Keycloak realm and users..."
 	$(DC) up --no-deps keycloak-setup
-	@echo "✅ Build complete! UI available at http://localhost:8080"
+	@echo "✅ Build complete! UI available at http://localhost"
 	@echo "🔐 Login with: admin@admin.com / admin"
 	@echo "🔑 Keycloak admin: http://localhost:8180"
 	@echo "🤖 LLM service: http://localhost:8003"
@@ -88,13 +95,46 @@ build: build-base
 	@echo "   make install-model MODEL=llama3.2:3b"
 	@echo "   make list-models"
 
+# Safe build - forces complete rebuild without cache (SLOW but GUARANTEED)
+build-safe: build-base
+	@echo "🧹 Cleaning up any existing containers..."
+	$(DC) down --remove-orphans || true
+	@echo "🔨 Force rebuilding all services (no cache)..."
+	$(DC) up -d --build --force-recreate
+	@echo "Setting up Keycloak realm and users..."
+	$(DC) up --no-deps keycloak-setup
+	@echo "✅ Safe build complete! UI available at http://localhost"
+	@echo "🔐 Login with: admin@admin.com / admin"
+	@echo "🔑 Keycloak admin: http://localhost:8180"
+	@echo "🤖 LLM service: http://localhost:8003"
+	@echo ""
+	@echo "📥 To install Ollama models:"
+	@echo "   make install-model MODEL=llama3.2:1b"
+	@echo "   make install-model MODEL=llama3.2:3b"
+	@echo "   make list-models"
 
+# Smart clean - removes containers and dangling images (preserves base images)
 clean:
+	@echo "🧹 Stopping and removing containers..."
 	$(DC) down --remove-orphans
+	@echo "🧹 Cleaning up dangling images..."
+	docker image prune -f
 	docker container prune -f
 	docker network prune -f
-	# Note: Preserving ollama_data volume to keep downloaded models
+	# Note: Preserving ollama_data volume and base images
 	# Use 'make clean-all' to remove all volumes including models
+	# Use 'make clean-deep' to also remove all images
+
+# Deep clean - removes containers AND all project images (preserves volumes)
+clean-deep:
+	@echo "🧹 Stopping and removing containers..."
+	$(DC) down --remove-orphans
+	@echo "🧹 Removing ALL PrivateGPT images..."
+	docker images | grep -E "privategpt|<none>" | awk '{print $$3}' | xargs -r docker rmi -f 2>/dev/null || true
+	docker container prune -f
+	docker network prune -f
+	docker image prune -a -f
+	@echo "✅ Deep clean complete! All images removed (volumes preserved)"
 
 clean-all:
 	$(DC) down -v --remove-orphans
@@ -393,6 +433,23 @@ diagnose:
 	@echo ""
 	@echo "Compose project status:"
 	@$(DC) ps
+
+# Check disk usage and image count
+disk-usage:
+	@echo "💾 Docker Disk Usage Report"
+	@echo "==========================="
+	@docker system df
+	@echo ""
+	@echo "📊 PrivateGPT Images:"
+	@docker images | grep -E "privategpt|REPOSITORY" | head -20
+	@echo ""
+	@echo "🗑️  Dangling Images:"
+	@docker images -f "dangling=true" | head -10
+	@echo ""
+	@echo "💡 Tips:"
+	@echo "- Run 'make clean' to remove containers and dangling images"
+	@echo "- Run 'make clean-deep' to remove ALL project images"
+	@echo "- Run 'docker system prune -a' to clean everything (careful!)"
 
 nuke:
 	@echo "💥 NUCLEAR OPTION: Delete EVERYTHING"
