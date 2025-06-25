@@ -1,0 +1,669 @@
+// PrivateGPT API Client
+import { config } from './config'
+
+// Authentication Types
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  refresh_token?: string
+  user?: {
+    user_id: number
+    email: string
+    role: string
+    name?: string
+  }
+}
+
+export interface TokenVerifyResponse {
+  valid: boolean
+  user?: {
+    user_id: number
+    email: string
+    role: string
+    name?: string
+  }
+  expires_at?: string
+}
+
+// Conversation Types
+export interface ConversationCreate {
+  title: string
+  model_name?: string
+  system_prompt?: string
+  data?: Record<string, any>
+}
+
+export interface ConversationUpdate {
+  title?: string
+  status?: 'active' | 'archived' | 'deleted'
+  model_name?: string
+  system_prompt?: string
+  data?: Record<string, any>
+}
+
+export interface ConversationResponse {
+  id: string
+  title: string
+  status: string
+  model_name?: string
+  system_prompt?: string
+  data: Record<string, any>
+  created_at: string
+  updated_at: string
+  message_count: number
+}
+
+// Message Types
+export interface MessageCreate {
+  content: string
+  role: 'user' | 'assistant' | 'system'
+  metadata?: Record<string, any>
+}
+
+export interface MessageResponse {
+  id: string
+  conversation_id: string
+  content: string
+  role: 'user' | 'assistant' | 'system'
+  metadata: Record<string, any>
+  created_at: string
+  tool_calls?: ToolCall[]
+}
+
+export interface ToolCall {
+  id: string
+  type: string
+  function: {
+    name: string
+    arguments: string
+  }
+  result?: any
+}
+
+// Chat Types
+export interface ChatRequest {
+  message: string
+  stream?: boolean
+  model_name?: string
+  temperature?: number
+  max_tokens?: number
+  use_mcp?: boolean
+  available_tools?: string[]
+}
+
+export interface ChatResponse {
+  text: string
+  model: string
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+  thinking_content?: string
+  tool_calls?: ToolCall[]
+}
+
+export interface StreamingChatResponse {
+  content: string
+  done: boolean
+  thinking_content?: string
+  tool_calls?: ToolCall[]
+  metadata?: Record<string, any>
+}
+
+// Model Types
+export interface ModelInfo {
+  id: string
+  name: string
+  provider: string
+  description?: string
+  context_window?: number
+  parameters?: number
+}
+
+export interface ProviderInfo {
+  name: string
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  models: ModelInfo[]
+  config?: Record<string, any>
+}
+
+// Error Types
+export interface APIError {
+  message: string
+  code?: string
+  details?: Record<string, any>
+}
+
+// Streaming Types
+export interface StreamHandler {
+  onMessage?: (data: StreamingChatResponse) => void
+  onError?: (error: Error) => void
+  onComplete?: () => void
+  onStart?: () => void
+}
+
+export class PrivateGPTClient {
+  private baseURL: string
+  private authToken?: string
+  private maxRetries: number = 3
+  private retryDelay: number = 1000
+  
+  constructor(baseURL: string = config.apiUrl, options?: { maxRetries?: number; retryDelay?: number }) {
+    this.baseURL = baseURL
+    this.authToken = this.getStoredToken()
+    if (options?.maxRetries) this.maxRetries = options.maxRetries
+    if (options?.retryDelay) this.retryDelay = options.retryDelay
+    
+    // Debug logging
+    console.log('API Client initialized')
+    console.log('- Config apiUrl:', config.apiUrl)
+    console.log('- BaseURL:', this.baseURL)
+    console.log('- Environment:', process.env.NODE_ENV)
+  }
+
+  private getStoredToken(): string | undefined {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('auth_token') || undefined
+    }
+    return undefined
+  }
+
+  private setStoredToken(token: string) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('auth_token', token)
+    }
+    this.authToken = token
+  }
+
+  private clearStoredToken() {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('auth_token')
+    }
+    this.authToken = undefined
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  private async request<T>(
+    endpoint: string, 
+    options: RequestInit = {},
+    retry: number = 0
+  ): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`
+    console.log('Making request to:', url, 'Method:', options.method || 'GET')
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    }
+
+    if (this.authToken) {
+      headers.Authorization = `Bearer ${this.authToken}`
+    }
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include', // Include cookies for CORS
+      })
+
+      if (!response.ok) {
+        // Handle specific HTTP status codes
+        if (response.status === 401) {
+          this.clearStoredToken()
+          throw new APIError('Authentication failed', 'AUTH_ERROR')
+        }
+        
+        if (response.status === 403) {
+          throw new APIError('Access forbidden', 'PERMISSION_ERROR')
+        }
+
+        if (response.status >= 500 && retry < this.maxRetries) {
+          await this.sleep(this.retryDelay * Math.pow(2, retry))
+          return this.request<T>(endpoint, options, retry + 1)
+        }
+
+        let errorData: any
+        let errorMessage: string
+        try {
+          errorData = await response.json()
+          // Check for standardized error format from backend
+          if (errorData.error) {
+            errorMessage = errorData.error.message || `HTTP ${response.status}`
+            throw new APIError(
+              errorMessage,
+              errorData.error.code || 'API_ERROR',
+              {
+                status: response.status,
+                type: errorData.error.type,
+                details: errorData.error.details,
+                suggestions: errorData.error.suggestions,
+                request_id: errorData.error.request_id
+              }
+            )
+          }
+          errorMessage = errorData.message || errorData.detail || `HTTP ${response.status}`
+        } catch (e) {
+          if (e instanceof APIError) throw e
+          errorMessage = await response.text() || `HTTP ${response.status}`
+        }
+
+        throw new APIError(errorMessage, 'API_ERROR', { status: response.status })
+      }
+
+      // Handle empty responses
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        return response.json()
+      } else {
+        return response.text() as unknown as T
+      }
+    } catch (error) {
+      if (error instanceof APIError) {
+        throw error
+      }
+
+      // Network errors - retry if configured
+      if (retry < this.maxRetries && (
+        error instanceof TypeError || // Network error
+        (error as any).name === 'NetworkError'
+      )) {
+        await this.sleep(this.retryDelay * Math.pow(2, retry))
+        return this.request<T>(endpoint, options, retry + 1)
+      }
+
+      throw new APIError(
+        `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'NETWORK_ERROR',
+        { originalError: error }
+      )
+    }
+  }
+
+  // Custom error class
+  private createError(message: string, code?: string, details?: Record<string, any>): APIError {
+    return new APIError(message, code, details)
+  }
+
+  // Authentication Methods
+  async login(email: string, password: string): Promise<LoginResponse> {
+    console.log('Login attempt - API URL:', this.baseURL)
+    console.log('Full login URL:', `${this.baseURL}/auth/login`)
+    
+    const response = await this.request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+    
+    this.setStoredToken(response.access_token)
+    return response
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.request('/auth/logout', { method: 'POST' })
+    } catch (error) {
+      // Continue with logout even if API call fails
+      console.warn('Logout API call failed:', error)
+    } finally {
+      this.clearStoredToken()
+    }
+  }
+
+  async verifyToken(): Promise<TokenVerifyResponse> {
+    if (!this.authToken) {
+      return { valid: false }
+    }
+
+    try {
+      return await this.request<TokenVerifyResponse>('/auth/verify', {
+        method: 'POST',
+      })
+    } catch (error) {
+      this.clearStoredToken()
+      return { valid: false }
+    }
+  }
+
+  async refreshToken(refreshToken: string): Promise<LoginResponse> {
+    const response = await this.request<LoginResponse>('/api/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    
+    this.setStoredToken(response.access_token)
+    return response
+  }
+
+  // Conversation Management
+  async createConversation(data: ConversationCreate): Promise<ConversationResponse> {
+    return this.request<ConversationResponse>('/api/chat/conversations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getConversations(limit = 50, offset = 0): Promise<ConversationResponse[]> {
+    return this.request<ConversationResponse[]>(
+      `/api/chat/conversations?limit=${limit}&offset=${offset}`
+    )
+  }
+
+  async getConversation(conversationId: string): Promise<ConversationResponse> {
+    return this.request<ConversationResponse>(`/api/chat/conversations/${conversationId}`)
+  }
+
+  async updateConversation(conversationId: string, data: ConversationUpdate): Promise<ConversationResponse> {
+    return this.request<ConversationResponse>(`/api/chat/conversations/${conversationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    await this.request(`/api/chat/conversations/${conversationId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  // Message Management
+  async getMessages(conversationId: string, limit = 50, offset = 0): Promise<MessageResponse[]> {
+    return this.request<MessageResponse[]>(
+      `/api/chat/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`
+    )
+  }
+
+  async addMessage(conversationId: string, message: MessageCreate): Promise<MessageResponse> {
+    return this.request<MessageResponse>(`/api/chat/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(message),
+    })
+  }
+
+  // Chat Methods
+  async directChat(request: ChatRequest): Promise<ChatResponse> {
+    return this.request<ChatResponse>('/api/chat/direct', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+  }
+
+  async conversationChat(conversationId: string, request: ChatRequest): Promise<ChatResponse> {
+    return this.request<ChatResponse>(`/api/chat/conversations/${conversationId}/chat`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    })
+  }
+
+  // Streaming Methods
+  streamDirectChat(request: ChatRequest, handlers: StreamHandler): EventSource {
+    // Convert ChatRequest to SimpleChatRequest format expected by backend
+    const streamRequest = {
+      message: request.message,
+      model: request.model_name, // Backend expects "model" not "model_name"
+      temperature: request.temperature,
+      max_tokens: request.max_tokens,
+      use_mcp: request.use_mcp || false
+    }
+
+    const url = `${this.baseURL}/api/chat/direct/stream`
+    
+    return this.createSSEConnection(url, streamRequest, handlers)
+  }
+
+  private createSSEConnection(url: string, requestBody: any, handlers: StreamHandler): EventSource {
+    const controller = new AbortController()
+    
+    // Create a mock EventSource interface
+    const mockEventSource = {
+      readyState: 0, // CONNECTING
+      onopen: null as ((event: Event) => void) | null,
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      onerror: null as ((event: Event) => void) | null,
+      close: () => {
+        controller.abort()
+        mockEventSource.readyState = 2 // CLOSED
+      },
+      CONNECTING: 0,
+      OPEN: 1,
+      CLOSED: 2
+    }
+
+    // Start the fetch stream
+    this.startStreamFetch(url, requestBody, handlers, controller, mockEventSource)
+    
+    return mockEventSource as EventSource
+  }
+
+  private async startStreamFetch(
+    url: string, 
+    requestBody: any, 
+    handlers: StreamHandler, 
+    controller: AbortController,
+    mockEventSource: any
+  ) {
+    try {
+      handlers.onStart?.()
+      mockEventSource.readyState = 1 // OPEN
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          ...(this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}),
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      })
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        try {
+          const errorText = await response.text()
+          if (errorText) {
+            errorMessage += ` - ${errorText}`
+          }
+        } catch (e) {
+          // Ignore if we can't read error text
+        }
+        throw new Error(errorMessage)
+      }
+
+      if (!response.body) {
+        throw new Error('No response body')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          handlers.onComplete?.()
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              console.log('Received SSE data:', data)
+              
+              // Handle different event types from backend
+              if (data.type === 'content_delta' || data.type === 'content_chunk') {
+                handlers.onMessage?.({
+                  content: data.content || data.text || '',
+                  done: false
+                })
+              } else if (data.type === 'done' || data.type === 'content_end') {
+                handlers.onMessage?.({
+                  content: '',
+                  done: true
+                })
+              } else if (data.type === 'error') {
+                handlers.onError?.(new Error(data.message || 'Stream error'))
+                break
+              }
+            } catch (parseError) {
+              console.warn('Failed to parse SSE data:', line, parseError)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming error:', error)
+      mockEventSource.readyState = 2 // CLOSED
+      handlers.onError?.(error instanceof Error ? error : new Error(String(error)))
+    }
+  }
+
+  streamConversationChat(conversationId: string, request: ChatRequest, handlers: StreamHandler): EventSource {
+    // Use the same fetch-based streaming as streamDirectChat to support auth headers
+    const url = `${this.baseURL}/api/chat/conversations/${conversationId}/chat/stream`
+    
+    return this.createSSEConnection(url, request, handlers)
+  }
+
+  streamMCPChat(request: ChatRequest, handlers: StreamHandler): EventSource {
+    const params = new URLSearchParams()
+    Object.entries(request).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        if (Array.isArray(value)) {
+          value.forEach(v => params.append(key, String(v)))
+        } else {
+          params.set(key, String(value))
+        }
+      }
+    })
+
+    const url = `${this.baseURL}/api/chat/mcp/stream?${params}`
+    
+    const eventSource = new EventSource(url)
+    
+    eventSource.onopen = () => {
+      handlers.onStart?.()
+    }
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: StreamingChatResponse = JSON.parse(event.data)
+        handlers.onMessage?.(data)
+        
+        if (data.done) {
+          eventSource.close()
+          handlers.onComplete?.()
+        }
+      } catch (error) {
+        handlers.onError?.(new Error(`Failed to parse streaming response: ${error}`))
+      }
+    }
+
+    eventSource.onerror = (error) => {
+      console.error('EventSource error:', error)
+      console.error('EventSource readyState:', eventSource.readyState)
+      console.error('EventSource url:', url)
+      
+      let errorMessage = 'Streaming connection error'
+      if (eventSource.readyState === EventSource.CLOSED) {
+        errorMessage += ' (connection closed)'
+      } else if (eventSource.readyState === EventSource.CONNECTING) {
+        errorMessage += ' (failed to connect)'
+      }
+      
+      handlers.onError?.(new Error(errorMessage))
+      eventSource.close()
+    }
+
+    return eventSource
+  }
+
+  // Model and Provider Management
+  async getModels(): Promise<ModelInfo[]> {
+    return this.request<ModelInfo[]>('/api/llm/models')
+  }
+
+  async getProviders(): Promise<{ providers: Record<string, ProviderInfo> }> {
+    return this.request<{ providers: Record<string, ProviderInfo> }>('/api/llm/providers')
+  }
+
+  // Health and Status
+  async healthCheck(): Promise<{ status: string; service: string }> {
+    return this.request<{ status: string; service: string }>('/health')
+  }
+
+  async getServiceStatus(): Promise<Record<string, any>> {
+    return this.request<Record<string, any>>('/status')
+  }
+
+  // User Management
+  async getCurrentUser(): Promise<any> {
+    return this.request('/api/users/me')
+  }
+
+  async updateCurrentUser(userData: any): Promise<any> {
+    return this.request('/api/users/me', {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    })
+  }
+
+  // Utility Methods
+  isAuthenticated(): boolean {
+    return !!this.authToken
+  }
+
+  getAuthToken(): string | undefined {
+    return this.authToken
+  }
+
+  setAuthToken(token: string): void {
+    this.setStoredToken(token)
+  }
+}
+
+// Custom API Error class
+export class APIError extends Error {
+  public code?: string
+  public details?: Record<string, any>
+  public suggestions?: string[]
+  public request_id?: string
+
+  constructor(message: string, code?: string, details?: Record<string, any>) {
+    super(message)
+    this.name = 'APIError'
+    this.code = code
+    this.details = details
+    this.suggestions = details?.suggestions
+    this.request_id = details?.request_id
+  }
+
+  // Get user-friendly error message with suggestions
+  getUserMessage(): string {
+    let message = this.message
+    
+    if (this.suggestions && this.suggestions.length > 0) {
+      message += '\n\nSuggestions:\n' + this.suggestions.map(s => `• ${s}`).join('\n')
+    }
+    
+    return message
+  }
+}
+
+// Global client instance
+export const apiClient = new PrivateGPTClient()
