@@ -19,10 +19,10 @@
    - Simple Q&A with citations
 
 ### ❌ What's Missing
-1. **Workspace Support**
-   - No workspace/knowledge silo concept
-   - No document organization
-   - No user-specific namespacing
+1. **Collection & Folder Support**
+   - No hierarchical organization concept
+   - No folder structure for documents
+   - No user-specific collections
 
 2. **Advanced Document Processing**
    - No file upload support (only text)
@@ -32,30 +32,34 @@
 3. **MCP Integration**
    - No tool interface for RAG
    - No context filtering
-   - No workspace-aware search
+   - No collection-aware search
 
 ## Implementation Steps
 
 ### Step 1: Database Schema Updates
 ```sql
--- 1. Create workspace table
-CREATE TABLE workspaces (
+-- 1. Create collections table (supports hierarchy)
+CREATE TABLE collections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    parent_id UUID REFERENCES collections(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    collection_type VARCHAR(50) DEFAULT 'folder',
     icon VARCHAR(50) DEFAULT '📁',
     color VARCHAR(7) DEFAULT '#3B82F6',
+    path VARCHAR(1024) NOT NULL,
+    depth INTEGER NOT NULL DEFAULT 0,
     settings JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     deleted_at TIMESTAMP,
-    UNIQUE(user_id, name)
+    UNIQUE(user_id, parent_id, name)
 );
 
--- 2. Add workspace support to existing tables
+-- 2. Add collection support to existing tables
 ALTER TABLE documents 
-ADD COLUMN workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+ADD COLUMN collection_id UUID REFERENCES collections(id) ON DELETE CASCADE,
 ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 ADD COLUMN file_name VARCHAR(255),
 ADD COLUMN file_size INTEGER,
@@ -64,30 +68,36 @@ ADD COLUMN processing_progress JSONB DEFAULT '{}',
 ADD COLUMN metadata JSONB DEFAULT '{}';
 
 ALTER TABLE chunks
-ADD COLUMN workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE;
+ADD COLUMN collection_id UUID REFERENCES collections(id) ON DELETE CASCADE;
 
 -- 3. Create indexes
-CREATE INDEX idx_documents_workspace ON documents(workspace_id);
+CREATE INDEX idx_documents_collection ON documents(collection_id);
 CREATE INDEX idx_documents_user ON documents(user_id);
-CREATE INDEX idx_chunks_workspace ON chunks(workspace_id);
+CREATE INDEX idx_chunks_collection ON chunks(collection_id);
+CREATE INDEX idx_collections_parent ON collections(parent_id);
+CREATE INDEX idx_collections_path ON collections(path);
 ```
 
 ### Step 2: Update Domain Models
 ```python
-# src/privategpt/core/domain/workspace.py
+# src/privategpt/core/domain/collection.py
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID
 
 @dataclass
-class Workspace:
+class Collection:
     id: Optional[UUID]
     user_id: int
+    parent_id: Optional[UUID]
     name: str
     description: Optional[str] = None
+    collection_type: str = "folder"
     icon: str = "📁"
     color: str = "#3B82F6"
+    path: str
+    depth: int = 0
     settings: Dict[str, Any] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -101,7 +111,7 @@ class Workspace:
 @dataclass
 class Document:
     id: Optional[int]
-    workspace_id: UUID
+    collection_id: UUID
     user_id: int
     title: str
     file_path: str
@@ -121,67 +131,75 @@ class Document:
             self.metadata = {}
 ```
 
-### Step 3: Create Workspace Repository
+### Step 3: Create Collection Repository
 ```python
-# src/privategpt/infra/database/workspace_repository.py
+# src/privategpt/infra/database/collection_repository.py
 from typing import Optional, List
 from uuid import UUID
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from privategpt.core.domain.workspace import Workspace
-from privategpt.infra.database.models import Workspace as WorkspaceModel
+from privategpt.core.domain.collection import Collection
+from privategpt.infra.database.models import Collection as CollectionModel
 
-class WorkspaceRepository:
+class CollectionRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
     
-    async def create(self, workspace: Workspace) -> Workspace:
-        db_workspace = WorkspaceModel(
-            user_id=workspace.user_id,
-            name=workspace.name,
-            description=workspace.description,
-            icon=workspace.icon,
-            color=workspace.color,
-            settings=workspace.settings
+    async def create(self, collection: Collection) -> Collection:
+        db_collection = CollectionModel(
+            user_id=collection.user_id,
+            parent_id=collection.parent_id,
+            name=collection.name,
+            description=collection.description,
+            collection_type=collection.collection_type,
+            icon=collection.icon,
+            color=collection.color,
+            path=collection.path,
+            depth=collection.depth,
+            settings=collection.settings
         )
-        self.session.add(db_workspace)
+        self.session.add(db_collection)
         await self.session.commit()
-        await self.session.refresh(db_workspace)
-        return self._to_domain(db_workspace)
+        await self.session.refresh(db_collection)
+        return self._to_domain(db_collection)
     
-    async def get_by_id(self, workspace_id: UUID, user_id: int) -> Optional[Workspace]:
+    async def get_by_id(self, collection_id: UUID, user_id: int) -> Optional[Collection]:
         result = await self.session.execute(
-            select(WorkspaceModel).where(
+            select(CollectionModel).where(
                 and_(
-                    WorkspaceModel.id == workspace_id,
-                    WorkspaceModel.user_id == user_id,
-                    WorkspaceModel.deleted_at.is_(None)
+                    CollectionModel.id == collection_id,
+                    CollectionModel.user_id == user_id,
+                    CollectionModel.deleted_at.is_(None)
                 )
             )
         )
-        db_workspace = result.scalar_one_or_none()
-        return self._to_domain(db_workspace) if db_workspace else None
+        db_collection = result.scalar_one_or_none()
+        return self._to_domain(db_collection) if db_collection else None
     
-    async def list_by_user(self, user_id: int) -> List[Workspace]:
-        result = await self.session.execute(
-            select(WorkspaceModel).where(
-                and_(
-                    WorkspaceModel.user_id == user_id,
-                    WorkspaceModel.deleted_at.is_(None)
-                )
-            ).order_by(WorkspaceModel.name)
-        )
-        return [self._to_domain(w) for w in result.scalars()]
+    async def list_by_user(self, user_id: int, parent_id: Optional[UUID] = None) -> List[Collection]:
+        query = select(CollectionModel).where(
+            and_(
+                CollectionModel.user_id == user_id,
+                CollectionModel.parent_id == parent_id,
+                CollectionModel.deleted_at.is_(None)
+            )
+        ).order_by(CollectionModel.collection_type, CollectionModel.name)
+        result = await self.session.execute(query)
+        return [self._to_domain(c) for c in result.scalars()]
     
-    def _to_domain(self, db_model: WorkspaceModel) -> Workspace:
-        return Workspace(
+    def _to_domain(self, db_model: CollectionModel) -> Collection:
+        return Collection(
             id=db_model.id,
             user_id=db_model.user_id,
+            parent_id=db_model.parent_id,
             name=db_model.name,
             description=db_model.description,
+            collection_type=db_model.collection_type,
             icon=db_model.icon,
             color=db_model.color,
+            path=db_model.path,
+            depth=db_model.depth,
             settings=db_model.settings,
             created_at=db_model.created_at,
             updated_at=db_model.updated_at,
@@ -189,7 +207,7 @@ class WorkspaceRepository:
         )
 ```
 
-### Step 4: Update RAG Router with Workspace Support
+### Step 4: Update RAG Router with Collection Support
 ```python
 # src/privategpt/services/rag/api/rag_router.py
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
@@ -198,47 +216,49 @@ from uuid import UUID
 
 # ... existing imports ...
 
-# New endpoints for workspaces
-@router.post("/workspaces", response_model=WorkspaceOut)
-async def create_workspace(
-    workspace: WorkspaceCreate,
+# New endpoints for collections
+@router.post("/collections", response_model=CollectionOut)
+async def create_collection(
+    collection: CollectionCreate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
-    repo = WorkspaceRepository(session)
-    new_workspace = Workspace(
+    repo = CollectionRepository(session)
+    new_collection = Collection(
         id=None,
         user_id=current_user.id,
-        name=workspace.name,
-        description=workspace.description,
-        icon=workspace.icon,
-        color=workspace.color,
-        settings=workspace.settings
+        parent_id=collection.parent_id,
+        name=collection.name,
+        description=collection.description,
+        icon=collection.icon,
+        color=collection.color,
+        settings=collection.settings
     )
-    return await repo.create(new_workspace)
+    return await repo.create(new_collection)
 
-@router.get("/workspaces", response_model=List[WorkspaceOut])
-async def list_workspaces(
+@router.get("/collections", response_model=List[CollectionOut])
+async def list_collections(
+    parent_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
-    repo = WorkspaceRepository(session)
-    return await repo.list_by_user(current_user.id)
+    repo = CollectionRepository(session)
+    return await repo.list_by_user(current_user.id, parent_id)
 
 # Updated document upload with file support
-@router.post("/workspaces/{workspace_id}/documents")
+@router.post("/collections/{collection_id}/documents")
 async def upload_document(
-    workspace_id: UUID,
+    collection_id: UUID,
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
-    # Validate workspace ownership
-    workspace_repo = WorkspaceRepository(session)
-    workspace = await workspace_repo.get_by_id(workspace_id, current_user.id)
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
+    # Validate collection ownership
+    collection_repo = CollectionRepository(session)
+    collection = await collection_repo.get_by_id(collection_id, current_user.id)
+    if not collection:
+        raise HTTPException(404, "Collection not found")
     
     # Save file to storage
     file_path = await save_uploaded_file(file)
@@ -247,7 +267,7 @@ async def upload_document(
     doc_repo = SqlDocumentRepository(session)
     new_doc = Document(
         id=None,
-        workspace_id=workspace_id,
+        collection_id=collection_id,
         user_id=current_user.id,
         title=file.filename,
         file_path=file_path,
@@ -264,7 +284,7 @@ async def upload_document(
     task_id = task_queue.enqueue(
         "process_document_with_progress",
         str(doc.id),
-        str(workspace_id),
+        str(collection_id),
         file_path
     )
     
@@ -477,22 +497,24 @@ class RAGSearchTool:
 ### Step 7: Frontend Context Integration
 ```typescript
 // Frontend types and interfaces
-interface WorkspaceContext {
-  workspaceIds?: string[]
+interface CollectionContext {
+  collectionIds?: string[]
+  collectionPaths?: string[]  // Support @Cases/Smith syntax
   documentIds?: string[]
-  searchScope: 'workspace' | 'document' | 'all'
+  searchScope: 'collection' | 'document' | 'all'
 }
 
 interface ChatMessage {
   content: string
-  context?: WorkspaceContext
+  context?: CollectionContext
   mentions?: MentionedResource[]
 }
 
 interface MentionedResource {
-  type: 'workspace' | 'document'
+  type: 'collection' | 'folder' | 'document'
   id: string
   name: string
+  path: string  // Full path like /Cases/Smith v Jones
   icon: string
 }
 
@@ -503,7 +525,7 @@ const ContextMentionInput: React.FC = () => {
   
   const handleAtSymbol = (position: number) => {
     setShowSuggestions(true)
-    // Show workspace/document selector
+    // Show collection/folder tree selector
   }
   
   const addMention = (resource: MentionedResource) => {
@@ -511,15 +533,18 @@ const ContextMentionInput: React.FC = () => {
     // Add visual tag to input
   }
   
-  const buildContext = (): WorkspaceContext => {
+  const buildContext = (): CollectionContext => {
     return {
-      workspaceIds: mentions
-        .filter(m => m.type === 'workspace')
+      collectionIds: mentions
+        .filter(m => m.type === 'collection' || m.type === 'folder')
         .map(m => m.id),
+      collectionPaths: mentions
+        .filter(m => m.type === 'collection' || m.type === 'folder')
+        .map(m => m.path),
       documentIds: mentions
         .filter(m => m.type === 'document')
         .map(m => m.id),
-      searchScope: mentions.length > 0 ? 'workspace' : 'all'
+      searchScope: mentions.length > 0 ? 'collection' : 'all'
     }
   }
   
@@ -531,37 +556,41 @@ const ContextMentionInput: React.FC = () => {
 
 ### 1. Unit Tests
 ```python
-# Test workspace creation
-async def test_create_workspace():
-    workspace = await create_workspace("Legal Cases", user_id=1)
-    assert workspace.name == "Legal Cases"
-    assert workspace.user_id == 1
+# Test collection creation
+async def test_create_collection():
+    collection = await create_collection("Legal Cases", user_id=1)
+    assert collection.name == "Legal Cases"
+    assert collection.user_id == 1
+    assert collection.collection_type == "collection"
+    assert collection.depth == 0
 
-# Test document upload
-async def test_upload_document_to_workspace():
-    workspace = await create_workspace("Test", user_id=1)
-    doc = await upload_document(workspace.id, "test.pdf")
-    assert doc.workspace_id == workspace.id
+# Test document upload to folder
+async def test_upload_document_to_folder():
+    collection = await create_collection("Cases", user_id=1)
+    folder = await create_collection("Smith v Jones", parent_id=collection.id, user_id=1)
+    doc = await upload_document(folder.id, "test.pdf")
+    assert doc.collection_id == folder.id
 ```
 
 ### 2. Integration Tests
 ```python
 # Test full pipeline
 async def test_document_processing_pipeline():
-    # Create workspace
-    workspace = await create_workspace("Test Workspace", user_id=1)
+    # Create collection hierarchy
+    cases = await create_collection("Cases", user_id=1)
+    smith_folder = await create_collection("Smith v Jones", parent_id=cases.id, user_id=1)
     
     # Upload document
-    doc_id = await upload_document(workspace.id, "sample.pdf")
+    doc_id = await upload_document(smith_folder.id, "sample.pdf")
     
     # Wait for processing
     await wait_for_processing(doc_id)
     
-    # Search using MCP tool
+    # Search using MCP tool with path
     tool = RAGSearchTool()
     results = await tool.execute(
         query="test query",
-        workspace_ids=[str(workspace.id)]
+        collection_ids=[str(smith_folder.id)]
     )
     
     assert len(results["results"]) > 0
@@ -569,10 +598,10 @@ async def test_document_processing_pipeline():
 
 ## Migration Path
 
-1. **Week 1**: Database schema + basic workspace CRUD
+1. **Week 1**: Database schema + collection hierarchy CRUD
 2. **Week 2**: File upload + Celery processing with progress
 3. **Week 3**: MCP tool integration + search improvements
-4. **Week 4**: Frontend @ mentions + context selection
+4. **Week 4**: Frontend collection browser + @ mentions with paths
 5. **Week 5**: Testing + performance optimization
 
-This plan builds incrementally on your existing code while adding the sophisticated features you need for a production-ready RAG system.
+This plan builds incrementally on your existing code while adding hierarchical document organization and sophisticated search features for a production-ready RAG system.

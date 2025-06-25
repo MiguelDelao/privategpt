@@ -3,24 +3,25 @@
 ## 🎯 What You're Building
 
 A sophisticated knowledge management system that allows users to:
-1. **Organize documents** into workspaces (knowledge silos)
+1. **Organize documents** into collections and folders (hierarchical structure)
 2. **Track processing** with real-time progress updates
-3. **Control AI context** using @ mentions in chat
+3. **Control AI context** using @ mentions with path support
 4. **Enable AI tools** to search and access these knowledge bases
 
 ## 📁 Key Concepts
 
-### Workspaces = Knowledge Silos
-Think of workspaces as folders or projects that group related documents:
-- **Attorney**: "Active Cases", "Case Law", "Client Files"
-- **Researcher**: "Literature Review", "Experiments", "References"
-- **Business**: "Q4 Planning", "Market Research", "Policies"
+### Collections & Folders = Hierarchical Organization
+Familiar folder structure for organizing documents:
+- **Attorney**: "Cases" > "Smith v Jones" > "Discovery", "Pleadings"
+- **Researcher**: "Projects" > "2024 Study" > "Data", "Analysis"
+- **Business**: "Operations" > "HR" > "Policies", "Procedures"
 
 ### @ Mention Context Selection
-Users can type `@cases` in chat to tell the AI to only search in the "cases" workspace:
-- `@cases What was the outcome of Smith v. Jones?`
-- `@research @experiments What were the results of trial 3?`
-- Multiple contexts can be combined for broader searches
+Users can type `@Cases` or use paths like `@Cases/Smith` for precise context:
+- `@Cases What was the outcome of Smith v. Jones?`
+- `@Cases/Smith/Discovery What documents were exchanged?`
+- `@Regulations/Europe What are the GDPR requirements?`
+- Multiple paths can be combined for broader searches
 
 ### Real-time Progress Tracking
 When documents are uploaded:
@@ -32,25 +33,25 @@ When documents are uploaded:
 ## 🏗️ Technical Architecture
 
 ### Backend Components
-1. **RAG Service** - Document management and vector search
+1. **RAG Service** - Document management with folder hierarchy
 2. **Celery Workers** - Async document processing
 3. **Redis** - Progress pub/sub and caching
-4. **Weaviate** - Vector storage with namespace isolation
-5. **MCP Tools** - AI-accessible search and retrieval
+4. **Weaviate** - Vector storage with collection namespacing
+5. **MCP Tools** - AI-accessible search with path filtering
 
 ### Frontend Features
-1. **Workspace Selector** - Switch between knowledge silos
+1. **Collection Browser** - Navigate folder hierarchy
 2. **Document Uploader** - Drag-drop with progress visualization
-3. **Context Mentions** - @ symbol triggers workspace selection
-4. **Document Browser** - View and manage uploaded files
+3. **Context Mentions** - @ symbol with path autocomplete
+4. **Folder View** - Current location with breadcrumb navigation
 
 ## 📊 Implementation Phases
 
 ### Phase 1: Foundation (Week 1-2)
-✅ Database schema for workspaces
-✅ CRUD APIs for workspace management
-✅ Update document model with workspace support
-✅ Basic frontend workspace UI
+✅ Database schema for collections with hierarchy
+✅ CRUD APIs for collection/folder management
+✅ Update document model with collection support
+✅ Folder tree navigation UI
 
 ### Phase 2: Processing Pipeline (Week 2-3)
 ✅ Celery task with progress updates
@@ -59,14 +60,14 @@ When documents are uploaded:
 ✅ Frontend progress visualization
 
 ### Phase 3: MCP Integration (Week 3-4)
-✅ Enhanced search tool with workspace filtering
+✅ Enhanced search tool with collection path filtering
 ✅ Tool factory for dynamic tool management
-✅ Context-aware search capabilities
+✅ Path-aware search capabilities
 ✅ Testing framework for tools
 
 ### Phase 4: Frontend Polish (Week 4-5)
-✅ @ mention UI component
-✅ Workspace context badges
+✅ @ mention with path support
+✅ Collection breadcrumb navigation
 ✅ Document preview and metadata
 ✅ Search result highlighting
 
@@ -80,17 +81,20 @@ When documents are uploaded:
 
 1. **Database Migration**
    ```bash
-   # Create migration for workspace schema
-   alembic revision -m "Add workspaces and update documents"
+   # Create migration for collections schema
+   alembic revision -m "Add collections hierarchy and update documents"
    # Apply migration
    alembic upgrade head
    ```
 
-2. **First API Endpoint**
+2. **First API Endpoints**
    ```python
    # Add to rag_router.py
-   @router.post("/workspaces")
-   async def create_workspace(...)
+   @router.post("/collections")
+   async def create_collection(...)
+   
+   @router.get("/collections/{id}/children")
+   async def list_children(...)
    ```
 
 3. **Update MCP Search Tool**
@@ -98,26 +102,27 @@ When documents are uploaded:
    # Enhance search_documents in MCP
    async def search_documents(
        query: str,
-       workspace_ids: Optional[List[str]] = None,
+       collection_ids: Optional[List[str]] = None,
+       collection_paths: Optional[List[str]] = None,
        ...
    )
    ```
 
-4. **Frontend Workspace Component**
+4. **Frontend Collection Component**
    ```typescript
-   // Create WorkspaceSelector.tsx
-   const WorkspaceSelector = ({ onSelect, workspaces }) => {
-     // Dropdown or sidebar implementation
+   // Create CollectionBrowser.tsx
+   const CollectionBrowser = ({ onNavigate, collections }) => {
+     // Tree view with folder navigation
    }
    ```
 
 ## 💡 Key Design Decisions
 
-### Why Workspaces?
-- **Isolation**: Keep different types of knowledge separate
-- **Performance**: Search only relevant documents
-- **Organization**: Better UX for managing many documents
-- **Security**: Future capability for workspace-level permissions
+### Why Collections & Folders?
+- **Familiarity**: Everyone understands folder structure
+- **Flexibility**: Unlimited nesting for any organization style
+- **Performance**: Search specific paths for faster results
+- **Scalability**: Efficient navigation even with thousands of documents
 
 ### Why @ Mentions?
 - **Intuitive**: Familiar pattern from social media
@@ -134,10 +139,10 @@ When documents are uploaded:
 ## 📈 Success Metrics
 
 1. **User Experience**
-   - Workspace switching < 100ms
+   - Folder navigation < 100ms
    - Document upload feedback < 1s
    - Progress updates every 2-3s during processing
-   - Search results < 200ms
+   - Path-filtered search < 200ms
 
 2. **System Performance**
    - Process 10MB PDF in < 30s
@@ -153,11 +158,11 @@ When documents are uploaded:
 
 ## 🎨 UI/UX Considerations
 
-### Workspace Management
-- Visual distinction (colors, icons)
-- Quick switcher (CMD+K style)
-- Bulk operations support
-- Archive vs. delete options
+### Collection Management
+- Tree view with expand/collapse
+- Breadcrumb navigation
+- Drag-and-drop to move documents
+- Right-click context menus
 
 ### Document Upload
 - Drag-and-drop anywhere

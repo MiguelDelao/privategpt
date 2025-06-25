@@ -2,12 +2,12 @@
 
 ## Executive Summary
 
-This roadmap outlines the implementation of a comprehensive document management and retrieval system (RAG) integrated with Model Context Protocol (MCP) tools, enabling users to create knowledge silos, upload documents, and leverage AI with contextual awareness.
+This roadmap outlines the implementation of a comprehensive document management and retrieval system (RAG) integrated with Model Context Protocol (MCP) tools, enabling users to organize documents into collections and folders, upload documents, and leverage AI with contextual awareness.
 
 ## 🎯 Vision
 
 Create a powerful knowledge management system where users can:
-- Organize documents into workspaces/knowledge silos
+- Organize documents into collections and folders (hierarchical structure)
 - Upload and process documents with real-time progress tracking
 - Use AI that understands and accesses specific context via @ mentions
 - Leverage MCP tools for intelligent document search and manipulation
@@ -18,7 +18,7 @@ Create a powerful knowledge management system where users can:
 graph TB
     subgraph "Frontend (Next.js)"
         UI[Document Upload UI]
-        WS[Workspace Manager]
+        CM[Collection Manager]
         CM[Context Selector @]
         RT[Real-time Progress]
     end
@@ -30,7 +30,7 @@ graph TB
     
     subgraph "RAG Service"
         DU[Document Upload API]
-        WM[Workspace Management]
+        CM[Collection Management]
         DP[Document Processor]
         VS[Vector Store Integration]
     end
@@ -65,28 +65,32 @@ graph TB
 
 ## 📋 Core Concepts
 
-### 1. Workspaces (Knowledge Silos)
+### 1. Collections & Folders (Hierarchical Organization)
 
-**Definition**: Isolated document collections for specific contexts or projects.
+**Definition**: Hierarchical document organization with collections (top-level) and folders (nested).
 
 **Use Cases**:
-- **Legal**: Separate workspaces for "Active Cases", "Case Law", "Regulations"
-- **Research**: "Literature Review", "Experiments", "References"
-- **Business**: "Projects", "Policies", "Market Research"
+- **Legal**: Collections for "Cases", "Regulations" with nested folders for specific cases/jurisdictions
+- **Research**: "Projects" collection with folders for each study, "References" with subject folders
+- **Business**: "Operations", "Compliance" collections with departmental folders
 
 **Data Model**:
 ```python
-class Workspace:
+class Collection:
     id: UUID
     user_id: str
+    parent_id: Optional[UUID]  # None for root collections
     name: str
     description: str
+    collection_type: Literal["collection", "folder"]
     icon: str  # emoji or icon identifier
     color: str  # for UI theming
+    path: str  # Full path like "/Cases/Smith v Jones"
+    depth: int  # 0 for root collections
     created_at: datetime
-    settings: WorkspaceSettings
+    settings: CollectionSettings
     
-class WorkspaceSettings:
+class CollectionSettings:
     is_public: bool = False
     default_chunk_size: int = 512
     embedding_model: str = "BAAI/bge-small-en-v1.5"
@@ -96,7 +100,7 @@ class WorkspaceSettings:
 ### 2. Document Processing Pipeline
 
 **Flow**:
-1. User uploads document to workspace
+1. User uploads document to specific collection/folder
 2. API creates document record with "pending" status
 3. Celery task queued for processing
 4. Progress updates streamed via SSE
@@ -237,11 +241,11 @@ async def stream_document_progress(id: str):
 ```python
 class RAGSearchTool:
     name = "search_knowledge"
-    description = "Search through uploaded documents and workspaces"
+    description = "Search through uploaded documents in collections and folders"
     
     parameters = {
         "query": str,
-        "workspace_ids": Optional[List[str]],
+        "collection_ids": Optional[List[str]],
         "document_ids": Optional[List[str]],
         "max_results": int = 5,
         "include_metadata": bool = True
@@ -261,7 +265,7 @@ class RAGSearchTool:
                 {
                     "content": r.content,
                     "document": r.document_name,
-                    "workspace": r.workspace_name,
+                    "collection_path": r.collection_path,
                     "relevance": r.score,
                     "metadata": r.metadata if params["include_metadata"] else None
                 }
@@ -278,14 +282,14 @@ class DocumentManagementTool:
     
     parameters = {
         "action": Literal["list", "search", "get_metadata"],
-        "workspace_id": Optional[str],
+        "collection_id": Optional[str],
         "filters": Optional[Dict],
         "document_id": Optional[str]
     }
     
     async def execute(self, **params) -> Dict:
         if params["action"] == "list":
-            return await list_documents(params.get("workspace_id"), params.get("filters"))
+            return await list_documents(params.get("collection_id"), params.get("filters"))
         elif params["action"] == "search":
             return await search_documents(params.get("filters"))
         elif params["action"] == "get_metadata":
@@ -439,20 +443,21 @@ class MCPTestRunner:
 
 #### 5.2 Integration Tests
 ```python
-# Test workspace creation and document upload
+# Test collection creation and document upload
 async def test_full_document_pipeline():
-    # Create workspace
-    workspace = await create_workspace("Test Legal Cases")
+    # Create collection hierarchy
+    cases_collection = await create_collection("Cases", user_id=1)
+    smith_folder = await create_collection("Smith v Jones", parent_id=cases_collection.id)
     
     # Upload document
-    doc_id = await upload_document(workspace.id, "case1.pdf")
+    doc_id = await upload_document(smith_folder.id, "case1.pdf")
     
     # Track progress
     progress = await track_document_progress(doc_id)
     assert progress.status == "completed"
     
-    # Search via MCP
-    results = await mcp_search("specific legal term", workspace_ids=[workspace.id])
+    # Search via MCP with path
+    results = await mcp_search("specific legal term", collection_ids=[smith_folder.id])
     assert len(results) > 0
 ```
 
@@ -493,8 +498,9 @@ async def test_full_document_pipeline():
 ## 🗓️ Timeline
 
 **Weeks 1-2**: RAG Service Foundation
-- Workspace CRUD APIs
-- Document upload infrastructure
+- Collection hierarchy CRUD APIs
+- Folder navigation and management
+- Document upload with collection support
 - Database schema updates
 
 **Weeks 2-3**: Async Processing
@@ -503,13 +509,15 @@ async def test_full_document_pipeline():
 - SSE streaming integration
 
 **Weeks 3-4**: MCP Integration
-- Tool development
-- Factory system
+- Collection-aware search tool
+- Path-based context filtering
+- Tool factory system
 - Testing framework
 
 **Weeks 4-5**: Frontend Features
-- Workspace UI
-- @ mention system
+- Collection browser UI
+- Folder tree navigation
+- @ mention with path support
 - Progress visualization
 
 **Weeks 5-6**: Testing & Polish
@@ -519,10 +527,10 @@ async def test_full_document_pipeline():
 
 ## 🎯 Next Immediate Steps
 
-1. **Database Migration**: Create workspace and update document schemas
-2. **API Scaffolding**: Implement workspace CRUD endpoints
+1. **Database Migration**: Create collections table with hierarchy support
+2. **API Scaffolding**: Implement collection/folder CRUD endpoints
 3. **Celery Setup**: Configure async document processing
-4. **Frontend Mockups**: Design workspace selector and upload UI
+4. **Frontend Mockups**: Design collection browser and folder navigation
 5. **MCP Tool Stub**: Create basic RAG search tool interface
 
 This roadmap provides a systematic approach to building a powerful knowledge management system with RAG and MCP integration. The modular design allows for iterative development while maintaining a clear vision of the end goal.

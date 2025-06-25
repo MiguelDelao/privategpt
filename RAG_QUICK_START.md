@@ -3,17 +3,17 @@
 ## 🎯 Core Concept
 
 Build a knowledge management system where users can:
-1. Create **workspaces** (knowledge silos) for different contexts
+1. Create **collections and folders** (hierarchical organization) for different contexts
 2. Upload documents that get processed asynchronously
 3. Use **@ mentions** in chat to specify which context the AI should use
 4. MCP tools can search and access these knowledge bases
 
 ## 🏗️ Key Architectural Decisions
 
-### 1. Workspace Model
-- **What**: Isolated document collections (e.g., "Legal Cases", "Research Papers")
-- **Why**: Users need to separate different types of knowledge
-- **How**: Each workspace has its own vector namespace in Weaviate
+### 1. Collection & Folder Model
+- **What**: Hierarchical document organization (e.g., "Cases" > "Smith v Jones" > "Discovery")
+- **Why**: Users need familiar folder structure to organize knowledge
+- **How**: Self-referential table with parent_id, cached paths, and depth tracking
 
 ### 2. Async Document Processing
 - **What**: Celery tasks process documents in background
@@ -21,9 +21,9 @@ Build a knowledge management system where users can:
 - **How**: SSE streams progress updates to frontend in real-time
 
 ### 3. @ Mention Context System
-- **What**: Type `@cases` to make AI search only in cases workspace
+- **What**: Type `@Cases` or `@Cases/Smith` to control search scope
 - **Why**: Precise context control for better AI responses
-- **How**: Frontend sends context metadata, backend filters vector search
+- **How**: Frontend sends collection paths, backend filters vector search
 
 ### 4. MCP Tool Integration
 - **What**: Tools that can search/access RAG knowledge bases
@@ -35,47 +35,63 @@ Build a knowledge management system where users can:
 ### 1. Database Schema (Start Here!)
 ```sql
 -- Add to your next migration
-CREATE TABLE workspaces (
+CREATE TABLE collections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id VARCHAR NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    parent_id UUID REFERENCES collections(id) ON DELETE CASCADE,
     name VARCHAR NOT NULL,
-    description TEXT,
+    collection_type VARCHAR DEFAULT 'folder', -- 'collection' for root, 'folder' for nested
+    path VARCHAR NOT NULL, -- Cached full path like '/Cases/Smith v Jones'
+    depth INTEGER DEFAULT 0,
     icon VARCHAR DEFAULT '📁',
     color VARCHAR DEFAULT '#3B82F6',
     settings JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP
+    deleted_at TIMESTAMP,
+    UNIQUE(user_id, parent_id, name)
 );
 
-ALTER TABLE documents ADD COLUMN workspace_id UUID REFERENCES workspaces(id);
-ALTER TABLE chunks ADD COLUMN workspace_id UUID REFERENCES workspaces(id);
+ALTER TABLE documents ADD COLUMN collection_id UUID REFERENCES collections(id);
+ALTER TABLE chunks ADD COLUMN collection_id UUID REFERENCES collections(id);
+
+-- Indexes for efficient navigation
+CREATE INDEX idx_collections_parent ON collections(parent_id);
+CREATE INDEX idx_collections_path ON collections(path);
 ```
 
-### 2. First API Endpoint
+### 2. First API Endpoints
 ```python
 # In rag_router.py
-@router.post("/workspaces")
-async def create_workspace(
-    workspace: WorkspaceCreate,
+@router.post("/collections")
+async def create_collection(
+    collection: CollectionCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Create workspace for user
-    # Return workspace details
+    # Build path based on parent
+    # Create collection/folder
+    # Return with full path
+
+@router.get("/collections/{id}/children")
+async def list_children(
+    id: UUID,
+    user: User = Depends(get_current_user)
+):
+    # Return sub-folders and documents
 ```
 
 ### 3. Document Upload Update
 ```python
 # Update existing upload endpoint
-@router.post("/workspaces/{workspace_id}/documents")
+@router.post("/collections/{collection_id}/documents")
 async def upload_document(
-    workspace_id: str,
+    collection_id: str,
     file: UploadFile,
     background_tasks: BackgroundTasks
 ):
-    # Validate workspace ownership
-    # Create document record
+    # Validate collection ownership
+    # Create document record with collection_id
     # Queue Celery task
     # Return document ID for progress tracking
 ```
@@ -93,10 +109,10 @@ async def stream_progress(id: str):
 
 ## 🚀 Development Sequence
 
-1. **Week 1**: Get workspaces working
-   - Database schema ✓
-   - CRUD APIs ✓
-   - Basic frontend UI ✓
+1. **Week 1**: Get collections & folders working
+   - Database schema with hierarchy ✓
+   - CRUD APIs with navigation ✓
+   - Folder tree UI ✓
 
 2. **Week 2**: Document processing
    - Celery pipeline ✓
@@ -123,14 +139,20 @@ async def stream_progress(id: str):
 ## 🔧 Quick Test Commands
 
 ```bash
-# Create a workspace
-curl -X POST localhost:8000/api/rag/workspaces \
+# Create a root collection
+curl -X POST localhost:8000/api/rag/collections \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Test Cases", "description": "Legal case documents"}'
+  -d '{"name": "Cases", "description": "Legal case documents"}'
 
-# Upload a document
-curl -X POST localhost:8000/api/rag/workspaces/{id}/documents \
+# Create a sub-folder
+curl -X POST localhost:8000/api/rag/collections \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Smith v Jones", "parent_id": "<collection-id>"}'
+
+# Upload a document to a folder
+curl -X POST localhost:8000/api/rag/collections/{folder-id}/documents \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@test.pdf"
 
@@ -141,9 +163,9 @@ curl -N localhost:8000/api/rag/documents/{id}/progress \
 
 ## 🎨 Frontend Components Needed
 
-1. **WorkspaceSelector**: Dropdown/sidebar to switch workspaces
+1. **CollectionBrowser**: Tree view to navigate folders
 2. **DocumentUploader**: Drag-drop with progress bar
-3. **ContextMention**: @ symbol trigger for workspace selection
-4. **DocumentList**: Show documents in current workspace
+3. **ContextMention**: @ symbol trigger with path support (@Cases/Smith)
+4. **FolderView**: Show current folder contents with breadcrumb
 
 Remember: The goal is to make document management feel seamless while giving users precise control over what context their AI uses!
