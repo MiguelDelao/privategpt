@@ -1,0 +1,52 @@
+{
+  "log_level": "INFO",
+  
+  "database_url": "postgresql://privategpt:secret@db:5432/privategpt",
+  "redis_url": "redis://redis:6379/0",
+  "weaviate_url": "http://weaviate:8080",
+  
+  "llm_provider": "ollama",
+  "llm_base_url": "http://ollama:11434",
+  "llm_default_model": "",
+  "embed_model": "BAAI/bge-small-en-v1.5",
+  
+  "_comment_providers": "LLM Provider Configuration",
+  "ollama_enabled": true,
+  "ollama_base_url": "http://ollama:11434",
+  "ollama_model": "llama3.2",
+  
+  "openai_enabled": false,
+  "openai_api_key": "",
+  "_comment_api_keys": "Set API keys via environment variables: ANTHROPIC_API_KEY, OPENAI_API_KEY",
+  "openai_base_url": "https://api.openai.com/v1", 
+  "openai_model": "gpt-4",
+  "openai_models": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "o1-preview", "o1-mini"],
+  
+  "anthropic_enabled": true,
+  "anthropic_api_key": "",
+  "anthropic_base_url": "https://api.anthropic.com",
+  "anthropic_model": "claude-3-7-sonnet-latest",
+  "anthropic_models": ["claude-3-7-sonnet-latest","claude-3-5-haiku-20241022"],
+  
+  "keycloak_url": "http://keycloak:8080",
+  "keycloak_realm": "privategpt",
+  "keycloak_client_id": "privategpt-ui",
+  
+  "default_admin_email": "admin@admin.com",
+  "default_admin_username": "admin@admin.com", 
+  "default_admin_password": "admin",
+  "default_admin_first_name": "Admin",
+  "default_admin_last_name": "User",
+  
+  "rag_service_url": "http://rag-service:8000",
+  "llm_service_url": "http://llm-service:8000",
+  "mcp_service_url": "http://mcp-service:8000",
+  
+  "mcp_enabled": true,
+  "mcp_transport": "stdio",
+  "mcp_available_tools": "*",
+  
+  "default_system_prompt": "You are a helpful AI assistant. Respond concisely and clearly to user questions.",
+  "enable_prompt_caching": false,
+  "enable_thinking_mode": false
+}
