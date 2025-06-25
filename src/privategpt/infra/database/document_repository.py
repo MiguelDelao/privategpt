@@ -36,11 +36,19 @@ class SqlDocumentRepository(DocumentRepositoryPort):
         if row:
             return Document(
                 id=row.id,
+                collection_id=row.collection_id,
+                user_id=row.user_id,
                 title=row.title,
                 file_path=row.file_path,
+                file_name=row.file_name,
+                file_size=row.file_size,
+                mime_type=row.mime_type,
                 uploaded_at=row.uploaded_at,
                 status=DocumentStatus(row.status),
                 error=row.error,
+                task_id=row.task_id,
+                processing_progress=row.processing_progress or {},
+                doc_metadata=row.doc_metadata or {}
             )
         return None
 
@@ -49,17 +57,31 @@ class SqlDocumentRepository(DocumentRepositoryPort):
         for row in result.scalars():
             yield Document(
                 id=row.id,
+                collection_id=row.collection_id,
+                user_id=row.user_id,
                 title=row.title,
                 file_path=row.file_path,
+                file_name=row.file_name,
+                file_size=row.file_size,
+                mime_type=row.mime_type,
                 uploaded_at=row.uploaded_at,
                 status=DocumentStatus(row.status),
                 error=row.error,
+                task_id=row.task_id,
+                processing_progress=row.processing_progress or {},
+                doc_metadata=row.doc_metadata or {}
             )
 
     async def update(self, doc: Document) -> None:
         await self.session.execute(
             update(models.Document)
             .where(models.Document.id == doc.id)
-            .values(status=doc.status.value, error=doc.error)
+            .values(
+                status=doc.status.value, 
+                error=doc.error,
+                task_id=doc.task_id,
+                processing_progress=doc.processing_progress,
+                doc_metadata=doc.doc_metadata
+            )
         )
         await self.session.commit() 

@@ -54,4 +54,31 @@ class SqlChunkRepository(ChunkRepositoryPort):
                 embedding=json.loads(row.embedding) if row.embedding else None,
             )
             for row in result.scalars()
+        ]
+    
+    async def get_by_document_and_positions(self, doc_positions: List[Tuple[int, int]]) -> List[Chunk]:
+        """Get chunks by (document_id, position) pairs."""
+        if not doc_positions:
+            return []
+        
+        from sqlalchemy import or_, and_
+        
+        conditions = [
+            and_(models.Chunk.document_id == doc_id, models.Chunk.position == pos)
+            for doc_id, pos in doc_positions
+        ]
+        
+        result = await self.session.execute(
+            select(models.Chunk).where(or_(*conditions))
+        )
+        
+        return [
+            Chunk(
+                id=row.id,
+                document_id=row.document_id,
+                position=row.position,
+                text=row.text,
+                embedding=json.loads(row.embedding) if row.embedding else None,
+            )
+            for row in result.scalars()
         ] 

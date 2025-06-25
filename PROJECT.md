@@ -55,14 +55,22 @@ PrivateGPT is a production-ready Retrieval-Augmented Generation (RAG) system bui
 - **Model Selection**: Model must be specified in prepare-stream request (required parameter)
 
 #### 2. RAG Service (`rag-service`)
-**Purpose**: Document processing, embedding, and retrieval
+**Purpose**: Document processing, embedding, and retrieval with hierarchical collections
 - **Location**: `src/privategpt/services/rag/`
 - **Port**: 8002 (exposed on host; internal service listens on 8000)
 - **Responsibilities**:
-  - Document ingestion and chunking
-  - Vector embedding generation
-  - Semantic search and retrieval
-  - Context-aware response generation
+  - Hierarchical collection management (folders/subfolders)
+  - Asynchronous document processing via Celery
+  - Real-time progress tracking for document ingestion
+  - Vector embedding generation (BAAI/bge-small-en-v1.5)
+  - Semantic search with Weaviate vector store
+  - Document chunking and metadata management
+- **Key Features**:
+  - Collections support nested folder structure with breadcrumb navigation
+  - Celery-based background processing with progress states
+  - Document status tracking (pending → processing → complete/failed)
+  - Chunk storage with PostgreSQL and vector indexing
+  - RESTful API for all operations
 
 #### 3. LLM Service (`llm-service`)
 **Purpose**: Ollama-based language model inference and generation
@@ -272,31 +280,98 @@ The system implements a two-phase streaming approach to solve SQLAlchemy async c
 - **System Prompts**: XML-structured prompts with model pattern matching
 - **Model Usage**: Token consumption and cost tracking
 
+## RAG System Architecture
+
+### Collections System
+- **Hierarchical Structure**: Nested folder organization for documents
+- **Path Management**: Automatic path calculation and breadcrumb generation
+- **Metadata Support**: Icons, colors, descriptions, and custom settings
+- **Recursive Operations**: Document counting across collection trees
+- **Soft Delete**: Collections marked as deleted, hard delete removes all data
+
+### Document Processing Pipeline
+1. **Upload**: Document uploaded to collection with metadata
+2. **Task Creation**: Celery task queued with document ID and content
+3. **Text Splitting**: Content divided into chunks (1000 chars, 200 overlap)
+4. **Embedding Generation**: BAAI/bge-small-en-v1.5 model creates 384-dim vectors
+5. **Vector Storage**: Embeddings stored in Weaviate with metadata
+6. **Chunk Storage**: Text chunks saved to PostgreSQL with positions
+7. **Progress Updates**: Real-time status via Celery state updates
+
+### Progress Tracking States
+- **PENDING**: Task queued, waiting for worker
+- **PROGRESS**: Active processing with stage details:
+  - `splitting`: Text chunking in progress
+  - `embedding`: Generating vector embeddings
+  - `storing`: Saving to vector database
+  - `finalizing`: Updating document status
+- **SUCCESS**: Processing complete, chunks ready
+- **FAILURE**: Error occurred, details in document record
+
+### API Endpoints
+- **Collections**:
+  - `GET /collections` - List user collections with counts
+  - `POST /collections` - Create new collection
+  - `GET /collections/{id}` - Get collection details
+  - `PATCH /collections/{id}` - Update collection metadata
+  - `DELETE /collections/{id}` - Delete collection (soft/hard)
+  - `GET /collections/{id}/breadcrumb` - Get path hierarchy
+  - `PATCH /collections/{id}/move` - Move to different parent
+- **Documents**:
+  - `POST /collections/{id}/documents` - Upload document
+  - `GET /documents/{id}/status` - Get processing status
+  - `GET /progress/{task_id}` - Real-time progress updates
+- **Search**:
+  - `POST /chat` - Query documents with semantic search
+
 ## Data Models
 
 ### Core Domain Entities
 
+#### Collection (`src/privategpt/core/domain/collection.py`)
+```python
+class Collection:
+    id: str  # UUID
+    user_id: int
+    parent_id: Optional[str]
+    name: str
+    description: Optional[str]
+    collection_type: str  # 'collection' or 'folder'
+    icon: Optional[str]
+    color: Optional[str]
+    settings: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+```
+
 #### Document (`src/privategpt/core/domain/document.py`)
 ```python
 class Document:
-    doc_id: UUID
-    user_id: str
+    id: int
+    collection_id: Optional[str]
+    user_id: int
     title: str
-    content: str
-    metadata: Dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
+    file_path: str
+    file_name: str
+    file_size: int
+    mime_type: str
+    status: DocumentStatus  # pending, processing, complete, failed
+    error: Optional[str]
+    task_id: Optional[str]
+    processing_progress: Dict[str, Any]
+    doc_metadata: Dict[str, Any]
+    uploaded_at: datetime
 ```
 
 #### Chunk (`src/privategpt/core/domain/chunk.py`)
 ```python
 class Chunk:
-    chunk_id: UUID
-    document_id: UUID
-    content: str
-    embedding: List[float]
-    metadata: Dict[str, Any]
+    id: int
+    document_id: int
     position: int
+    text: str
+    embedding: Optional[List[float]]
+    chunk_metadata: Dict[str, Any]
 ```
 
 #### User (Keycloak-managed)

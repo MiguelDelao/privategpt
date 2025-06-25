@@ -24,30 +24,12 @@ app = Celery(
 )
 
 
-@app.task(name="ingest_document")
-def ingest_document_task(doc_id: int, file_path: str, title: str, text: str):
+@app.task(name="ingest_document", bind=True)
+def ingest_document_task(self, doc_id: int, file_path: str, title: str, text: str):
     """Background ingestion task – split, embed, vector-store, save chunks."""
-
-    async def _run():
-        async with AsyncSessionLocal() as session:  # type: AsyncSession
-            repo = SqlDocumentRepository(session)
-            rag = build_rag_service(session)
-
-            try:
-                await rag.ingest_document(title, file_path, text)
-                doc = await repo.get(doc_id)
-                if doc:
-                    doc.status = DocumentStatus.COMPLETE
-                    await repo.update(doc)
-            except Exception as exc:  # noqa: BLE001
-                doc = await repo.get(doc_id)
-                if doc:
-                    doc.status = DocumentStatus.FAILED
-                    doc.error = str(exc)
-                    await repo.update(doc)
-                raise
-
-    asyncio.run(_run())
+    # Use synchronous implementation to avoid asyncio issues with Celery
+    from privategpt.infra.tasks.celery_sync import process_document_sync
+    process_document_sync(doc_id, file_path, title, text)
 
 
 @app.task(name="save_assistant_message")

@@ -30,16 +30,56 @@ class User(Base):
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
 
 
+class Collection(Base):
+    """Hierarchical collections/folders for document organization"""
+    __tablename__ = "collections"
+    
+    id = Column(String(255), primary_key=True, index=True)  # UUID
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = Column(String(255), ForeignKey("collections.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    collection_type = Column(String(50), nullable=False, default="folder")  # 'collection' for root, 'folder' for nested
+    icon = Column(String(50), nullable=False, default="📁")
+    color = Column(String(7), nullable=False, default="#3B82F6")
+    path = Column(String(1024), nullable=False)  # Full path like /Cases/Smith v Jones
+    depth = Column(Integer, nullable=False, default=0)
+    settings = Column(JSON, nullable=True, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship("User", backref="collections")
+    parent = relationship("Collection", remote_side=[id], backref="children")
+    documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("idx_collection_user_parent", "user_id", "parent_id", "name", unique=True),
+    )
+
+
 class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, index=True)
+    collection_id = Column(String(255), ForeignKey("collections.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     file_path = Column(String(1024), nullable=False)
+    file_name = Column(String(255), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    mime_type = Column(String(100), nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String(50), nullable=False, default="pending")
     error = Column(String(1024), nullable=True)
     task_id = Column(String(255), nullable=True, index=True)
+    processing_progress = Column(JSON, nullable=True, default=dict)
+    doc_metadata = Column(JSON, nullable=True, default=dict)
+    
+    # Relationships
+    collection = relationship("Collection", back_populates="documents")
+    user = relationship("User", backref="documents")
 
 
 class Chunk(Base):
@@ -47,12 +87,17 @@ class Chunk(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    collection_id = Column(String(255), ForeignKey("collections.id", ondelete="CASCADE"), nullable=True, index=True)
     position = Column(Integer, nullable=False)
     text = Column(String, nullable=False)
     # store embedding as JSON string for simplicity; real impl may use vector type
     embedding = Column(String, nullable=True)
+    
+    # Relationships
+    collection = relationship("Collection", backref="chunks")
 
 Index("idx_chunk_doc_pos", Chunk.document_id, Chunk.position)
+Index("idx_chunk_collection", Chunk.collection_id)
 
 
 # Enums for chat and tool functionality
@@ -181,4 +226,10 @@ Index("idx_message_conversation_created", Message.conversation_id, Message.creat
 Index("idx_tool_call_message_status", ToolCall.message_id, ToolCall.status)
 Index("idx_model_usage_conversation", ModelUsage.conversation_id, ModelUsage.created_at.desc())
 Index("idx_system_prompt_active", SystemPrompt.is_active, SystemPrompt.name)
-Index("idx_system_prompt_pattern", SystemPrompt.model_pattern, SystemPrompt.is_active) 
+Index("idx_system_prompt_pattern", SystemPrompt.model_pattern, SystemPrompt.is_active)
+
+# Collection indexes
+Index("idx_collection_path", Collection.path)
+Index("idx_collection_parent", Collection.parent_id)
+Index("idx_collection_user", Collection.user_id)
+Index("idx_document_collection", Document.collection_id) 

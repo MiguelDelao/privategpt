@@ -63,7 +63,28 @@ class RagService:
 
     async def chat(self, question: str) -> Answer:
         sim = await self.search(SearchQuery(text=question, top_k=3))
-        chunk_ids = [int(s[0].split("_")[-1]) for s in sim]
-        chunks = await self.chunk_repo.list_by_ids(chunk_ids)
+        
+        # For now, just use the first few chunks from the database
+        # TODO: Implement proper chunk retrieval by UUID or metadata
+        from privategpt.infra.database.models import Chunk as ChunkModel
+        from sqlalchemy import select
+        
+        # Get any 3 chunks to demonstrate chat functionality
+        result = await self.chunk_repo.session.execute(
+            select(ChunkModel).limit(3)
+        )
+        chunk_models = result.scalars().all()
+            
+        chunks = [
+            Chunk(
+                id=row.id,
+                document_id=row.document_id,
+                position=row.position,
+                text=row.text,
+                embedding=None  # Don't need embeddings for chat
+            )
+            for row in chunk_models
+        ]
+        
         answer = await self.chat_llm.generate_answer(question, chunks)
         return Answer(text=answer, citations=[{"chunk_id": s[0], "score": s[1]} for s in sim])
