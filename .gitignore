@@ -107,3 +107,7 @@ elasticsearch-data/
 *.temp
 .tmp/
 .temp/
+.env
+*.env
+.env.*
+!.env.example
