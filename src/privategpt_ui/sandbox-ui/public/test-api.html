@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Direct API Test</h1>
+    <button onclick="testLogin()">Test Login</button>
+    <div id="output"></div>
+
+    <script>
+        async function testLogin() {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Testing login...<br>';
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@admin.com',
+                        password: 'admin'
+                    })
+                });
+                
+                output.innerHTML += `Response status: ${response.status}<br>`;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    output.innerHTML += `Success! Token: ${data.access_token.substring(0, 50)}...<br>`;
+                } else {
+                    const text = await response.text();
+                    output.innerHTML += `Error: ${text}<br>`;
+                }
+            } catch (error) {
+                output.innerHTML += `Fetch error: ${error}<br>`;
+            }
+        }
+    </script>
+</body>
+</html>
