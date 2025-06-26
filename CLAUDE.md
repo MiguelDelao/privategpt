@@ -8,6 +8,8 @@
 2. **Make frequent small commits** - commit after completing discrete changes or fixes, but only after verifying that the feature works and with user approval. 
 3. **Track progress in TASKS.md** - update task status as you work
 4. **Follow existing patterns** - this is a well-architected microservices system
+5. **don't write mocks unless asked** when asked to implment, either implemnt the functional version or tell the user why it cannot be implemented yet.
+6. if you are testing something that needs auth, use the get-jwt-token.sh command that is already available. DONT remove or mess with the auth unless the user approves.
 
 
 ## Commit Strategy 

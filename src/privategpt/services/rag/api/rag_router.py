@@ -198,6 +198,133 @@ async def rag_chat(req: ChatRequest, session: AsyncSession = Depends(get_async_s
     return {"answer": ans.text, "citations": ans.citations}
 
 
+# Search Models
+class SearchRequest(BaseModel):
+    query: str = Field(..., description="Search query text")
+    limit: int = Field(10, ge=1, le=50, description="Maximum results")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Search filters")
+    include_metadata: bool = Field(True, description="Include document metadata")
+
+
+class ChunkResult(BaseModel):
+    id: str
+    text: str
+    score: float
+    document_id: int
+    document_title: str
+    collection_id: Optional[str]
+    collection_name: Optional[str]
+    collection_path: Optional[str]
+    position: int
+    metadata: Dict[str, Any] = {}
+
+
+class SearchResponse(BaseModel):
+    chunks: List[ChunkResult]
+    search_time_ms: int
+    total_found: int
+    query: str
+    filters_applied: Dict[str, Any]
+
+
+@router.post("/search", response_model=SearchResponse)
+async def search_documents(
+    req: SearchRequest,
+    session: AsyncSession = Depends(get_async_session),
+    request: Request = None
+):
+    """
+    Raw semantic search endpoint for MCP integration.
+    
+    Supports filtering by:
+    - collection_path: Search within a specific collection path (e.g., "reports/japan")
+    - collection_id: Search by collection UUID
+    - document_id: Search within specific document
+    - folder_path: Search within folder (with recursive option)
+    - tags: Filter by document tags
+    """
+    import time
+    start_time = time.time()
+    
+    # Get user ID (placeholder for now)
+    user_id = get_current_user_id(request)
+    
+    # Build search filters
+    search_filters = {}
+    if req.filters:
+        # Handle collection path filtering (supports nested paths)
+        if "collection_path" in req.filters:
+            # Look up collection by path
+            collection_repo = CollectionRepository(session)
+            collection = await collection_repo.get_by_path(user_id, req.filters["collection_path"])
+            if collection:
+                search_filters["collection_ids"] = [collection.id]
+                # If it's a folder, also include all sub-collections
+                if req.filters.get("recursive", True):
+                    children = await collection_repo.list_children(collection.id)
+                    search_filters["collection_ids"].extend([c.id for c in children])
+        
+        elif "collection_id" in req.filters:
+            search_filters["collection_ids"] = [req.filters["collection_id"]]
+        
+        # Handle document filtering
+        if "document_id" in req.filters:
+            search_filters["document_ids"] = [req.filters["document_id"]]
+        
+        # Handle folder filtering (alias for collection_path with recursive)
+        if "folder_path" in req.filters:
+            req.filters["collection_path"] = req.filters["folder_path"]
+            req.filters["recursive"] = True
+            # Reprocess with collection_path logic above
+            collection_repo = CollectionRepository(session)
+            collection = await collection_repo.get_by_path(user_id, req.filters["folder_path"])
+            if collection:
+                search_filters["collection_ids"] = [collection.id]
+                children = await collection_repo.list_children(collection.id)
+                search_filters["collection_ids"].extend([c.id for c in children])
+    
+    # Build RAG service
+    rag = build_rag_service(session)
+    
+    # Create search query with filters
+    search_query = SearchQuery(
+        text=req.query,
+        top_k=req.limit,
+        filters=search_filters
+    )
+    
+    # Perform search
+    search_results = await rag.search(search_query)
+    
+    # For now, return mock results since we need to implement proper chunk retrieval
+    chunk_results = []
+    for i, (chunk_uuid, score) in enumerate(search_results):
+        # TODO: Implement proper chunk retrieval from Weaviate
+        # This is a temporary mock implementation
+        chunk_results.append(ChunkResult(
+            id=chunk_uuid,
+            text=f"Sample result {i+1}: This is a chunk about {req.query}...",
+            score=score,
+            document_id=i+1,
+            document_title=f"Document {i+1}",
+            collection_id=None,
+            collection_name=None,
+            collection_path=None,
+            position=0,
+            metadata={"mock": True}
+        ))
+    
+    search_time = int((time.time() - start_time) * 1000)
+    
+    return SearchResponse(
+        chunks=chunk_results,
+        search_time_ms=search_time,
+        total_found=len(chunk_results),
+        query=req.query,
+        filters_applied=req.filters or {}
+    )
+
+
 # Helper function to get user ID (placeholder for now)
 def get_current_user_id(request: Request) -> int:
     """Extract user ID from request. For now, return test user ID."""

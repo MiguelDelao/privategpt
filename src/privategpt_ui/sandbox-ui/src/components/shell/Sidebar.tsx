@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useChatStore } from "@/stores/chatStore"
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog"
+import { DataSourcesPanel } from "@/components/documents/DataSourcesPanel"
 
 const navItems = [
   { id: "newchat", label: "New chat", icon: MessageSquarePlus, route: "/" },
@@ -73,13 +74,7 @@ function formatTimeAgo(date: Date | string | number): string {
   return dateObj.toLocaleDateString()
 }
 
-const initialDataSources = [
-  { id: "1", name: "Legal Database", type: "folder", description: "Case law and legal precedents", documentCount: 45 },
-  { id: "2", name: "Contract Templates", type: "folder", description: "Standard contract templates", documentCount: 23 },
-  { id: "3", name: "Regulatory Updates", type: "folder", description: "Latest regulatory changes", documentCount: 67 },
-  { id: "4", name: "Client Files", type: "folder", description: "Confidential client documents", documentCount: 12 },
-  { id: "5", name: "Legal Research", type: "folder", description: "Academic and research papers", documentCount: 34 },
-]
+// Removed hardcoded data sources - now using DataSourcesPanel
 
 interface ConversationItemProps {
   session: any
@@ -305,8 +300,7 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse }: SidebarProps)
     return "newchat"
   })
   const [activeTab, setActiveTab] = useState<string>("history")
-  const [dataSources, setDataSources] = useState(initialDataSources)
-  // Removed search and filter state - no longer needed
+  // Removed hardcoded data sources - now using DataSourcesPanel
   
   // Chat store integration
   const {
@@ -327,25 +321,7 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse }: SidebarProps)
   // Get all non-archived conversations
   const filteredConversations = getAllSessions().filter(c => !c.metadata.isArchived)
 
-  // Listen for data source updates from documents page
-  useEffect(() => {
-    const handleDataSourceUpdate = (event: CustomEvent<{ folders: any[] }>) => {
-      const updatedSources = event.detail.folders.map((folder: any) => ({
-        id: folder.id,
-        name: folder.name,
-        type: 'folder',
-        description: `${folder.documentCount} documents`,
-        documentCount: folder.documentCount
-      }))
-      setDataSources(updatedSources)
-    }
-
-    window.addEventListener('updateDataSources', handleDataSourceUpdate as EventListener)
-    
-    return () => {
-      window.removeEventListener('updateDataSources', handleDataSourceUpdate as EventListener)
-    }
-  }, [])
+  // Removed old data source listener - now using DataSourcesPanel
 
   // Update active state when pathname changes
   useEffect(() => {
@@ -464,7 +440,7 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse }: SidebarProps)
                 {[
                   { id: "history", label: "History", icon: Clock },
                   { id: "files", label: "Files", icon: FileText },
-                  { id: "data", label: "Data", icon: Database }
+                  { id: "datasources", label: "Data Sources", icon: Database }
                 ].map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
@@ -551,44 +527,9 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse }: SidebarProps)
               </div>
             )}
 
-            {activeTab === "data" && (
-              <div>
-                <div className="text-xs font-medium text-[#B4B4B4] px-3 py-2 uppercase tracking-wider">
-                  Data Sources
-                </div>
-                <div className="space-y-1">
-                  {dataSources.map((source) => (
-                    <div
-                      key={source.id}
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-[#2A2A2A] transition-colors group"
-                    >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <Folder className="w-4 h-4 text-[#B4B4B4]" />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-white text-sm font-medium truncate">{source.name}</div>
-                          <div className="text-xs text-[#6B6B6B] truncate">{source.description}</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          // Dispatch custom event to attach data source to chat
-                          const event = new CustomEvent('attachDataSource', {
-                            detail: {
-                              id: source.id,
-                              name: source.name,
-                              icon: '',
-                              type: source.type
-                            }
-                          })
-                          window.dispatchEvent(event)
-                        }}
-                        className="flex items-center justify-center w-6 h-6 rounded-full bg-[#3A3A3A] text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#4A4A4A]"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            {activeTab === "datasources" && (
+              <div className="flex-1 overflow-hidden -mx-4">
+                <DataSourcesPanel />
               </div>
             )}
             </div>

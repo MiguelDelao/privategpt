@@ -1,5 +1,5 @@
 // PrivateGPT API Client
-import { config } from './config'
+import { config, getConfig } from './config'
 import { handleApiError, ErrorType, ErrorSeverity } from './error-handler'
 import { withCircuitBreaker } from './retry-manager'
 
@@ -162,11 +162,13 @@ export class PrivateGPTClient {
   private baseURL: string
   private authToken?: string
   private requestCounter = 0
+  private loginTimestamp?: number
   
   constructor(baseURL: string = config.apiUrl) {
     this.baseURL = baseURL
     this.authToken = this.getStoredToken()
     
+    // Use static config to avoid circular dependency
     if (config.debugMode) {
       console.log('API Client initialized')
       console.log('- Config apiUrl:', config.apiUrl)
@@ -247,14 +249,15 @@ export class PrivateGPTClient {
     const noRetryEndpoints = ['/api/auth/logout', '/api/auth/verify']
     const shouldRetry = !noRetryEndpoints.some(ep => endpoint.includes(ep))
     
-    if (!shouldRetry) {
-      return this.performRequest<T>(endpoint, options)
-    }
     const metadata: RequestMetadata = {
       endpoint,
       method: options.method || 'GET',
       startTime: Date.now(),
       requestId: this.generateRequestId()
+    }
+    
+    if (!shouldRetry) {
+      return this.performRequest<T>(endpoint, options, metadata)
     }
 
     return withCircuitBreaker(
@@ -282,6 +285,9 @@ export class PrivateGPTClient {
     metadata: RequestMetadata
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`
+    
+    // Refresh auth token from storage before each request
+    this.refreshAuthToken()
     
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -311,9 +317,16 @@ export class PrivateGPTClient {
       if (!response.ok) {
         // Handle authentication errors immediately
         if (response.status === 401) {
-          this.clearStoredToken()
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('auth-token-expired'))
+          // Don't clear auth state if it's a conversations request right after login
+          // This prevents the auth state from being cleared when the UI tries to load data
+          const isConversationsRequest = url.includes('/api/chat/conversations');
+          const hasJustLoggedIn = this.authToken && (Date.now() - (this.loginTimestamp || 0)) < 5000;
+          
+          if (!isConversationsRequest || !hasJustLoggedIn) {
+            this.clearStoredToken()
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('auth-token-expired'))
+            }
           }
         }
 
@@ -403,6 +416,7 @@ export class PrivateGPTClient {
     })
     
     this.setStoredToken(response.access_token)
+    this.loginTimestamp = Date.now() // Track when we logged in
     return response
   }
 
@@ -429,7 +443,7 @@ export class PrivateGPTClient {
     }
 
     try {
-      return await this.request<TokenVerifyResponse>('/auth/verify', {
+      return await this.request<TokenVerifyResponse>('/api/auth/verify', {
         method: 'POST',
       })
     } catch (error) {
@@ -627,8 +641,20 @@ export class PrivateGPTClient {
           code: (prepareError as APIError).code,
           details: (prepareError as APIError).details
         })
-        // If prepare fails, we can't proceed with streaming
-        handlers.onError?.(new Error(`Failed to prepare streaming session: ${prepareError.message}`))
+        
+        // Check if it's an auth error
+        if ((prepareError as APIError).status === 401) {
+          // Clear auth state and redirect to login
+          this.clearStoredToken()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth-token-expired'))
+          }
+          handlers.onError?.(new Error('Authentication expired. Please log in again.'))
+        } else {
+          // If prepare fails, we can't proceed with streaming
+          handlers.onError?.(new Error(`Failed to prepare streaming session: ${prepareError.message}`))
+        }
+        
         mockEventSource.readyState = 2 // CLOSED
         throw prepareError
       }

@@ -242,9 +242,9 @@ services:
     environment:
       # For SSR: Use internal Docker service names
       API_URL_INTERNAL: http://gateway-service:8000/api
-      # For browser: Use external URLs (direct gateway access for now)
+      # For browser: Use external URLs through Traefik
       NEXT_PUBLIC_API_URL: http://localhost:8000
-      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost
       NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8180
       NODE_ENV: development
     # No external ports - accessed via Traefik
@@ -256,8 +256,8 @@ services:
       - "nextjs_next:/app/.next"
     labels:
       - traefik.enable=true
-      # Main UI: Root path -> Next.js UI (exclude API paths)
-      - traefik.http.routers.nextjs.rule=Host(`localhost`) && !PathPrefix(`/api`)
+      # Main UI: Root path -> Next.js UI (exclude API, health, and stream paths)
+      - traefik.http.routers.nextjs.rule=Host(`localhost`) && !PathPrefix(`/api`) && !Path(`/health`) && !PathPrefix(`/stream`)
       - traefik.http.routers.nextjs.entrypoints=web
       - traefik.http.routers.nextjs.priority=100
       - traefik.http.services.nextjs.loadbalancer.server.port=3000
@@ -359,11 +359,12 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--api.dashboard=false"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
-      - "--log.level=INFO"
+      - "--log.level=DEBUG"
     ports:
       - "80:80"
       - "8090:8080"  # Traefik dashboard (moved to avoid conflict with Weaviate)

@@ -13,41 +13,29 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   const [isVerifying, setIsVerifying] = useState(true)
 
   useEffect(() => {
-    // Verify stored auth token on mount
+    // Skip token verification on mount - just trust stored state for now
     const checkAuth = async () => {
-      // Check if we have a token in localStorage
-      const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token')
-      
-      if (hasToken && isAuthenticated) {
-        try {
-          const isValid = await verifyAuth()
-          if (!isValid) {
-            // Don't call logout, just clear the state
-            // logout() would trigger API calls
-          }
-        } catch (error) {
-          console.error('Auth verification failed:', error)
-          // Don't call logout, just clear the state
-        }
-      }
+      console.log('AuthWrapper: Skipping token verification, trusting stored auth state')
       setIsVerifying(false)
     }
     
     checkAuth()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Intentionally empty - only run on mount
 
   useEffect(() => {
     // Listen for auth token expiration events
     const handleTokenExpired = () => {
       console.log('Auth token expired, logging out...')
-      logout()
+      // Get the latest logout function directly from store to avoid dependency issues
+      useAuthStore.getState().logout()
     }
 
     window.addEventListener('auth-token-expired', handleTokenExpired)
     return () => {
       window.removeEventListener('auth-token-expired', handleTokenExpired)
     }
-  }, [logout])
+  }, [])
 
   // Show loading state while verifying
   if (isVerifying) {

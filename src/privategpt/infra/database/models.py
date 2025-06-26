@@ -118,6 +118,14 @@ class ToolCallStatus(enum.Enum):
     CANCELLED = "cancelled"
 
 
+class ApprovalStatus(enum.Enum):
+    """Tool approval status"""
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
 class ConversationStatus(enum.Enum):
     """Conversation status"""
     ACTIVE = "active"
@@ -187,6 +195,50 @@ class ToolCall(Base):
     message = relationship("Message", back_populates="tool_calls")
 
 
+class MCPApproval(Base):
+    """MCP tool approval audit trail"""
+    __tablename__ = "mcp_approvals"
+
+    id = Column(String(255), primary_key=True, index=True)  # UUID
+    tool_name = Column(String(255), nullable=False, index=True)  # e.g., "rag.search_documents"
+    tool_description = Column(Text, nullable=True)  # Tool description for UI
+    tool_arguments = Column(JSON, nullable=True, default=dict)  # Tool arguments
+    
+    # Request context
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(String(255), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True)
+    message_id = Column(String(255), ForeignKey("messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    tool_call_id = Column(String(255), ForeignKey("tool_calls.id", ondelete="CASCADE"), nullable=True, index=True)
+    
+    # Approval workflow
+    status = Column(Enum(ApprovalStatus), nullable=False, default=ApprovalStatus.PENDING, index=True)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)  # Approval timeout
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # User who approved/rejected
+    review_reason = Column(Text, nullable=True)  # Optional reason for approval/rejection
+    
+    # Execution results
+    execution_result = Column(JSON, nullable=True)  # Tool execution result
+    execution_error = Column(Text, nullable=True)  # Tool execution error
+    execution_duration_ms = Column(Integer, nullable=True)  # Execution time
+    
+    # Metadata
+    server_name = Column(String(100), nullable=True)  # MCP server that provided the tool
+    auto_approved = Column(Boolean, nullable=False, default=False)  # Was this auto-approved?
+    data = Column(JSON, nullable=True, default=dict)  # Additional metadata
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], backref="mcp_approval_requests")
+    reviewer = relationship("User", foreign_keys=[reviewed_by], backref="mcp_approvals_reviewed")
+    conversation = relationship("Conversation", backref="mcp_approvals")
+    message = relationship("Message", backref="mcp_approvals")
+    tool_call = relationship("ToolCall", backref="mcp_approval")
+
+
 class ModelUsage(Base):
     """Model usage tracking for conversations"""
     __tablename__ = "model_usage"
@@ -232,4 +284,10 @@ Index("idx_system_prompt_pattern", SystemPrompt.model_pattern, SystemPrompt.is_a
 Index("idx_collection_path", Collection.path)
 Index("idx_collection_parent", Collection.parent_id)
 Index("idx_collection_user", Collection.user_id)
-Index("idx_document_collection", Document.collection_id) 
+Index("idx_document_collection", Document.collection_id)
+
+# MCP approval indexes for performance
+Index("idx_mcp_approval_user_tool", MCPApproval.user_id, MCPApproval.tool_name)
+Index("idx_mcp_approval_status_requested", MCPApproval.status, MCPApproval.requested_at.desc())
+Index("idx_mcp_approval_conversation", MCPApproval.conversation_id, MCPApproval.requested_at.desc())
+Index("idx_mcp_approval_pending_expires", MCPApproval.status, MCPApproval.expires_at) 

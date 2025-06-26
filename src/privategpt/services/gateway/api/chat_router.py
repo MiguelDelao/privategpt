@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any]) -> int:
     """Ensure user exists in database, create if not found"""
     # Handle case when auth is disabled (for debugging)
-    if not user_claims or (user_claims.get("sub") is None and user_claims.get("user_id") is None):
-        logger.warning("Auth disabled or invalid user claims, using demo user")
+    if not user_claims:
+        logger.warning("No user claims provided, using demo user")
         # Create/use demo user with ID 1
         stmt = select(User).where(User.id == 1)
         result = await session.execute(stmt)
@@ -69,8 +69,13 @@ async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any])
         
         return 1
     
-    keycloak_user_id = user_claims.get("sub") or user_claims.get("user_id")  # Keycloak UUID from 'sub' field
-    logger.info(f"Looking up user with keycloak_id: {keycloak_user_id}")
+    # Extract user ID from claims - handle both 'sub' and 'user_id' fields
+    keycloak_user_id = user_claims.get("sub") or user_claims.get("user_id")
+    if not keycloak_user_id:
+        logger.error(f"No user ID found in claims: {user_claims}")
+        raise HTTPException(status_code=401, detail="Invalid user claims - missing user ID")
+    
+    logger.info(f"Looking up user with keycloak_id: {keycloak_user_id}, claims: {user_claims}")
     
     # Check if user exists by keycloak_id
     stmt = select(User).where(User.keycloak_id == keycloak_user_id)
@@ -81,15 +86,26 @@ async def ensure_user_exists(session: AsyncSession, user_claims: Dict[str, Any])
         logger.info(f"Found existing user: {existing_user.id} ({existing_user.email})")
         return existing_user.id
     
+    # Extract user info from claims
+    email = user_claims.get("email")
+    username = user_claims.get("username") or user_claims.get("preferred_username")
+    first_name = user_claims.get("first_name") or user_claims.get("given_name")
+    last_name = user_claims.get("last_name") or user_claims.get("family_name")
+    
+    # Get primary role from claims
+    primary_role = user_claims.get("primary_role", "user")
+    
+    logger.info(f"Creating new user - email: {email}, username: {username}, role: {primary_role}")
+    
     # Create new user (let database auto-assign integer ID)
     try:
         new_user = User(
             keycloak_id=keycloak_user_id,
-            email=user_claims.get("email"),
-            username=user_claims.get("preferred_username"),
-            first_name=user_claims.get("given_name"),
-            last_name=user_claims.get("family_name"),
-            role="user",
+            email=email,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            role=primary_role,
             is_active=True,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()

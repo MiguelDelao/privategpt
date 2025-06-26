@@ -130,7 +130,7 @@ async def proxy_rag_request(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Proxy requests to RAG service with authentication."""
-    return await proxy.proxy_request("rag", request, f"/{path}")
+    return await proxy.proxy_request("rag", request, f"/rag/{path}")
 
 
 # LLM service endpoints

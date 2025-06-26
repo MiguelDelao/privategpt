@@ -133,11 +133,8 @@ app.add_middleware(
         "/api/mcp/",  # MCP endpoints for testing
         "/api/chat/mcp",  # MCP chat endpoint for testing
         "/api/chat/direct",  # Direct chat endpoint for testing
-        "/api/chat/conversations",  # Conversation creation for testing
-        "/api/chat/conversations/*/prepare-mcp-stream",  # MCP prepare stream
-        "/api/chat/live-mcp-stream/",  # MCP live stream
-        # Note: We can't exclude all conversation endpoints as some need auth
-        # Only exclude specific patterns that have SQLAlchemy issues
+        # Note: Conversation endpoints NEED auth to work properly
+        # Only streaming endpoints bypass JWT auth since they use token-based auth
     ]
 )
 

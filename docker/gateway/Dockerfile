@@ -12,6 +12,9 @@ RUN pip install -e .
 # Add required dependencies for gateway
 RUN pip install python-jose[cryptography] httpx psycopg2-binary pyjwt asyncpg celery redis
 
+# Install curl for health check
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Expose port
 EXPOSE 8000
 

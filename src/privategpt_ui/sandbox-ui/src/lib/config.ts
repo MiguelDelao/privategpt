@@ -46,7 +46,7 @@ interface AppConfig {
 const defaultConfig: AppConfig = {
   // API Configuration
   apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
-  wsUrl: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000',
+  wsUrl: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost',
   keycloakUrl: process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180',
   
   // Environment flags
@@ -177,8 +177,11 @@ class ConfigManager {
 // Global configuration manager instance
 export const configManager = new ConfigManager()
 
-// Export current config for backwards compatibility
-export const config = configManager.getConfig()
+// Export function to get config to avoid circular dependency during module initialization
+export const getConfig = () => configManager.getConfig()
+
+// Export current config for backwards compatibility - use lazy evaluation
+export const config = defaultConfig
 
 // Export type
 export type Config = AppConfig

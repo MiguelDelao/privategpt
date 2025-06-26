@@ -42,3 +42,6 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """Get async session for FastAPI dependency injection."""
     async with AsyncSessionLocal() as session:
         yield session 
+
+# Alternative name used by MCP client
+get_async_db_session = get_async_session_context

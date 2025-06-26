@@ -1,4 +1,4 @@
-.PHONY: help start stop build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build build-ui dev-ui restart-ui start-ui-only stop-ui rebuild-ui start-with-nextjs logs-nextjs ui-shell ui-install ui-clean
+.PHONY: help start stop restart restart-rag restart-llm restart-gateway restart-celery restart-mcp build build-base clean clean-all test test-unit test-api stack-logs import-dashboard status ensure-dashboard install-model list-models remove-model logs logs-follow logs-gateway logs-rag logs-llm logs-ui logs-db logs-redis logs-weaviate logs-ollama logs-keycloak logs-keycloak-db logs-keycloak-setup logs-elasticsearch logs-kibana logs-filebeat logs-traefik logs-n8n logs-tests logs-auth logs-vector logs-database diagnose nuke hard-build build-ui dev-ui restart-ui start-ui-only stop-ui rebuild-ui start-with-nextjs logs-nextjs ui-shell ui-install ui-clean
 
 # Default docker compose file inside v2
 DC = docker-compose -f docker-compose.yml
@@ -8,6 +8,14 @@ help:
 	@echo "======================"
 	@echo "make start   - Start all v2 containers"
 	@echo "make stop    - Stop all v2 containers"
+	@echo "make restart - Restart all running containers (fast reload for code changes)"
+	@echo ""
+	@echo "Quick Restart Commands (for development):"
+	@echo "make restart-rag     - Restart RAG service only"
+	@echo "make restart-llm     - Restart LLM service only"
+	@echo "make restart-gateway - Restart Gateway service only"
+	@echo "make restart-celery  - Restart Celery worker only"
+	@echo "make restart-mcp     - Restart MCP service only"
 	@echo ""
 	@echo "Build Commands:"
 	@echo "make build   - Smart build using Docker cache (FAST, recommended)"
@@ -73,6 +81,30 @@ start:
 
 stop:
 	$(DC) down
+
+restart:
+	@echo "🔄 Restarting all services..."
+	$(DC) restart
+
+restart-rag:
+	@echo "🔄 Restarting RAG service..."
+	$(DC) restart rag-service
+
+restart-llm:
+	@echo "🔄 Restarting LLM service..."
+	$(DC) restart llm-service
+
+restart-gateway:
+	@echo "🔄 Restarting Gateway service..."
+	$(DC) restart gateway-service
+
+restart-celery:
+	@echo "🔄 Restarting Celery worker..."
+	$(DC) restart celery-worker
+
+restart-mcp:
+	@echo "🔄 Restarting MCP service..."
+	$(DC) restart mcp-service
 
 build-base:
 	docker build -f docker/base/Dockerfile -t privategpt/base:latest .

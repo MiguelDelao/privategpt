@@ -28,7 +28,10 @@ class StreamSession:
         model_name: str,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        tools_enabled: bool = False,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        auto_approve_tools: bool = False
     ):
         self.token = token
         self.conversation_id = conversation_id
@@ -40,6 +43,9 @@ class StreamSession:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.system_prompt = system_prompt
+        self.tools_enabled = tools_enabled
+        self.tools = tools or []
+        self.auto_approve_tools = auto_approve_tools
         self.created_at = datetime.utcnow()
     
     def to_dict(self) -> Dict[str, Any]:
@@ -55,6 +61,9 @@ class StreamSession:
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "system_prompt": self.system_prompt,
+            "tools_enabled": self.tools_enabled,
+            "tools": self.tools,
+            "auto_approve_tools": self.auto_approve_tools,
             "created_at": self.created_at.isoformat()
         }
     
@@ -85,7 +94,10 @@ class StreamSessionManager:
         model_name: str,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        tools_enabled: bool = False,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        auto_approve_tools: bool = False
     ) -> StreamSession:
         """Create a new stream session and store in Redis"""
         
@@ -104,7 +116,10 @@ class StreamSessionManager:
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            tools_enabled=tools_enabled,
+            tools=tools,
+            auto_approve_tools=auto_approve_tools
         )
         
         # Store in Redis
