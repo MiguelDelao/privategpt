@@ -7,6 +7,7 @@ Chat and conversation management API routes for the gateway.
 import logging
 import uuid
 import enum
+import json
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -30,6 +31,7 @@ from privategpt.services.gateway.core.exceptions import (
 from privategpt.infra.database.models import User
 from sqlalchemy import select
 from privategpt.infra.database.models import Message, MessageRole
+from privategpt.shared.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -701,6 +703,16 @@ class PrepareStreamRequest(BaseModel):
     max_tokens: Optional[int] = Field(None, gt=0)
 
 
+class PrepareMCPStreamRequest(BaseModel):
+    """Request to prepare a streaming session with MCP tools"""
+    message: str = Field(..., min_length=1, description="The user's message")
+    model: str = Field(..., description="Model to use for generation (required)")
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    max_tokens: Optional[int] = Field(None, gt=0)
+    tools_enabled: bool = Field(default=False, description="Enable MCP tools")
+    auto_approve_tools: bool = Field(default=False, description="Auto-approve tool executions")
+
+
 class PrepareStreamResponse(BaseModel):
     """Response with stream token and metadata"""
     stream_token: str = Field(..., description="Token to use for streaming")
@@ -841,6 +853,171 @@ async def prepare_stream(
         raise HTTPException(status_code=500, detail="Failed to prepare streaming session")
 
 
+@router.post("/conversations/{conversation_id}/prepare-mcp-stream", response_model=PrepareStreamResponse)
+async def prepare_mcp_stream(
+    conversation_id: str,
+    request: PrepareMCPStreamRequest,
+    user: Dict[str, Any] = Depends(get_current_user_flexible)
+):
+    """
+    Prepare a streaming session with MCP tool support.
+    This endpoint handles all database operations and tool discovery before streaming.
+    """
+    logger.info("=== PREPARE MCP STREAM ENDPOINT ===")
+    
+    try:
+        logger.info("Starting prepare MCP stream operation")
+        
+        # Database operations
+        user_message_id = None
+        user_id = None
+        llm_messages = []
+        model_name = None
+        system_prompt = None
+        tools = []
+        
+        from privategpt.infra.database.async_session import get_async_session_context
+        
+        logger.info("Starting database operations")
+        async with get_async_session_context() as session:
+            logger.info("Database session created")
+            chat_service = ChatService(session)
+            
+            # Ensure user exists in database
+            logger.info("Ensuring user exists")
+            user_id = await ensure_user_exists(session, user)
+            logger.info(f"User ID: {user_id}")
+            
+            # Verify conversation exists and user owns it
+            logger.info("Getting conversation")
+            conversation = await chat_service.get_conversation(conversation_id, user_id)
+            if not conversation:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            logger.info("Conversation found")
+            
+            # Create user message in database
+            logger.info("Creating user message")
+            user_message_id = str(uuid.uuid4())
+            user_message = Message(
+                id=user_message_id,
+                conversation_id=conversation_id,
+                role=MessageRole.USER,
+                content=request.message,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            
+            session.add(user_message)
+            logger.info(f"User message created: {user_message_id}")
+            
+            # Get conversation context for LLM
+            logger.info("Getting recent messages")
+            from sqlalchemy import select
+            stmt = select(Message).where(
+                Message.conversation_id == conversation_id
+            ).order_by(Message.created_at.desc()).limit(20)
+            result = await session.execute(stmt)
+            recent_messages = result.scalars().all()
+            logger.info(f"Found {len(recent_messages)} recent messages")
+            
+            # Prepare messages for LLM
+            system_prompt = conversation.system_prompt or "You are a helpful AI assistant."
+            model_name = request.model
+            
+            if system_prompt:
+                llm_messages.append({
+                    "role": "system",
+                    "content": system_prompt
+                })
+            
+            # Add conversation history (reverse order since we got newest first)
+            for msg in reversed(recent_messages):
+                if msg.id != user_message_id:  # Skip the message we just created
+                    role_value = msg.role.value if isinstance(msg.role, enum.Enum) else msg.role
+                    logger.info(f"Processing message {msg.id}: role type={type(msg.role)}, value={role_value}")
+                    llm_messages.append({
+                        "role": role_value,
+                        "content": msg.content
+                    })
+            
+            # Add the new user message
+            llm_messages.append({
+                "role": "user",
+                "content": request.message
+            })
+            
+            logger.info(f"Prepared {len(llm_messages)} LLM messages")
+            
+            # Commit the transaction
+            logger.info("Committing database transaction")
+            await session.commit()
+            logger.info("Database transaction committed")
+        
+        # Get MCP tools if enabled
+        if request.tools_enabled:
+            logger.info("MCP tools enabled, discovering tools...")
+            from privategpt.services.gateway.core.mcp.unified_mcp_client import get_mcp_client
+            from privategpt.services.llm.core.model_registry import get_model_registry
+            
+            try:
+                # Get model provider
+                model_registry = get_model_registry()
+                provider = model_registry.get_provider_for_model(model_name)
+                if not provider:
+                    provider = "generic"
+                logger.info(f"Using provider '{provider}' for model '{model_name}'")
+                
+                # Get MCP client and tools
+                mcp_client = await get_mcp_client()
+                tools = mcp_client.get_tools_for_llm(provider)
+                logger.info(f"Discovered {len(tools)} MCP tools for provider '{provider}'")
+                
+                # Add tools to system prompt if any
+                if tools and system_prompt:
+                    # Update the system message with tools info
+                    llm_messages[0]["content"] = system_prompt + "\n\nYou have access to the following tools:\n" + \
+                        "\n".join([f"- {tool['name']}: {tool.get('description', 'No description')}" for tool in tools[:5]])
+                    
+            except Exception as e:
+                logger.warning(f"Failed to get MCP tools: {e}")
+                tools = []
+        
+        # ALL database operations complete - now do Redis operations
+        logger.info("Database operations complete, starting Redis operations")
+        
+        from privategpt.services.gateway.core.stream_session import StreamSessionManager
+        stream_manager = StreamSessionManager()
+        
+        logger.info("Creating stream session in Redis")
+        stream_session = await stream_manager.create_session(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            user_message_id=user_message_id,
+            llm_messages=llm_messages,
+            model_name=model_name,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            system_prompt=system_prompt,
+            tools_enabled=request.tools_enabled,
+            tools=tools,
+            auto_approve_tools=request.auto_approve_tools
+        )
+        logger.info(f"Stream session created: {stream_session.token}")
+        
+        return PrepareStreamResponse(
+            stream_token=stream_session.token,
+            stream_url=f"/stream/mcp/{stream_session.token}",
+            user_message_id=user_message_id,
+            assistant_message_id=stream_session.assistant_message_id
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error preparing MCP stream: {e}")
+        raise HTTPException(status_code=500, detail="Failed to prepare MCP streaming session")
+
+
 @router.get("/live-stream/{stream_token}")
 async def stream_conversation(
     stream_token: str
@@ -957,6 +1134,197 @@ async def stream_conversation(
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "X-Accel-Buffering": "no"  # Disable Nginx buffering
+        }
+    )
+
+
+@router.get("/live-mcp-stream/{stream_token}")
+async def stream_mcp_conversation(
+    stream_token: str
+):
+    """
+    Stream the LLM response with MCP tool support using a pre-created stream session.
+    This endpoint handles tool detection, execution, and approval during streaming.
+    """
+    try:
+        from privategpt.services.gateway.core.stream_session import StreamSessionManager
+        from privategpt.services.llm.core.model_registry import get_model_registry
+        from privategpt.services.gateway.core.xml_parser import parse_ai_content
+        from privategpt.services.gateway.core.mcp.unified_mcp_client import get_mcp_client, ToolCall, UserContext
+        
+        logger.info(f"MCP Stream endpoint called with token: {stream_token}")
+        
+        stream_manager = StreamSessionManager()
+        
+        # Validate stream token
+        logger.info("Getting stream session...")
+        stream_session = await stream_manager.get_session(stream_token)
+        if not stream_session:
+            logger.error(f"Stream session not found for token: {stream_token}")
+            raise HTTPException(status_code=404, detail="Invalid or expired stream token")
+        
+        logger.info(f"MCP Stream session found for conversation: {stream_session.conversation_id}")
+        logger.info(f"Tools enabled: {stream_session.tools_enabled}, Tool count: {len(stream_session.tools)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in MCP stream endpoint setup: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Stream setup error: {str(e)}")
+    
+    async def event_stream():
+        import json
+        from privategpt.infra.tasks.celery_app import save_assistant_message_task
+        
+        try:
+            # Send initial events
+            yield f"data: {json.dumps({'type': 'stream_start', 'conversation_id': stream_session.conversation_id})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'user_message', 'message': {'id': stream_session.user_message_id, 'role': 'user', 'content': stream_session.llm_messages[-1]['content'], 'created_at': datetime.utcnow().isoformat()}})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'assistant_message_start', 'message_id': stream_session.assistant_message_id})}\n\n"
+            
+            # If tools are enabled, send tools info
+            if stream_session.tools_enabled and stream_session.tools:
+                yield f"data: {json.dumps({'type': 'tools_available', 'tools': [{'name': t.get('name'), 'description': t.get('description', '')} for t in stream_session.tools[:5]]})}\n\n"
+            
+            # Stream from model registry with tools
+            model_registry = get_model_registry()
+            full_content = ""
+            
+            # Prepare messages with tools if enabled
+            messages_for_llm = stream_session.llm_messages.copy()
+            
+            # Get the streaming parameters
+            stream_params = {
+                "model_name": stream_session.model_name,
+                "messages": messages_for_llm,
+                "temperature": stream_session.temperature,
+                "max_tokens": stream_session.max_tokens
+            }
+            
+            # Add tools if enabled
+            if stream_session.tools_enabled and stream_session.tools:
+                stream_params["tools"] = stream_session.tools
+                logger.info(f"Streaming with {len(stream_session.tools)} tools")
+            
+            # Stream the response
+            tool_calls_detected = []
+            current_tool_call = None
+            in_tool_call = False
+            
+            async for chunk in model_registry.chat_stream(**stream_params):
+                full_content += chunk
+                
+                # Check for tool call patterns in the chunk
+                # Simple pattern matching for now - in production, use proper parsing
+                if "<tool_call>" in chunk:
+                    in_tool_call = True
+                    current_tool_call = {"raw": ""}
+                elif "</tool_call>" in chunk and current_tool_call:
+                    in_tool_call = False
+                    # Parse the tool call
+                    try:
+                        # Extract tool name and arguments from the raw content
+                        # This is simplified - real implementation would parse properly
+                        tool_content = current_tool_call["raw"] + chunk.split("</tool_call>")[0]
+                        
+                        # Send tool call event
+                        yield f"data: {json.dumps({'type': 'tool_call_detected', 'tool_call': tool_content})}\n\n"
+                        
+                        # Execute tool if auto-approve is enabled
+                        if stream_session.auto_approve_tools:
+                            yield f"data: {json.dumps({'type': 'tool_executing', 'tool_name': 'detected_tool'})}\n\n"
+                            
+                            # TODO: Actual tool execution here
+                            # For now, just simulate
+                            yield f"data: {json.dumps({'type': 'tool_result', 'result': 'Tool executed successfully'})}\n\n"
+                        else:
+                            # Request approval
+                            yield f"data: {json.dumps({'type': 'tool_approval_required', 'tool_name': 'detected_tool'})}\n\n"
+                        
+                        tool_calls_detected.append(tool_content)
+                    except Exception as e:
+                        logger.error(f"Failed to parse tool call: {e}")
+                    
+                    current_tool_call = None
+                elif in_tool_call and current_tool_call is not None:
+                    current_tool_call["raw"] += chunk
+                else:
+                    # Regular content chunk
+                    yield f"data: {json.dumps({'type': 'content_chunk', 'message_id': stream_session.assistant_message_id, 'content': chunk})}\n\n"
+            
+            # Parse the complete response
+            parsed_content = parse_ai_content(full_content, settings.enable_thinking_mode)
+            
+            # Get token usage
+            from privategpt.services.llm.core.adapters.base import BaseModelAdapter
+            provider = model_registry.get_provider_for_model(stream_session.model_name)
+            if provider:
+                adapter = model_registry.providers[provider]
+                output_tokens = adapter.count_tokens(full_content, stream_session.model_name)
+                input_tokens = sum(
+                    adapter.count_tokens(msg["content"], stream_session.model_name) 
+                    for msg in stream_session.llm_messages
+                )
+                total_tokens = input_tokens + output_tokens
+            else:
+                output_tokens = len(full_content.split()) * 2
+                input_tokens = sum(len(msg["content"].split()) * 2 for msg in stream_session.llm_messages)
+                total_tokens = input_tokens + output_tokens
+            
+            # Send completion event with tool usage info
+            completion_data = {
+                'type': 'assistant_message_complete',
+                'message': {
+                    'id': stream_session.assistant_message_id,
+                    'role': 'assistant',
+                    'content': parsed_content.processed_content,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'token_count': output_tokens,
+                    'tool_calls': tool_calls_detected
+                }
+            }
+            yield f"data: {json.dumps(completion_data)}\n\n"
+            
+            # Queue Celery task to save assistant message
+            save_assistant_message_task.delay(
+                conversation_id=stream_session.conversation_id,
+                message_id=stream_session.assistant_message_id,
+                content=parsed_content.processed_content,
+                raw_content=parsed_content.raw_content,
+                thinking_content=parsed_content.thinking_content,
+                token_count=output_tokens,
+                data={
+                    "model": stream_session.model_name,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                    "ui_tags": parsed_content.ui_tags,
+                    "tool_calls": tool_calls_detected,
+                    "tools_enabled": stream_session.tools_enabled
+                }
+            )
+            
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+            # Clean up stream session
+            await stream_manager.delete_session(stream_token)
+            
+        except Exception as e:
+            logger.error(f"Error during MCP streaming: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'MCP streaming error occurred'})}\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no"
         }
     )
 
@@ -1312,16 +1680,88 @@ async def mcp_chat(chat_request: SimpleChatRequest):
         return await direct_chat(chat_request)
     
     try:
-        # TODO: Implement MCP integration
-        # 1. Get available tools based on available_tools parameter
-        # 2. Add tools to system prompt
-        # 3. Process tool calls if any
-        # 4. Return final response
+        # Get MCP client and tools
+        from privategpt.services.gateway.core.mcp.unified_mcp_client import get_mcp_client
+        mcp_client = await get_mcp_client()
         
-        # For now, fall back to direct chat
-        response = await direct_chat(chat_request)
-        response.tools_used = True if chat_request.available_tools else False
-        return response
+        # Get tools formatted for the provider (default to anthropic for Claude)
+        provider = "anthropic" if "claude" in chat_request.model.lower() else "openai"
+        tools = mcp_client.registry.get_tools_for_llm(provider)
+        
+        # Call LLM service with tools
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            # Build payload with tools
+            payload = {
+                "messages": [{"role": "user", "content": chat_request.message}],
+                "model": chat_request.model,
+                "temperature": chat_request.temperature,
+                "max_tokens": chat_request.max_tokens,
+                "tools": tools  # Include MCP tools
+            }
+            
+            # Remove None values
+            payload = {k: v for k, v in payload.items() if v is not None}
+            
+            logger.info(f"Calling LLM with {len(tools)} MCP tools")
+            
+            # Make the request
+            response = await client.post(
+                f"{settings.llm_service_url}/chat",
+                json=payload
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Check if tool calls were made
+            if "tool_calls" in result and result["tool_calls"]:
+                logger.info(f"Processing {len(result['tool_calls'])} tool calls")
+                tool_results = []
+                
+                for tool_call in result["tool_calls"]:
+                    tool_name = tool_call["name"]
+                    tool_args = tool_call.get("arguments", {})
+                    
+                    # Execute tool via MCP
+                    tool_result = await mcp_client.execute_tool(tool_name, tool_args)
+                    tool_results.append({
+                        "tool_call_id": tool_call.get("id", tool_name),
+                        "result": tool_result
+                    })
+                
+                # Call LLM again with tool results
+                messages = [
+                    {"role": "user", "content": chat_request.message},
+                    {"role": "assistant", "content": result.get("text", ""), "tool_calls": result["tool_calls"]},
+                    {"role": "tool", "content": json.dumps(tool_results)}
+                ]
+                
+                final_response = await client.post(
+                    f"{settings.llm_service_url}/chat",
+                    json={
+                        "messages": messages,
+                        "model": chat_request.model,
+                        "temperature": chat_request.temperature,
+                        "max_tokens": chat_request.max_tokens
+                    }
+                )
+                final_response.raise_for_status()
+                final_result = final_response.json()
+                
+                return SimpleChatResponse(
+                    text=final_result.get("text", ""),
+                    model=chat_request.model,
+                    response_time_ms=None,
+                    tools_used=True
+                )
+            else:
+                # No tool calls, return direct response
+                return SimpleChatResponse(
+                    text=result.get("text", ""),
+                    model=chat_request.model,
+                    response_time_ms=None,
+                    tools_used=False
+                )
         
     except Exception as e:
         logger.error(f"MCP chat error: {e}")

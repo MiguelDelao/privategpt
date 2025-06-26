@@ -51,6 +51,7 @@ class ChatRequest(BaseModel):
     top_p: Optional[float] = Field(None, ge=0.0, le=1.0)
     top_k: Optional[int] = Field(None, gt=0)
     stop: Optional[List[str]] = None
+    tools: Optional[List[Dict[str, Any]]] = None
 
 
 class GenerateResponse(BaseModel):
