@@ -22,15 +22,13 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         try {
           const isValid = await verifyAuth()
           if (!isValid) {
-            logout()
+            // Don't call logout, just clear the state
+            // logout() would trigger API calls
           }
         } catch (error) {
           console.error('Auth verification failed:', error)
-          logout()
+          // Don't call logout, just clear the state
         }
-      } else if (!hasToken) {
-        // No token found, ensure we're logged out
-        logout()
       }
       setIsVerifying(false)
     }

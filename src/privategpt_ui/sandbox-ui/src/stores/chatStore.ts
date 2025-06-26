@@ -224,7 +224,14 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
       loadConversations: async (limit = 50, offset = 0) => {
         try {
-          // Refresh auth token before making request
+          // Check if we have a valid auth token before making the request
+          const token = apiClient.getStoredToken()
+          if (!token || token === 'null' || token === 'undefined') {
+            console.log('No valid auth token available, skipping conversation loading')
+            return
+          }
+          
+          // Refresh auth token if we have one
           apiClient.refreshAuthToken()
           
           const conversations = await apiClient.getConversations(limit, offset)
@@ -239,10 +246,15 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
             recentSessions: conversations.map(c => c.id)
           }))
         } catch (error) {
+          // Only log auth errors once, don't spam
+          if (error?.status === 401) {
+            console.warn('Authentication failed for conversation loading')
+            return
+          }
+          
           console.error('Failed to load conversations:', error)
+          // Reduce error severity to prevent spam
           handleApiError(error, 'ChatStore.loadConversations')
-          // Don't throw the error - just log it
-          // This prevents the app from crashing on network errors
         }
       },
 

@@ -24,6 +24,7 @@ from privategpt.services.gateway.api.user_router import router as user_router
 from privategpt.services.gateway.api.chat_router import router as chat_router
 from privategpt.services.gateway.api.prompt_router import router as prompt_router
 from privategpt.services.gateway.api.auth_router import router as auth_router
+from privategpt.services.gateway.api.mcp_router import router as mcp_router
 from privategpt.services.gateway.core.proxy import get_proxy
 from privategpt.infra.database.models import Base
 from privategpt.infra.database.async_session import engine
@@ -119,6 +120,7 @@ app.add_middleware(
         "/openapi.json",
         "/api/auth/keycloak/config",
         "/api/auth/login",  # Login endpoint doesn't need auth
+        "/api/auth/logout",  # Logout endpoint should work even with invalid token
         "/api/auth/verify",  # Let the route handle auth
         "/api/users",  # User endpoints handle their own auth
         "/api/llm/models",  # Models endpoint for frontend
@@ -128,6 +130,12 @@ app.add_middleware(
         "/api/chat/debug/",  # Debug endpoints bypass auth
         "/api/chat/stream/",  # Stream endpoints use token-based auth (no JWT needed)
         "/api/chat/live-stream/",  # Live stream endpoints use token-based auth
+        "/api/mcp/",  # MCP endpoints for testing
+        "/api/chat/mcp",  # MCP chat endpoint for testing
+        "/api/chat/direct",  # Direct chat endpoint for testing
+        "/api/chat/conversations",  # Conversation creation for testing
+        "/api/chat/conversations/*/prepare-mcp-stream",  # MCP prepare stream
+        "/api/chat/live-mcp-stream/",  # MCP live stream
         # Note: We can't exclude all conversation endpoints as some need auth
         # Only exclude specific patterns that have SQLAlchemy issues
     ]
@@ -160,6 +168,7 @@ app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(prompt_router)
+app.include_router(mcp_router)
 
 # Set up streaming app with its own router (no auth middleware)
 from privategpt.services.gateway.api.streaming_router import router as streaming_router

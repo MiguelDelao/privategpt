@@ -42,6 +42,8 @@ export interface ErrorHandler {
 class ErrorHandlerService implements ErrorHandler {
   private errorLog: AppError[] = []
   private maxLogEntries = 100
+  private toastRateLimit = new Map<string, number>() // Track last toast time per error type
+  private toastCooldown = 5000 // 5 seconds between same error toasts
 
   handle(error: AppError): void {
     this.logError(error)
@@ -250,6 +252,18 @@ class ErrorHandlerService implements ErrorHandler {
   }
 
   showUserError(error: AppError): void {
+    // Rate limit toasts to prevent flooding
+    const errorKey = `${error.type}-${error.code || 'unknown'}`
+    const lastToastTime = this.toastRateLimit.get(errorKey) || 0
+    const now = Date.now()
+    
+    if (now - lastToastTime < this.toastCooldown) {
+      // Skip this toast, too soon after the last one
+      return
+    }
+    
+    this.toastRateLimit.set(errorKey, now)
+    
     const message = error.suggestions && error.suggestions.length > 0
       ? `${error.message}\n\nSuggestions:\n${error.suggestions.map(s => `• ${s}`).join('\n')}`
       : error.message
@@ -259,13 +273,13 @@ class ErrorHandlerService implements ErrorHandler {
       case ErrorSeverity.HIGH:
         toast.error(message, {
           duration: 8000,
-          id: `error-${error.type}-${error.timestamp.getTime()}`
+          id: `error-${errorKey}`
         })
         break
       case ErrorSeverity.MEDIUM:
         toast.error(message, {
           duration: 5000,
-          id: `error-${error.type}-${error.timestamp.getTime()}`
+          id: `error-${errorKey}`
         })
         break
       default:

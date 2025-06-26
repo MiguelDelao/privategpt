@@ -175,9 +175,13 @@ export class PrivateGPTClient {
     }
   }
 
-  private getStoredToken(): string | undefined {
+  getStoredToken(): string | undefined {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('auth_token') || undefined
+      const token = localStorage.getItem('auth_token')
+      // Filter out invalid token values
+      if (token && token !== 'null' && token !== 'undefined' && token.length > 10) {
+        return token
+      }
     }
     return undefined
   }
@@ -239,6 +243,13 @@ export class PrivateGPTClient {
     endpoint: string, 
     options: RequestInit = {}
   ): Promise<T> {
+    // Skip retries for certain endpoints
+    const noRetryEndpoints = ['/api/auth/logout', '/api/auth/verify']
+    const shouldRetry = !noRetryEndpoints.some(ep => endpoint.includes(ep))
+    
+    if (!shouldRetry) {
+      return this.performRequest<T>(endpoint, options)
+    }
     const metadata: RequestMetadata = {
       endpoint,
       method: options.method || 'GET',
@@ -397,7 +408,13 @@ export class PrivateGPTClient {
 
   async logout(): Promise<void> {
     try {
-      await this.request('/auth/logout', { method: 'POST' })
+      // Don't retry logout - if it fails, just clear local state
+      await this.performRequest('/api/auth/logout', { 
+        method: 'POST',
+        headers: this.authToken ? {
+          'Authorization': `Bearer ${this.authToken}`
+        } : {}
+      })
     } catch (error) {
       // Continue with logout even if API call fails
       console.warn('Logout API call failed:', error)
