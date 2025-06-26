@@ -41,12 +41,18 @@ class AnthropicAdapter(LLMPort):
     async def chat(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> ChatResponse:
         """Generate response for a conversation using specified model."""
         try:
+            # Map model names to actual Anthropic model IDs
+            model_mapping = {
+                "claude-3-7-sonnet-latest": "claude-3-5-sonnet-20241022"
+            }
+            actual_model = model_mapping.get(model_name, model_name)
+            
             # Convert messages to Anthropic format
             anthropic_messages = self._convert_messages(messages)
             system_message = self._extract_system_message(messages)
             
             payload = {
-                "model": model_name,
+                "model": actual_model,
                 "messages": anthropic_messages,
                 "max_tokens": kwargs.get("max_tokens", 1024),
                 **self._build_options(**kwargs)
@@ -55,18 +61,48 @@ class AnthropicAdapter(LLMPort):
             if system_message:
                 payload["system"] = system_message
             
+            logger.info(f"Sending to Anthropic API: {json.dumps(payload, indent=2)}")
+            
             response = await self.client.post(
                 f"{self.base_url}/v1/messages",
                 json=payload
             )
+            if response.status_code != 200:
+                logger.error(f"Anthropic API error: {response.status_code} - {response.text}")
+                try:
+                    error_data = response.json()
+                    logger.error(f"Error details: {json.dumps(error_data, indent=2)}")
+                except:
+                    pass
             response.raise_for_status()
             result = response.json()
             
-            # Extract content
+            # Extract content and tool calls
             content = ""
+            tool_calls = []
             content_blocks = result.get("content", [])
-            if content_blocks and isinstance(content_blocks, list) and len(content_blocks) > 0:
-                content = content_blocks[0].get("text", "")
+            
+            for block in content_blocks:
+                if block.get("type") == "text":
+                    content += block.get("text", "")
+                elif block.get("type") == "tool_use":
+                    # Convert tool call back to original name (undo sanitization)
+                    tool_name = block.get("name", "").replace("_", ".")
+                    tool_calls.append({
+                        "id": block.get("id"),
+                        "type": "tool_use",
+                        "name": tool_name,
+                        "input": block.get("input", {})
+                    })
+            
+            # If we have tool calls, return them in the content as JSON
+            if tool_calls:
+                # For now, return tool calls as JSON in content
+                # This is a temporary solution - ideally ChatResponse should support tool_calls
+                content = json.dumps({
+                    "text": content,
+                    "tool_calls": tool_calls
+                })
             
             # Extract token usage
             usage = result.get("usage", {})
@@ -89,12 +125,18 @@ class AnthropicAdapter(LLMPort):
     async def chat_stream(self, model_name: str, messages: List[Dict[str, str]], **kwargs) -> AsyncIterator[str]:
         """Generate streaming response for a conversation using specified model."""
         try:
+            # Map model names to actual Anthropic model IDs
+            model_mapping = {
+                "claude-3-7-sonnet-latest": "claude-3-5-sonnet-20241022"
+            }
+            actual_model = model_mapping.get(model_name, model_name)
+            
             # Convert messages to Anthropic format
             anthropic_messages = self._convert_messages(messages)
             system_message = self._extract_system_message(messages)
             
             payload = {
-                "model": model_name,
+                "model": actual_model,
                 "messages": anthropic_messages,
                 "max_tokens": kwargs.get("max_tokens", 1024),
                 "stream": True,
@@ -122,6 +164,21 @@ class AnthropicAdapter(LLMPort):
                                     delta = chunk.get("delta", {})
                                     if delta.get("type") == "text_delta":
                                         yield delta.get("text", "")
+                                    elif delta.get("type") == "input_json_delta":
+                                        # Tool use delta - for now just skip
+                                        pass
+                                elif chunk.get("type") == "content_block_start":
+                                    content_block = chunk.get("content_block", {})
+                                    if content_block.get("type") == "tool_use":
+                                        # Tool use started - convert name back
+                                        tool_name = content_block.get("name", "").replace("_", ".")
+                                        yield f"\n[TOOL_USE: {tool_name}]\n"
+                                elif chunk.get("type") == "content_block_stop":
+                                    # Tool use or text block ended
+                                    pass
+                                elif chunk.get("type") == "message_delta":
+                                    # Message metadata update
+                                    pass
                             except json.JSONDecodeError:
                                 continue
                             
@@ -156,6 +213,10 @@ class AnthropicAdapter(LLMPort):
             "claude-3-haiku-20240307": {
                 "description": "Fast Claude 3 Haiku model",
                 "cost_per_token": 0.00025
+            },
+            "claude-3-7-sonnet-latest": {
+                "description": "Anthropic model: claude-3-7-sonnet-latest",
+                "cost_per_token": 0.003
             }
         }
         
@@ -250,6 +311,9 @@ class AnthropicAdapter(LLMPort):
             if isinstance(stop_sequences, str):
                 stop_sequences = [stop_sequences]
             options["stop_sequences"] = stop_sequences
+        if "tools" in kwargs:
+            # Pass tools through for function calling
+            options["tools"] = kwargs["tools"]
             
         return options
         
