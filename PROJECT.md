@@ -248,15 +248,20 @@ The system implements a two-phase streaming approach to solve SQLAlchemy async c
 ## Enhanced Features (v2)
 
 ### Model Context Protocol (MCP) Integration
-- **Local MCP Server**: STDIO-based tool execution for Ollama models
-- **Available Tools**:
-  - `search_documents`: Semantic search through uploaded documents
-  - `read_file`: Read file contents with permission checks
-  - `list_directory`: Browse directory structures
-  - `create_file`: Create new files with content
-  - `edit_file`: Modify existing files
-  - `get_system_info`: System information and health checks
-  - `check_service_health`: Monitor service status
+- **Unified MCP Client**: Provider-agnostic tool integration for all LLM models
+- **HTTP Transport**: Reliable JSON-RPC 2.0 over HTTP for tool communication
+- **Tool Registry**: Dynamic tool discovery with provider-specific formatting
+- **Approval Workflow**: Optional tool approval system with auto-approve settings
+- **Available Tools** (via MCP Server):
+  - `calculator`: Basic mathematical operations (add, subtract, multiply, divide, power)
+  - `get_current_time`: Current date/time in various formats and timezones
+  - `search_documents`: Semantic search through uploaded documents (planned)
+  - `read_file`: Read file contents with permission checks (planned)
+- **Provider Support**:
+  - **Anthropic**: Full tool use with name sanitization (dots → underscores)
+  - **OpenAI**: Function calling format
+  - **Ollama**: Simplified schema format
+  - **Generic**: Standard tool format for other providers
 
 ### Advanced Chat Features
 - **Thinking Display**: AI reasoning visualization (similar to DeepSeek R1)
@@ -279,6 +284,52 @@ The system implements a two-phase streaming approach to solve SQLAlchemy async c
 - **Tool Calls**: Execution tracking with parameters and results
 - **System Prompts**: XML-structured prompts with model pattern matching
 - **Model Usage**: Token consumption and cost tracking
+
+## MCP Implementation Details
+
+### Architecture Overview
+The MCP (Model Context Protocol) integration follows a provider-agnostic design that allows any LLM provider to use tools through a unified interface.
+
+### Core Components
+
+#### 1. Unified MCP Client (`src/privategpt/services/gateway/core/mcp/unified_mcp_client.py`)
+- **Singleton Pattern**: Global client instance shared across requests
+- **HTTP Transport**: JSON-RPC 2.0 over HTTP for reliable communication
+- **Tool Registry**: Maintains discovered tools with provider-specific formatting
+- **Approval Service**: Optional tool approval workflow with database tracking
+
+#### 2. Tool Registry (`src/privategpt/services/gateway/core/mcp/tool_registry.py`)
+- **Dynamic Discovery**: Tools discovered from MCP servers on initialization
+- **Provider Formatting**: Converts tools to provider-specific formats:
+  - Anthropic: `input_schema` with sanitized names (dots → underscores)
+  - OpenAI: `function` with `parameters`
+  - Ollama: Simplified schema with flattened objects
+- **Validation**: JSON Schema validation for tool parameters
+
+#### 3. MCP Router (`src/privategpt/services/gateway/api/mcp_router.py`)
+- **Tool Discovery**: `/api/mcp/tools` - List available tools for providers
+- **Tool Execution**: `/api/mcp/execute` - Execute tools with optional approval
+- **Approval Management**: `/api/mcp/approvals/*` - Manage tool approvals
+- **Health Monitoring**: `/api/mcp/health` - Check MCP system status
+
+#### 4. Provider Adapters
+- **Anthropic Adapter**: Handles `tool_use` content blocks, name sanitization
+- **OpenAI Adapter**: Standard function calling format (planned)
+- **Ollama Adapter**: Simplified tool format (planned)
+
+### Tool Flow
+1. **Discovery**: MCP client connects to servers and discovers available tools
+2. **Registration**: Tools registered in registry with metadata and schemas
+3. **Formatting**: Tools formatted for specific LLM provider when requested
+4. **Execution**: LLM calls tools, gateway executes via MCP server
+5. **Response**: Tool results returned to LLM for continued processing
+
+### Key Features
+- **Provider Agnostic**: Works with any LLM that supports tool/function calling
+- **Auto-Approval**: Configurable per-user or per-tool approval settings
+- **Tool Sanitization**: Automatic name conversion for provider requirements
+- **Error Handling**: Graceful degradation if MCP servers unavailable
+- **Extensible**: Easy to add new MCP servers or tool types
 
 ## RAG System Architecture
 
@@ -698,6 +749,28 @@ curl http://localhost:8000/status
 - **Keycloak**: Verify realm, client, and user configuration
 - **Database**: Confirm connection strings and credentials
 - **Services**: Validate service discovery and routing
+
+## Troubleshooting
+
+### Common Issues
+
+#### Traefik Routing Issues
+**Problem**: API endpoints return 404 when accessed through Traefik (port 80)
+
+**Cause**: Traefik ignores unhealthy containers. The gateway service health check requires `curl`, which must be installed in the container.
+
+**Solution**: Ensure the gateway Dockerfile includes:
+```dockerfile
+# Install curl for health check
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+```
+
+**Verification**:
+1. Check container health: `docker ps | grep gateway` (should show "healthy")
+2. Test routing: `curl http://localhost/api/health`
+3. If unhealthy, rebuild: `docker-compose build gateway-service && docker-compose up -d gateway-service`
+
+**Important**: Traefik silently ignores unhealthy containers without logging warnings. Always verify container health when debugging routing issues.
 
 ## Development Guidelines
 
